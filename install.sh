@@ -15,13 +15,18 @@ NO_PROXY_VAL="127.0.0.1,localhost,local,.local"
 # Block markers
 CURL_START="# >>> curl-config >>>"
 CURL_END="# <<< curl-config <<<"
+
 WGET_START="# >>> wget-config >>>"
 WGET_END="# <<< wget-config <<<"
 
 PROXY_START="# >>> proxy-config >>>"
 PROXY_END="# <<< proxy-config <<<"
+
 ALIAS_START="# >>> shell-aliases >>>"
 ALIAS_END="# <<< shell-aliases <<<"
+
+MIRROR_START="# >>> mirrors >>>"
+MIRROR_END="# <<< mirrors <<<"
 
 remove_block() {
   local file="$1" start="$2" end="$3"
@@ -71,6 +76,7 @@ touch "$BASHRC"
 
 remove_block "$BASHRC" "$PROXY_START" "$PROXY_END"
 remove_block "$BASHRC" "$ALIAS_START" "$ALIAS_END"
+remove_block "$BASHRC" "$MIRROR_START" "$MIRROR_END"
 
 append_block "$BASHRC" "$PROXY_START" "$PROXY_END" <<EOF
 # Proxy environment variables
@@ -87,6 +93,11 @@ append_block "$BASHRC" "$ALIAS_START" "$ALIAS_END" <<EOF
 alias pp='export http_proxy="$PROXY_URL"; export https_proxy="$PROXY_URL"; export HTTP_PROXY="$PROXY_URL"; export HTTPS_PROXY="$PROXY_URL"; export no_proxy="$NO_PROXY_VAL"; export NO_PROXY="$NO_PROXY_VAL"; echo "proxy => $PROXY_URL (no_proxy=$NO_PROXY_VAL)"'
 alias cc='clear'
 alias lg='lazygit'
+EOF
+
+append_block "$BASHRC" "$MIRROR_START" "$MIRROR_END" <<'EOF'
+# Mirrors for common package/tool downloads
+export NVM_NODEJS_ORG_MIRROR="http://nodejs.org/dist"
 EOF
 
 # 5) Configure git/npm to use proxy (best-effort)
