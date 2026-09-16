@@ -2,6 +2,11 @@
 set nocompatible
 let mapleader = ' '
 let maplocalleader = ' '
+" 重新加载配置前，先归还首页临时修改的显示设置。
+if exists('#vimrc_lite_dashboard#User#VimrcLiteReload')
+  doautocmd <nomodeline> vimrc_lite_dashboard User VimrcLiteReload
+endif
+let s:vimrc_path = expand('<sfile>:p')
 let s:config_dir = fnamemodify(resolve(expand('<sfile>:p')), ':h')
 
 " 隔离已有 pack 插件并关闭 plugin 脚本自动加载；注册本地主题目录。
@@ -270,6 +275,22 @@ function! s:SearchPrompt() abort
   endtry
 endfunction
 
+" 首页只依赖 VimSearch 和 VimConfig 两个入口。
+command! VimSearch call <SID>SearchPrompt()
+command! VimConfig execute 'edit ' . fnameescape(s:vimrc_path)
+let s:dashboard = s:config_dir . '/dashboard.vim'
+if !filereadable(s:dashboard)
+  let s:dashboard = s:config_dir . '/.vim/dashboard.vim'
+endif
+if !filereadable(s:dashboard)
+  let s:dashboard = expand('~/.vim/dashboard.vim')
+endif
+if filereadable(s:dashboard)
+  execute 'source ' . fnameescape(s:dashboard)
+else
+  call s:Warn('missing dashboard.vim; copy the complete vim directory')
+endif
+
 " 文件、buffer、标签页。
 nnoremap <silent> <C-s> :wall<CR>
 inoremap <silent> <C-s> <C-o>:wall<CR>
@@ -316,7 +337,7 @@ xnoremap > >gv
 
 " 搜索、结果列表、消息。
 nnoremap <leader>ff :find<Space>
-nnoremap <silent> <leader>fp :call <SID>SearchPrompt()<CR>
+nnoremap <silent> <leader>fp :VimSearch<CR>
 nnoremap <leader>fo :browse oldfiles<CR>
 nnoremap <silent> <leader>fh :nohlsearch<CR>
 nnoremap <silent> [q :cprevious<CR>

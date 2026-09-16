@@ -2,13 +2,16 @@
 """Offline regression checks; all writes stay in temporary directories."""
 
 import base64
+import fcntl
 import os
 from pathlib import Path
 import pty
 import select
 import shutil
 import subprocess
+import struct
 import tempfile
+import termios
 import time
 import unittest
 
@@ -58,6 +61,217 @@ class VimTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, errors + result.stdout + result.stderr)
         self.assertEqual(errors, "")
         return result
+
+    def terminal_vim(self, body, args=(), before=(), stdin=None):
+        """Send checks after VimEnter, so startup is not bypassed by -S/-c."""
+        ready = self.work / 'ready'
+        report = self.work / 'terminal-errors'
+        for path in (ready, report):
+            path.unlink(missing_ok=True)
+        script = self.work / 'terminal-check.vim'
+        script.write_text(
+            'set nomore\ntry\n' + body + '\ncatch\n'
+            "call add(v:errors, v:exception . ' at ' . v:throwpoint)\nendtry\n"
+            f'call writefile(v:errors, {quoted(report)})\n'
+            'if !empty(v:errors) | cquit | endif\nqa!\n', encoding='utf-8',
+        )
+        master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
+        env = os.environ.copy()
+        env['TERM'] = 'xterm-256color'
+        command = [VIM, '-Nu', str(ROOT / '.vimrc'), '-i', 'NONE', '-n',
+                   '--cmd', f'autocmd VimEnter * call writefile([], {quoted(ready)})']
+        for setting in before:
+            command += ['--cmd', setting]
+        process = subprocess.Popen(
+            command + list(args), cwd=self.work, env=env,
+            stdin=slave if stdin is None else subprocess.PIPE, stdout=slave, stderr=slave,
+        )
+        os.close(slave)
+        output = b''
+        sent = False
+        deadline = time.monotonic() + 10
+        try:
+            if stdin is not None:
+                process.stdin.write(stdin)
+                process.stdin.close()
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], 0.05)[0]:
+                    try:
+                        output += os.read(master, 65536)
+                    except OSError:
+                        break
+                if not sent and ready.exists():
+                    os.write(master, f':source {script}\r'.encode())
+                    sent = True
+                if process.poll() is not None:
+                    break
+            self.assertTrue(sent, repr(output[-2000:]))
+            self.assertEqual(process.wait(timeout=2), 0,
+                             (report.read_text() if report.exists() else '') + repr(output[-2000:]))
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            os.close(master)
+        self.assertEqual(report.read_text(), '')
+        return output
+
+    def test_dashboard_terminal_startup_and_new_file(self):
+        output = self.terminal_vim(r'''
+call assert_equal('vimdashboard', &filetype)
+call assert_equal(['nofile', 'wipe', 0, 0, 0], [&buftype, &bufhidden, &buflisted, &swapfile, &modifiable])
+call assert_equal([0, 0, 0, 0], [&number, &relativenumber, &laststatus, &cursorline])
+let content = map(filter(getline(1, '$'), '!empty(v:val)'), 'substitute(v:val, "^ *", "", "")')
+call assert_equal(['Les annees heureuses sont des annees perdues.', '[f]  Find file', '[n]  New file', '[e]  Browse directory', '[r]  Recent files', '[t]  Find text', '[c]  Config', '[q]  Quit'], content)
+for row in range(1, line('$'))
+  call assert_equal(0, synID(row, max([1, match(getline(row), '\S') + 1]), 1))
+endfor
+for key in ['j', 'k', "\<Down>", "\<Up>", "\<CR>"]
+  call assert_false(get(maparg(key, 'n', 0, 1), 'buffer', 0), key)
+endfor
+let home = bufnr('%')
+call feedkeys("nhello\<Esc>", 'xt')
+call assert_equal('hello', getline(1))
+call assert_equal('', &buftype)
+call assert_false(bufexists(home))
+call assert_equal([1, 1, 2, 1], [&number, &relativenumber, &laststatus, &cursorline])
+call assert_equal('', maparg('q', 'n'))
+''')
+        self.assertIn(b'Les annees heureuses', output)
+
+    def test_dashboard_startup_exclusions(self):
+        (self.work / 'sample.py').write_text('preserved\n')
+        (self.work / 'session.vim').write_text('let g:session_loaded = 1\n')
+        cases = [
+            (['sample.py'], (), None, "call assert_equal('preserved', getline(1))"),
+            (['.'], (), None, "call assert_equal('netrw', &filetype)"),
+            ([], ('let g:vimrc_lite_dashboard = 0',), None, 'Dashboard\ncall assert_equal(\'vimdashboard\', &filetype)'),
+            (['-c', 'let g:command_loaded = 1'], (), None, 'call assert_equal(1, g:command_loaded)'),
+            (['+let g:command_loaded = 1'], (), None, 'call assert_equal(1, g:command_loaded)'),
+            (['-S', 'session.vim'], (), None, 'call assert_equal(1, g:session_loaded)'),
+            (['-e'], (), None, ''),
+            (['-'], (), b'', "call assert_equal([''], getline(1, '$'))"),
+            (['-'], (), b'pipe contents\n', "call assert_equal('pipe contents', getline(1))"),
+        ]
+        for args, before, stdin, check in cases:
+            with self.subTest(args=args, before=before, stdin=stdin):
+                self.terminal_vim(
+                    "call assert_notequal('vimdashboard', &filetype)\n" + check,
+                    args=args, before=before, stdin=stdin,
+                )
+
+    def test_dashboard_shortcuts(self):
+        (self.work / 'space file.py').write_text('needle\n')
+        self.vim(r'''
+Dashboard
+call feedkeys("fspace\\ file.py\<CR>", 'xt')
+call assert_equal('space file.py', bufname('%'))
+Dashboard
+call feedkeys('e', 'xt')
+call assert_equal('netrw', &filetype)
+call assert_equal(getcwd(), substitute(b:netrw_curdir, '/$', '', ''))
+Dashboard
+call feedkeys('c', 'xt')
+call assert_equal(''' + quoted(ROOT / '.vimrc') + r''', expand('%:p'))
+Dashboard
+let home = bufnr('%')
+call feedkeys("f\<Esc>", 'xt')
+call assert_equal(home, bufnr('%'))
+call feedkeys("t\<Esc>", 'xt')
+call assert_equal(home, bufnr('%'))
+call feedkeys("tneedle\<CR>**/*.py\<CR>", 'xt')
+call assert_equal('quickfix', &buftype)
+call assert_equal(['needle'], map(getqflist(), 'v:val.text'))
+cclose
+Dashboard
+let v:oldfiles = [getcwd() . '/space file.py']
+call feedkeys("r1\<CR>", 'xt')
+call assert_equal('needle', getline(1))
+''')
+        self.vim(r'''
+Dashboard
+call feedkeys('q', 'xt')
+call writefile(['unexpected'], 'after-quit')
+''')
+        self.assertFalse((self.work / 'after-quit').exists())
+
+    def test_dashboard_loads_through_symlink(self):
+        config = self.work / 'linked vimrc'
+        config.symlink_to(ROOT / '.vimrc')
+        self.vim(r'''
+Dashboard
+call assert_equal('vimdashboard', &filetype)
+call assert_match('dashboard.vim', execute('scriptnames'))
+call feedkeys('c', 'xt')
+call assert_equal(''' + quoted(config) + r''', expand('%:p'))
+''', config=config)
+
+    def test_dashboard_restores_windows_and_preserves_unsaved_buffers(self):
+        self.vim(r'''
+edit unsaved.py
+call setline(1, 'keep this')
+let original = bufnr('%')
+setlocal nonumber relativenumber foldcolumn=3 signcolumn=yes list wrap
+set laststatus=1
+let settings = [&number, &relativenumber, &foldcolumn, &signcolumn, &list, &wrap, &fillchars]
+Dashboard
+let home = bufnr('%')
+call assert_equal(0, &laststatus)
+Dashboard
+call assert_equal(home, bufnr('%'))
+call feedkeys("q\<Esc>", 'xt')
+call assert_true(bufexists(original))
+call assert_equal(['keep this'], getbufline(original, 1, '$'))
+call assert_true(getbufvar(original, '&modified'))
+vsplit
+call assert_equal(1, &laststatus)
+enew
+call assert_equal(settings, [&number, &relativenumber, &foldcolumn, &signcolumn, &list, &wrap, &fillchars])
+call assert_equal(1, &laststatus)
+wincmd p
+call assert_equal('vimdashboard', &filetype)
+let home_window = win_getid()
+wincmd p
+call assert_equal([0, 0, 0, 'no'], [getwinvar(home_window, '&number'), getwinvar(home_window, '&relativenumber'), str2nr(getwinvar(home_window, '&foldcolumn')), getwinvar(home_window, '&signcolumn')])
+call assert_equal(settings, [&number, &relativenumber, &foldcolumn, &signcolumn, &list, &wrap, &fillchars])
+wincmd p
+execute 'buffer ' . original
+call assert_false(bufexists(home))
+call assert_equal(settings, [&number, &relativenumber, &foldcolumn, &signcolumn, &list, &wrap, &fillchars])
+call assert_equal('keep this', getline(1))
+call assert_true(&modified)
+Dashboard
+new
+call assert_equal(settings, [&number, &relativenumber, &foldcolumn, &signcolumn, &list, &wrap, &fillchars])
+''')
+
+    def test_dashboard_resize_and_reload(self):
+        self.terminal_vim(r'''
+set columns=40 lines=12
+doautocmd VimResized
+let header = search('Les annees', 'nw')
+call assert_equal('Les annees heureuses sont des annees perdues.', getline(header))
+call assert_true(abs((header - 1) - (winheight(0) - line('$'))) <= 1)
+call assert_equal('[q]  Quit', getline('$'))
+set columns=100 lines=30
+doautocmd VimResized
+let header = search('Les annees', 'nw')
+call assert_equal((winwidth(0) - strdisplaywidth('Les annees heureuses sont des annees perdues.')) / 2, match(getline(header), '\S'))
+for row in range(header + 2, line('$'))
+  call assert_equal(match(getline(header), '\S'), match(getline(row), '\S'))
+endfor
+call assert_true(abs((header - 1) - (winheight(0) - line('$'))) <= 1)
+source ''' + str(ROOT / '.vimrc') + r'''
+source ''' + str(ROOT / '.vimrc') + r'''
+call assert_equal(1, len(filter(split(execute('autocmd vimrc_lite_dashboard VimEnter'), '\n'), 'v:val =~# "DashboardStartup"')))
+call assert_equal([0, 0], [&laststatus, &cursorline])
+colorscheme tokyonight-night
+call assert_equal(0, synID(line('$'), match(getline('$'), '\S') + 1, 1))
+call feedkeys("ntext\<Esc>", 'xt')
+call assert_equal('text', getline(1))
+call assert_equal([1, 1, 2], [&number, &relativenumber, &laststatus])
+''')
 
     def test_startup_and_theme(self):
         self.vim(r'''
@@ -368,6 +582,8 @@ class InstallerTests(unittest.TestCase):
         (self.target / ".vimrc").symlink_to(external)
         colors = self.target / ".vim" / "colors"
         colors.mkdir(parents=True)
+        dashboard = self.target / '.vim' / 'dashboard.vim'
+        dashboard.write_text('" old dashboard\n')
         (colors / "unrelated.vim").write_text('" leave alone\n')
         self.install("--config-only")
         self.assertEqual(external.read_text(), '" original\n')
@@ -376,16 +592,26 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue(backups[0].is_symlink())
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
+        self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
+        dashboard_backups = list(dashboard.parent.glob('dashboard.vim.bak.*'))
+        self.assertEqual(len(dashboard_backups), 1)
+        self.assertEqual(dashboard_backups[0].read_text(), '" old dashboard\n')
         for source in (ROOT / "colors").iterdir():
             self.assertEqual((colors / source.name).read_bytes(), source.read_bytes())
         result = subprocess.run(
             [VIM, '-Nu', str(self.target / '.vimrc'), '-i', 'NONE', '-n', '-es',
              '-c', 'if get(g:, "colors_name", "") !=# "tokyonight-night" | cquit | endif',
+             '-c', 'Dashboard',
+             '-c', 'if &filetype !=# "vimdashboard" | cquit | endif',
+             '-c', f'if stridx(execute("scriptnames"), {quoted(dashboard)}) < 0 | cquit | endif',
+             '-c', 'VimConfig',
+             '-c', f'if expand("%:p") !=# {quoted(self.target / ".vimrc")} | cquit | endif',
              '-c', 'qa!'], capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.install("--config-only")
         self.assertEqual(list(self.target.glob(".vimrc.bak.*")), backups)
+        self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), dashboard_backups)
         self.assertEqual((colors / "unrelated.vim").read_text(), '" leave alone\n')
         self.assertFalse(list(self.target.rglob("*.tmp.*")))
 

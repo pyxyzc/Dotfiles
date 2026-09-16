@@ -37,6 +37,7 @@ done
 
 [[ -f "$script_dir/.vimrc" && -f "$script_dir/colors/tokyonight-night.vim" ]] \
     || die '缺少 .vimrc 或 colors/tokyonight-night.vim，请复制完整的 vim 目录'
+[[ -f "$script_dir/dashboard.vim" ]] || die '缺少 dashboard.vim，请复制完整的 vim 目录'
 [[ -f "$script_dir/colors/LICENSE.tokyonight" && -f "$script_dir/colors/README.md" ]] \
     || die '缺少主题来源或许可证文件，请复制完整的 vim 目录'
 [[ ! -e "$install_target" || -d "$install_target" ]] || die "不是目录：$install_target"
@@ -81,7 +82,7 @@ fi
 
 mkdir -p -- "$install_target/.vim/colors"
 install_target="$(cd -- "$install_target" && pwd)"
-for destination in "$install_target/.vimrc" "$install_target/.vim/colors/tokyonight-night.vim" \
+for destination in "$install_target/.vimrc" "$install_target/.vim/dashboard.vim" "$install_target/.vim/colors/tokyonight-night.vim" \
     "$install_target/.vim/colors/LICENSE.tokyonight" "$install_target/.vim/colors/README.md"; do
     [[ ! -d "$destination" ]] || die "目标文件被目录占用：$destination"
 done
@@ -116,6 +117,7 @@ install_file() {
 }
 
 install_file "$script_dir/.vimrc" "$install_target/.vimrc"
+install_file "$script_dir/dashboard.vim" "$install_target/.vim/dashboard.vim"
 for source in "$script_dir"/colors/*; do
     [[ -f "$source" ]] || continue
     install_file "$source" "$install_target/.vim/colors/$(basename -- "$source")"

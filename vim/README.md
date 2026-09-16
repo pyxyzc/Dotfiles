@@ -4,6 +4,9 @@
 主题全部在本目录，无插件管理器、第三方插件、语言服务器或自动下载。
 主题默认透明背景，不需要特殊字体。
 
+`.vimrc` 保留基础设置、通用功能和快捷键；`dashboard.vim` 独立管理首页，
+由 `.vimrc` 显式加载。首页通过 `:VimSearch` 和 `:VimConfig` 复用搜索与配置入口。
+
 ## 安装
 
 将整个 `vim/` 目录复制到目标机器，然后以目标用户身份运行：
@@ -20,6 +23,7 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 
 ```text
 ~/.vimrc
+~/.vim/dashboard.vim
 ~/.vim/colors/tokyonight-night.vim
 ~/.vim/colors/LICENSE.tokyonight
 ~/.vim/colors/README.md
@@ -50,13 +54,43 @@ vim --cmd 'let g:vimrc_lite_truecolor = 0' -u ~/Dotfiles/vim/.vimrc
 vim --cmd 'let g:vimrc_lite_transparent = 0' -u ~/Dotfiles/vim/.vimrc
 ```
 
-三个可选变量均在加载 vimrc 前设置；也可直接将赋值放在自己的 vimrc 顶部：
+以下可选变量均在加载 vimrc 前设置；也可直接将赋值放在自己的 vimrc 顶部：
 
 | 变量 | 默认值 | 含义 |
 | --- | --- | --- |
 | `g:vimrc_lite_truecolor` | `1` | 使用真彩色；设为 `0` 使用主题的静态 256 色 |
 | `g:vimrc_lite_transparent` | `1` | 背景透明；设为 `0` 恢复原版背景 |
 | `g:vimrc_lite_osc52` | 检测 SSH 环境 | 是否为显式复制发送 OSC 52；可手动设为 `0` 或 `1` |
+| `g:vimrc_lite_dashboard` | `1` | 无参数交互启动时显示首页；设为 `0` 关闭自动显示 |
+
+## 首页
+
+直接运行 `vim` 会显示居中的 slogan `Les annees heureuses sont des annees perdues.`
+和七行纯文本入口，格式为 `[f]  Find file`，每行与 slogan 左侧对齐。
+全部使用普通正文样式，无图标、下划线、背景高亮或页脚。
+直接按对应字母执行；不提供菜单选中状态或额外的方向键／回车操作。
+
+| 按键 | 功能 |
+| --- | --- |
+| `f` | 进入 `:find` 查找文件，支持 Tab 补全 |
+| `n` | 新建空 buffer 并进入插入模式 |
+| `e` | 用 netrw 浏览当前工作目录 |
+| `r` | 从最近文件记录中输入编号选择 |
+| `t` | 搜索文本，使用现有范围提示和 quickfix 结果 |
+| `c` | 编辑当前加载的 vimrc |
+| `q` | 退出 Vim；有未保存内容时提示确认 |
+
+用 `:Dashboard` 可手动回到首页，已打开文件及未保存内容会保留。
+关闭自动首页后，该命令仍可使用：
+
+```bash
+vim --cmd 'let g:vimrc_lite_dashboard = 0'
+```
+
+指定文件、目录、管道输入、会话（`-S`）或启动命令（`-c`、`+cmd`）时，
+以及 Ex／批处理模式下，不自动显示首页。`--cmd` 仍可用于预设配置变量。
+首页不进入普通 buffer 列表；离开后恢复编辑界面，关闭最后一个文件仍退出 Vim。
+窗口缩放时自动调整居中和留白；窄窗口使用原生横向滚动查看完整文字。
 
 ## 快捷键
 
@@ -153,7 +187,7 @@ OSC 52 要求本地终端允许应用写入剪贴板；tmux 内还需要 `set -g
 python3 ~/Dotfiles/vim/tests/test_vim.py
 ```
 
-测试在临时目录执行，覆盖配置、主题、buffer、搜索、复制及安装脚本。
+测试在临时目录执行，覆盖配置、主题、首页启动与交互、buffer、搜索、复制及安装脚本。
 软件包安装使用模拟命令，不实际安装系统软件或联网。
 本机实测 Vim 9.1；Vim 8 采用传统 Vimscript 和特性检查，但未在独立 Vim 8 上实测。
 缺少 `+terminal` 的 Vim 不注册终端快捷键；没有 `+clipboard` 也可使用内部复制和 OSC 52。
