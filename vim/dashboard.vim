@@ -9,6 +9,10 @@ function! s:DashboardRestoreStatus() abort
     let &laststatus = s:dashboard_laststatus
     unlet s:dashboard_laststatus
   endif
+  if exists('s:dashboard_showtabline')
+    let &showtabline = s:dashboard_showtabline
+    unlet s:dashboard_showtabline
+  endif
 endfunction
 
 function! s:DashboardLeave() abort
@@ -24,8 +28,13 @@ endfunction
 function! s:DashboardRender() abort
   if !get(b:, 'vimrc_lite_dashboard', 0) | return | endif
   let slogan = 'Les annees heureuses sont des annees perdues.'
-  let indent = repeat(' ', max([0, (winwidth(0) - strdisplaywidth(slogan)) / 2]))
-  let padding = max([0, (winheight(0) - 1) / 2])
+  let width = strdisplaywidth(slogan)
+  let [row, column] = win_screenpos(0)
+  " 以整个屏幕为锚点，再换算到窗口内；空间不足时收回窗口边界。
+  let left = (&columns - width) / 2 - column + 1
+  let top = (&lines - &cmdheight - 1) / 2 - row + 1
+  let indent = repeat(' ', max([0, min([left, winwidth(0) - width])]))
+  let padding = max([0, min([top, winheight(0) - 1])])
   setlocal modifiable
   try
     silent %delete _
@@ -37,9 +46,31 @@ function! s:DashboardRender() abort
   normal! zt
 endfunction
 
+" 文件树获得焦点后，也重绘仍然可见的首页。
+function! s:DashboardRedraw() abort
+  let origin = win_getid()
+  try
+    for window in getwininfo()
+      if window.tabnr == tabpagenr() && getbufvar(window.bufnr, 'vimrc_lite_dashboard', 0)
+        if exists('*win_execute')
+          call win_execute(window.winid, 'noautocmd call ' . expand('<SID>') . 'DashboardRender()')
+        else
+          noautocmd call win_gotoid(window.winid)
+          call s:DashboardRender()
+        endif
+      endif
+    endfor
+  finally
+    if win_getid() != origin
+      noautocmd call win_gotoid(origin)
+    endif
+  endtry
+endfunction
+
 function! s:DashboardEnter() abort
   if !get(b:, 'vimrc_lite_dashboard', 0)
     call s:DashboardLeave()
+    call s:DashboardRedraw()
     return
   endif
   if !exists('w:vimrc_lite_dashboard_options')
@@ -54,11 +85,14 @@ function! s:DashboardEnter() abort
     if !exists('s:dashboard_laststatus')
       let s:dashboard_laststatus = &laststatus
     endif
-    set laststatus=0
+    if !exists('s:dashboard_showtabline')
+      let s:dashboard_showtabline = &showtabline
+    endif
+    set laststatus=0 showtabline=0
   else
     call s:DashboardRestoreStatus()
   endif
-  call s:DashboardRender()
+  call s:DashboardRedraw()
 endfunction
 
 function! s:Dashboard() abort
@@ -109,6 +143,9 @@ augroup vimrc_lite_dashboard
   autocmd VimEnter * call s:DashboardStartup()
   autocmd WinLeave * call s:DashboardRestoreStatus()
   autocmd BufWinEnter,WinEnter,VimResized * call s:DashboardEnter()
+  if exists('##WinResized')
+    autocmd WinResized * call s:DashboardEnter()
+  endif
 augroup END
 if get(b:, 'vimrc_lite_dashboard', 0)
   call s:DashboardEnter()

@@ -135,6 +135,7 @@ class VimTests(VimSession):
 call assert_equal('vimdashboard', &filetype)
 call assert_equal(['nofile', 'wipe', 0, 0, 0], [&buftype, &bufhidden, &buflisted, &swapfile, &modifiable])
 call assert_equal([0, 0, 0, 0], [&number, &relativenumber, &laststatus, &cursorline])
+call assert_equal(0, &showtabline)
 let content = map(filter(getline(1, '$'), '!empty(v:val)'), 'substitute(v:val, "^ *", "", "")')
 call assert_equal(['Les annees heureuses sont des annees perdues.'], content)
 call assert_equal(0, synID(line('$'), 1, 1))
@@ -148,6 +149,7 @@ call assert_equal('hello', getline(1))
 call assert_equal('', &buftype)
 call assert_false(bufexists(home))
 call assert_equal([1, 1, 2, 1], [&number, &relativenumber, &laststatus, &cursorline])
+call assert_equal(2, &showtabline)
 call assert_equal('', maparg('q', 'n'))
 ''')
         self.assertIn(b'Les annees heureuses', output)
@@ -191,10 +193,12 @@ call setline(1, 'keep this')
 let original = bufnr('%')
 setlocal nonumber relativenumber foldcolumn=3 signcolumn=yes list wrap
 set laststatus=1
+set showtabline=1
 let settings = [&number, &relativenumber, &foldcolumn, &signcolumn, &list, &wrap, &fillchars]
 Dashboard
 let home = bufnr('%')
 call assert_equal(0, &laststatus)
+call assert_equal(0, &showtabline)
 Dashboard
 call assert_equal(home, bufnr('%'))
 call assert_true(bufexists(original))
@@ -202,6 +206,7 @@ call assert_equal(['keep this'], getbufline(original, 1, '$'))
 call assert_true(getbufvar(original, '&modified'))
 vsplit
 call assert_equal(1, &laststatus)
+call assert_equal(1, &showtabline)
 enew
 call assert_equal(settings, [&number, &relativenumber, &foldcolumn, &signcolumn, &list, &wrap, &fillchars])
 call assert_equal(1, &laststatus)
@@ -222,6 +227,47 @@ new
 call assert_equal(settings, [&number, &relativenumber, &foldcolumn, &signcolumn, &list, &wrap, &fillchars])
 ''')
 
+    def test_dashboard_screen_position_with_file_tree(self):
+        self.terminal_vim(r'''
+function! SloganPosition(window) abort
+  let lines = getbufline(winbufnr(a:window), 1, '$')
+  let position = win_screenpos(a:window)
+  return [position[0] + len(lines) - getwininfo(a:window)[0].topline,
+        \ position[1] + match(lines[-1], '\S')]
+endfunction
+let home = win_getid()
+let position = SloganPosition(home)
+call feedkeys("\<Space>e", 'xt')
+call assert_equal('netrw', &filetype)
+let tree = win_getid()
+call assert_equal(position, SloganPosition(home))
+for width in [12, 22, 18]
+  call feedkeys(':vertical resize ' . width . "\<CR>", 'xt')
+  " Vim normally delivers this event after returning from the sourced script.
+  doautocmd WinResized
+  call assert_equal(tree, win_getid())
+  call assert_equal(position, SloganPosition(home))
+endfor
+call feedkeys(":vertical resize 70\<CR>", 'xt')
+doautocmd WinResized
+call assert_equal(win_screenpos(home)[1], SloganPosition(home)[1])
+call feedkeys(":vertical resize 20\<CR>", 'xt')
+doautocmd WinResized
+call assert_equal(position, SloganPosition(home))
+let tree_cursor = getpos('.')
+set columns=140 lines=40
+doautocmd VimResized
+let width = strdisplaywidth('Les annees heureuses sont des annees perdues.')
+call assert_equal([(&lines - &cmdheight - 1) / 2 + 1, (&columns - width) / 2 + 1], SloganPosition(home))
+call assert_equal(tree, win_getid())
+call assert_equal(tree_cursor, getpos('.'))
+let position = SloganPosition(home)
+call feedkeys("\<Space>e", 'xt')
+call assert_equal(home, win_getid())
+call assert_equal(position, SloganPosition(home))
+call assert_equal([0, 0], [&laststatus, &showtabline])
+''')
+
     def test_dashboard_resize_and_reload(self):
         self.terminal_vim(r'''
 set columns=40 lines=12
@@ -240,11 +286,13 @@ source ''' + str(ROOT / '.vimrc') + r'''
 source ''' + str(ROOT / '.vimrc') + r'''
 call assert_equal(1, len(filter(split(execute('autocmd vimrc_lite_dashboard VimEnter'), '\n'), 'v:val =~# "DashboardStartup"')))
 call assert_equal([0, 0], [&laststatus, &cursorline])
+call assert_equal(0, &showtabline)
 colorscheme tokyonight-night
 call assert_equal(0, synID(line('$'), match(getline('$'), '\S') + 1, 1))
 call feedkeys("\<Space>bnitext\<Esc>", 'xt')
 call assert_equal('text', getline(1))
 call assert_equal([1, 1, 2], [&number, &relativenumber, &laststatus])
+call assert_equal(2, &showtabline)
 ''')
 
     def test_startup_and_theme(self):
@@ -393,6 +441,110 @@ call feedkeys("\<C-h>\<C-l>", 'xt')
 call assert_equal(before, winnr('$'))
 call assert_true(buflisted('third.py'))
 call assert_equal(1, maparg("\<C-h>", 'n', 0, 1).noremap)
+''')
+
+    def test_buffer_bar_names_flags_and_numbering(self):
+        self.vim(r'''
+set columns=200
+edit src/main.py
+badd removed.py
+let removed = bufnr('removed.py')
+badd tests/main.py
+execute 'bwipeout ' . removed
+call feedkeys("\<Space>2", 'xt')
+call assert_equal('tests/main.py', bufname('%'))
+call setline(1, 'changed')
+setlocal readonly
+let bar = Call('BufferLine', [])
+call assert_match('1:src/main.py ', bar)
+call assert_match('%#TabLineSel# 2:tests/main.py + \[RO\]', bar)
+call assert_notmatch('removed.py', bar)
+setlocal noreadonly
+call mkdir('tests', 'p')
+write
+call assert_notmatch('main.py +', Call('BufferLine', []))
+file renamed.py
+call assert_match('2:renamed.py ', Call('BufferLine', []))
+call assert_notmatch('tests/main.py', Call('BufferLine', []))
+enew
+call assert_match('3:\[No Name\]', Call('BufferLine', []))
+let unnamed = bufnr('%')
+setlocal buftype=nofile nobuflisted
+call assert_notmatch('\[No Name\]', Call('BufferLine', []))
+call feedkeys("\<Space>1", 'xt')
+call assert_equal('src/main.py', bufname('%'))
+execute 'bwipeout ' . unnamed
+if has('terminal')
+  let terminal = term_start(['sh', '-c', 'exit 0'], {'hidden': 1})
+  call assert_match('\[term\]', Call('BufferLine', []))
+endif
+''')
+
+    def test_buffer_bar_terminal_display_and_overflow(self):
+        self.terminal_vim(r'''
+function! BarText() abort
+  redraw!
+  let text = ''
+  let column = 1
+  while column <= &columns
+    let char = screenstring(1, column)
+    let text .= char
+    let column += max([1, strdisplaywidth(char)])
+  endwhile
+  return text
+endfunction
+execute 'edit ' . fnameescape('中文 100%#TabLineSel#.txt')
+call setline(1, 'unsaved')
+let bar = BarText()
+call assert_match('1:中文 100%#TabLineSel#.txt +', bar)
+call assert_equal('', v:errmsg)
+execute 'file ' . fnameescape("control\tname.txt")
+call assert_match('control\^Iname.txt', BarText())
+for number in range(2, 15)
+  execute 'badd file' . number . '.txt'
+endfor
+call feedkeys("\<Space>8", 'xt')
+set columns=40
+doautocmd VimResized
+let bar = BarText()
+call assert_match('^< ', bar)
+call assert_match('8:file8.txt', bar)
+call assert_match(' >\s*$', bar)
+let selected_column = match(bar, '8:file8.txt') + 1
+call assert_notequal(screenattr(1, 1), screenattr(1, selected_column))
+call feedkeys("\<Space>9", 'xt')
+call assert_match('9:file9.txt', BarText())
+buffer file15.txt
+let bar = BarText()
+call assert_match('15:file15.txt', bar)
+call assert_notmatch(' >', bar)
+file 超长中文文件名称需要截断以保持编号可见.txt
+set columns=24
+doautocmd VimResized
+call setline(1, 'changed')
+setlocal readonly
+let bar = BarText()
+call assert_match('15:', bar)
+call assert_match('\V~ + [RO]', bar)
+call assert_equal('', v:errmsg)
+set columns=100
+tab split
+call assert_match('Tab 2/2', BarText())
+tabprevious
+call assert_match('Tab 1/2', BarText())
+colorscheme tokyonight-night
+call assert_equal(synIDtrans(hlID('StatusLine')), synIDtrans(hlID('VimrcBufferLine')))
+''', args=['-c', 'let g:skip_home = 1'])
+
+    def test_buffer_bar_reload_and_empty_list(self):
+        self.vim(r'''
+setlocal nobuflisted
+call assert_equal('%#TabLineFill#', Call('BufferLine', []))
+source ''' + str(ROOT / '.vimrc') + r'''
+source ''' + str(ROOT / '.vimrc') + r'''
+call assert_equal(2, &showtabline)
+call assert_equal(1, len(filter(split(execute('autocmd vimrc_lite_buffers BufEnter'), '\n'), 'v:val =~# "redrawtabline"')))
+call assert_match('BufferLine()', &tabline)
 ''')
 
     def test_content_edits_preserve_registers_and_undo(self):
