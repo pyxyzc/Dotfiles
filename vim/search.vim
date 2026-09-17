@@ -127,8 +127,19 @@ function! s:Finish(state, status, timer) abort
 endfunction
 
 function! s:Exited(state, job, status) abort
-  " 等终端自身完成关闭，再切换原窗口，避免在 channel 回调内改布局。
-  call timer_start(0, function('s:Finish', [a:state, a:status]))
+  let a:state.status = a:status
+  if get(a:state, 'closed', 0)
+    call timer_start(0, function('s:Finish', [a:state, a:status]))
+  endif
+endfunction
+
+function! s:Closed(state, channel) abort
+  let a:state.closed = 1
+  " 进程退出不代表终端通道已关闭；提前 wipe 会让旧输入循环吃掉下一次 leader。
+  " 两个事件都收到后再延迟清理，让 Vim 先结束终端输入；兼容回调的两种顺序。
+  if has_key(a:state, 'status')
+    call timer_start(0, function('s:Finish', [a:state, a:state.status]))
+  endif
 endfunction
 
 function! s:Open(mode) abort
@@ -165,9 +176,10 @@ function! s:Open(mode) abort
     let &ttimeoutlen = min([30, state.ttimeoutlen < 0 ? &timeoutlen : state.ttimeoutlen])
     call mkdir(state.directory, '', 0700)
     let [width, height] = s:Geometry()
-    let options = {'hidden': 1, 'cwd': state.root, 'term_finish': 'close',
+    " 由 Finish 统一关闭，避免自动关闭提前删除终端、打断 close_cb。
+    let options = {'hidden': 1, 'cwd': state.root,
           \ 'term_kill': 'term', 'norestore': 1, 'term_rows': height, 'term_cols': width,
-          \ 'exit_cb': function('s:Exited', [state])}
+          \ 'exit_cb': function('s:Exited', [state]), 'close_cb': function('s:Closed', [state])}
     if exists('*term_setapi') | let options.term_api = '' | endif
     let state.buf = term_start([exepath('bash'), s:helper, 'run', a:mode,
           \ state.directory, s:History(a:mode), s:Colors()], options)

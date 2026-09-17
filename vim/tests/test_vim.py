@@ -1185,7 +1185,8 @@ call assert_equal(original, bufnr('%'))
 call assert_match('regex parse error', execute('messages'))
 ''')
 
-    def keyboard_search(self, command, editing=False, exercise_arrows=False, config=None):
+    def keyboard_search(self, command, editing=False, exercise_arrows=False, config=None,
+                        reopen=0):
         """Send actual PTY bytes through Vim's key decoder and mappings, not term_sendkeys()."""
         startup = self.work / 'keyboard-startup'
         ready = self.work / 'keyboard-ready'
@@ -1203,6 +1204,12 @@ let g:keyboard_options = [&timeout, &timeoutlen, &ttimeout, &ttimeoutlen]
 let g:keyboard_terminal = filter(getbufinfo(), 'getbufvar(v:val.bufnr, "&buftype") ==# "terminal"')[0].bufnr
 let g:keyboard_directory = job_info(term_getjob(g:keyboard_terminal)).cmd[4]
 function! KeyboardObserve(timer) abort
+  if !g:keyboard_terminal
+    let terminals = filter(getbufinfo(), 'getbufvar(v:val.bufnr, "&buftype") ==# "terminal"')
+    if empty(terminals) | return | endif
+    let g:keyboard_terminal = terminals[0].bufnr
+    let g:keyboard_directory = job_info(term_getjob(g:keyboard_terminal)).cmd[4]
+  endif
   if bufexists(g:keyboard_terminal)
     let screen = join(map(range(1, term_getsize(g:keyboard_terminal)[0]), 'term_getline(g:keyboard_terminal, v:val)'), "\n")
     if screen =~# '\(Files\|Live grep\)>'
@@ -1216,7 +1223,7 @@ function! KeyboardObserve(timer) abort
           \ 'filetype': &filetype, 'modified': &modified, 'line': getline(1)}
     call writefile([json_encode(result)], ''' + quoted(str(closed) + '.tmp') + r''')
     call rename(''' + quoted(str(closed) + '.tmp') + ', ' + quoted(closed) + r''')
-    call timer_stop(a:timer)
+    let g:keyboard_terminal = 0
   endif
 endfunction
 call timer_start(5, 'KeyboardObserve', {'repeat': -1})
@@ -1258,11 +1265,27 @@ call timer_start(5, 'KeyboardObserve', {'repeat': -1})
                 os.write(master, b'[A\x1b[B\x0a\x0b')
                 pump(0.15)
                 self.assertFalse(closed.exists(), 'Arrow/Ctrl-j/Ctrl-k closed the search')
-            started = time.monotonic()
-            os.write(master, b'\x1b')
-            wait_file(closed)
-            elapsed = time.monotonic() - started
-            result = json.loads(closed.read_text())
+            elapsed = 0
+            for attempt in range(reopen + 1):
+                if attempt:
+                    ready.unlink()
+                    closed.unlink()
+                    # Separate physical keys: one buffered feedkeys() call hides
+                    # the stale terminal input loop swallowing the first leader.
+                    keys = b' ff' if command == 'VimFind' else b' fp'
+                    for key in keys:
+                        os.write(master, bytes([key]))
+                        pump(0.04)
+                    wait_file(ready)
+                started = time.monotonic()
+                os.write(master, b'\x1b')
+                wait_file(closed)
+                elapsed = max(elapsed, time.monotonic() - started)
+                result = json.loads(closed.read_text())
+                self.assertTrue(result['same_buffer'])
+                self.assertTrue(result['same_window'])
+                self.assertEqual(result['popups'], [])
+                self.assertEqual(result['original_options'], result['restored_options'])
             os.write(master, b':qa!\r')
             deadline = time.monotonic() + 2
             while process.poll() is None and time.monotonic() < deadline:
@@ -1295,11 +1318,22 @@ call timer_start(5, 'KeyboardObserve', {'repeat': -1})
                         self.assertEqual(result['filetype'], 'vimdashboard')
 
     @unittest.skipUnless(shutil.which('fzf'), 'Real keyboard latency test requires fzf')
+    def test_real_keyboard_reopen_after_cancel(self):
+        self.require_backends()
+        (self.project / 'sample.py').write_text('needle\n')
+        for command in ('VimFind', 'VimSearch'):
+            for editing in (False, True):
+                with self.subTest(command=command, editing=editing):
+                    elapsed, _ = self.keyboard_search(command, editing, reopen=5)
+                    self.assertLess(elapsed, 0.2, f'Esc cancellation took {elapsed * 1000:.0f} ms')
+
+    @unittest.skipUnless(shutil.which('fzf'), 'Real keyboard latency test requires fzf')
     def test_real_keyboard_escape_in_split(self):
         self.require_backends()
         (self.project / 'sample.py').write_text('needle\n')
         elapsed, result = self.keyboard_search('VimFind', editing=True,
-                                               exercise_arrows=True, config=self.split_config())
+                                               exercise_arrows=True, config=self.split_config(),
+                                               reopen=5)
         self.assertLess(elapsed, 0.2, f'Esc cancellation took {elapsed * 1000:.0f} ms')
         self.assertTrue(result['same_buffer'])
         self.assertTrue(result['same_window'])
