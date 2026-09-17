@@ -41,6 +41,9 @@ done
 [[ -f "$script_dir/.vimrc" && -f "$script_dir/colors/tokyonight-night.vim" ]] \
     || die '缺少 .vimrc 或 colors/tokyonight-night.vim，请复制完整的 vim 目录'
 [[ -f "$script_dir/dashboard.vim" ]] || die '缺少 dashboard.vim，请复制完整的 vim 目录'
+[[ -f "$script_dir/tree.vim" ]] || die '缺少 tree.vim，请复制完整的 vim 目录'
+[[ -f "$script_dir/terminal.vim" && -f "$script_dir/git.vim" ]] \
+    || die '缺少 terminal.vim 或 git.vim，请复制完整的 vim 目录'
 [[ -f "$script_dir/search.vim" && -f "$script_dir/search.sh" ]] \
     || die '缺少 search.vim 或 search.sh，请复制完整的 vim 目录'
 [[ -f "$script_dir/colors/LICENSE.tokyonight" && -f "$script_dir/colors/README.md" ]] \
@@ -106,6 +109,7 @@ fi
 mkdir -p -- "$install_target/.vim/colors" "$install_target/.vim/vendor"
 install_target="$(cd -- "$install_target" && pwd)"
 for destination in "$install_target/.vimrc" "$install_target/.vim/dashboard.vim" "$install_target/.vim/lsp.vim" \
+    "$install_target/.vim/terminal.vim" "$install_target/.vim/git.vim" "$install_target/.vim/tree.vim" \
     "$install_target/.vim/search.vim" "$install_target/.vim/search.sh" "$install_target/.vim/colors/tokyonight-night.vim" \
     "$install_target/.vim/colors/LICENSE.tokyonight" "$install_target/.vim/colors/README.md"; do
     [[ ! -d "$destination" ]] || die "目标文件被目录占用：$destination"
@@ -171,6 +175,9 @@ install_plugin
 install_file "$script_dir/.vimrc" "$install_target/.vimrc"
 install_file "$script_dir/lsp.vim" "$install_target/.vim/lsp.vim"
 install_file "$script_dir/dashboard.vim" "$install_target/.vim/dashboard.vim"
+install_file "$script_dir/tree.vim" "$install_target/.vim/tree.vim"
+install_file "$script_dir/terminal.vim" "$install_target/.vim/terminal.vim"
+install_file "$script_dir/git.vim" "$install_target/.vim/git.vim"
 install_file "$script_dir/search.vim" "$install_target/.vim/search.vim"
 install_file "$script_dir/search.sh" "$install_target/.vim/search.sh"
 for source in "$script_dir"/colors/*; do

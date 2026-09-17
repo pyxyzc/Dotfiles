@@ -28,7 +28,6 @@ if filereadable(s:theme)
 endif
 filetype plugin indent on
 syntax enable
-runtime plugin/netrwPlugin.vim
 runtime plugin/matchparen.vim
 
 set encoding=utf-8
@@ -60,11 +59,6 @@ else
   echohl None
 endif
 
-let g:netrw_banner = 0
-let g:netrw_liststyle = 3
-let g:netrw_winsize = 25
-let g:netrw_keepdir = 1
-
 augroup vimrc_lite
   autocmd!
   autocmd FileType python,c,cpp,cuda setlocal expandtab tabstop=4 softtabstop=4 shiftwidth=4
@@ -80,6 +74,20 @@ function! s:Warn(message) abort
   echom 'Vim lite: ' . a:message
   echohl None
 endfunction
+
+" 文件树模块支持仓库试用、符号链接和复制安装。
+let s:tree = s:config_dir . '/tree.vim'
+if !filereadable(s:tree)
+  let s:tree = s:config_dir . '/.vim/tree.vim'
+endif
+if !filereadable(s:tree)
+  let s:tree = expand('~/.vim/tree.vim')
+endif
+if filereadable(s:tree)
+  execute 'source ' . fnameescape(s:tree)
+else
+  call s:Warn('missing tree.vim; copy the complete vim directory')
+endif
 
 " LSP 模块与其固定版本客户端一起部署，显式加载以保留插件隔离。
 let s:lsp = s:config_dir . '/lsp.vim'
@@ -102,24 +110,23 @@ endfunction
 
 function! s:BufferNames(buffers) abort
   let paths = map(copy(a:buffers), 'split(v:val.name, "/")')
+  " 一次统计路径后缀，避免终端重绘时对所有 buffer 两两比较。
+  let counts = {}
+  for parts in paths
+    for depth in range(1, len(parts))
+      let suffix = join(parts[-depth:], '/')
+      let counts[suffix] = get(counts, suffix, 0) + 1
+    endfor
+  endfor
   let names = []
-  for index in range(len(paths))
-    let parts = paths[index]
+  for parts in paths
     if empty(parts)
       call add(names, '[No Name]')
       continue
     endif
     let depth = 1
     let name = parts[-1]
-    while depth < len(parts)
-      let duplicate = 0
-      for other in range(len(paths))
-        if other != index && join(paths[other][-depth:], '/') ==# name
-          let duplicate = 1
-          break
-        endif
-      endfor
-      if !duplicate | break | endif
+    while depth < len(parts) && counts[name] > 1
       let depth += 1
       let name = join(parts[-depth:], '/')
     endwhile
@@ -384,6 +391,33 @@ else
   command! VimSearch call <SID>Warn('missing search.vim; copy the complete vim directory')
 endif
 
+" 终端模块先于 Git 加载；支持仓库试用、符号链接和复制安装。
+let s:terminal = s:config_dir . '/terminal.vim'
+if !filereadable(s:terminal)
+  let s:terminal = s:config_dir . '/.vim/terminal.vim'
+endif
+if !filereadable(s:terminal)
+  let s:terminal = expand('~/.vim/terminal.vim')
+endif
+if filereadable(s:terminal)
+  execute 'source ' . fnameescape(s:terminal)
+else
+  command! -nargs=* VimTerminal call <SID>Warn('missing terminal.vim; copy the complete vim directory')
+endif
+
+let s:git = s:config_dir . '/git.vim'
+if !filereadable(s:git)
+  let s:git = s:config_dir . '/.vim/git.vim'
+endif
+if !filereadable(s:git)
+  let s:git = expand('~/.vim/git.vim')
+endif
+if filereadable(s:git)
+  execute 'source ' . fnameescape(s:git)
+else
+  command! VimGit call <SID>Warn('missing git.vim; copy the complete vim directory')
+endif
+
 " 配置编辑入口与独立首页。
 command! VimConfig execute 'edit ' . fnameescape(s:vimrc_path)
 let s:dashboard = s:config_dir . '/dashboard.vim'
@@ -438,7 +472,6 @@ nnoremap <silent> <C-Down> :resize +2<CR>
 nnoremap <silent> <C-Left> :vertical resize -2<CR>
 nnoremap <silent> <C-Right> :vertical resize +2<CR>
 nnoremap <silent> <leader>v :vsplit<CR>
-nnoremap <silent> <leader>e :Lexplore<CR>
 nnoremap <silent> <leader>q :confirm quit<CR>
 xnoremap < <gv
 xnoremap > >gv
@@ -454,18 +487,9 @@ nnoremap <silent> <leader>xQ :call <SID>ToggleList(0)<CR>
 nnoremap <silent> <leader>xL :call <SID>ToggleList(1)<CR>
 nnoremap <leader>nh :messages<CR>
 
-" 直接运行本机 LazyGit，不需要 Vim 插件。
-function! s:LazyGit() abort
-  if !has('terminal') || !executable('lazygit')
-    call s:Warn('LazyGit requires Vim +terminal and lazygit in PATH')
-    return
-  endif
-  tabnew
-  terminal ++curwin ++close lazygit
-endfunction
-nnoremap <silent> <leader>gg :call <SID>LazyGit()<CR>
+nnoremap <silent> <leader>gg :VimGit<CR>
+nnoremap <silent> <leader>; :VimTerminal<CR>
 
 if has('terminal')
-  nnoremap <silent> <leader>; :tabnew<Bar>terminal ++curwin<CR>
   tnoremap <Esc><Esc> <C-w>N
 endif

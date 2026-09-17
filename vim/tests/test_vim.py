@@ -182,6 +182,7 @@ call assert_equal('', maparg('q', 'n'))
 Dashboard
 call assert_equal('vimdashboard', &filetype)
 call assert_match('dashboard.vim', execute('scriptnames'))
+call assert_match('tree.vim', execute('scriptnames'))
 VimConfig
 call assert_equal(''' + quoted(config) + r''', expand('%:p'))
 ''', config=config)
@@ -480,6 +481,15 @@ if has('terminal')
 endif
 ''')
 
+    def test_buffer_names_with_shared_suffixes_and_unequal_depths(self):
+        self.vim(r'''
+let buffers = map(['/one/src/main.py', '/two/src/main.py', '/other/main.py',
+      \ '/src/main.py', 'main.py', '', '/路径/x.txt', '/项目/x.txt'], '{"name": v:val}')
+call assert_equal(['one/src/main.py', 'two/src/main.py', 'other/main.py',
+      \ 'src/main.py', 'main.py', '[No Name]', '路径/x.txt', '项目/x.txt'], Call('BufferNames', [buffers]))
+call assert_equal([], Call('BufferNames', [[]]))
+''')
+
     def test_buffer_bar_terminal_display_and_overflow(self):
         self.terminal_vim(r'''
 function! BarText() abort
@@ -654,14 +664,256 @@ if has('terminal')
   call Call('CloseBuffer', [])
   call assert_equal(terminal, bufnr('%'))
   call term_sendkeys(terminal, "exit\n")
-  for attempt in range(20)
-    call term_wait(terminal, 50)
-    if term_getstatus(terminal) !~# 'running' | break | endif
+  for attempt in range(200)
+    sleep 10m
+    if !bufexists(terminal) | break | endif
   endfor
-  call assert_notmatch('running', term_getstatus(terminal))
-  bwipeout!
+  call assert_false(bufexists(terminal))
+  call assert_equal(original_tabs, tabpagenr('$'))
 endif
 ''')
+
+
+class TerminalTests(VimSession):
+    def setUp(self):
+        super().setUp()
+        directory = self.work / 'bin'
+        directory.mkdir()
+        fake = directory / 'lazygit'
+        fake.write_text(f'#!{sys.executable}\n' + '''
+import os, sys, tty
+tty.setraw(sys.stdin.fileno())
+print('READY', flush=True)
+key = os.read(sys.stdin.fileno(), 1)
+sys.exit(0 if key == b'q' else 7)
+''')
+        fake.chmod(0o755)
+        self.env['PATH'] = str(directory) + os.pathsep + self.env['PATH']
+
+    @staticmethod
+    def ready():
+        return r'''
+let terminal = bufnr('%')
+for attempt in range(200)
+  call term_wait(terminal, 10)
+  if term_getline(terminal, 1) =~# 'READY' | break | endif
+endfor
+call assert_match('READY', term_getline(terminal, 1))
+'''
+
+    @staticmethod
+    def closed():
+        return r'''
+for attempt in range(200)
+  sleep 10m
+  if !bufexists(terminal) | break | endif
+endfor
+call assert_false(bufexists(terminal))
+'''
+
+    def test_dashboard_lazygit_and_shell_return_without_empty_buffer(self):
+        for keys, ready, quit_keys in [(' gg', self.ready(), 'q'), (' ;', '', 'exit\n')]:
+            with self.subTest(keys=keys):
+                self.terminal_vim(r'''
+let origin = win_getid()
+let home = bufnr('%')
+let buffers = map(getbufinfo(), 'v:val.bufnr')
+for repeat in range(2)
+''' + f'call feedkeys({quoted(keys)}, "xt")\n' + ready + r'''
+let terminal = bufnr('%')
+call assert_equal('terminal', &buftype)
+call assert_equal([2, 1], [tabpagenr('$'), winnr('$')])
+''' + f'call term_sendkeys(terminal, {quoted(quit_keys)})\n' + self.closed() + r'''
+call assert_equal(origin, win_getid())
+call assert_equal(home, bufnr('%'))
+call assert_equal('vimdashboard', &filetype)
+call assert_equal([1, 0, 0], [tabpagenr('$'), &showtabline, &laststatus])
+call assert_equal(buffers, map(getbufinfo(), 'v:val.bufnr'))
+endfor
+''')
+
+    def test_unsaved_buffers_layout_cwd_and_reload(self):
+        for setup in ["edit draft.txt", 'enew']:
+            with self.subTest(setup=setup):
+                self.terminal_vim(setup + r'''
+call setline(1, ['unsaved', 'second line'])
+call cursor(2, 3)
+vsplit
+let origin = win_getid()
+let buffer = bufnr('%')
+let windows = map(getwininfo(), 'v:val.winid')
+let layout = winlayout()
+let listed = map(getbufinfo({'buflisted': 1}), 'v:val.bufnr')
+let view = winsaveview()
+let directory = getcwd()
+call feedkeys(' gg', 'xt')
+''' + self.ready() + r'''
+call assert_equal(directory, getcwd())
+source ''' + str(ROOT / '.vimrc') + r'''
+call assert_match('running', term_getstatus(terminal))
+call term_sendkeys(terminal, 'q')
+''' + self.closed() + r'''
+call assert_equal(origin, win_getid())
+call assert_equal(buffer, bufnr('%'))
+call assert_equal(['unsaved', 'second line'], getline(1, '$'))
+call assert_true(&modified)
+call assert_equal(windows, map(getwininfo(), 'v:val.winid'))
+call assert_equal(layout, winlayout())
+call assert_equal(view, winsaveview())
+call assert_equal(listed, map(getbufinfo({'buflisted': 1}), 'v:val.bufnr'))
+''')
+
+    def test_background_exit_preserves_focus_and_independent_terminals(self):
+        self.terminal_vim(r'''
+let home = win_getid()
+VimGit
+''' + self.ready() + r'''
+let first = terminal
+call win_gotoid(home)
+VimGit
+''' + self.ready() + r'''
+let second = terminal
+tabnew notes.txt
+call setline(1, 'keep this draft')
+let editor = win_getid()
+let terminal = first
+call term_sendkeys(terminal, 'q')
+''' + self.closed() + r'''
+call assert_equal(editor, win_getid())
+call assert_true(bufexists(second))
+let terminal = second
+call term_sendkeys(terminal, 'x')
+''' + self.closed() + r'''
+call assert_equal(editor, win_getid())
+call assert_equal('keep this draft', getline(1))
+call assert_true(&modified)
+call assert_equal(2, tabpagenr('$'))
+''')
+
+    def test_repurposed_terminal_window_and_closed_origin(self):
+        self.terminal_vim(r'''
+let home = win_getid()
+VimGit
+''' + self.ready() + r'''
+let editor = win_getid()
+edit new-file.txt
+call setline(1, 'new content')
+call win_gotoid(home)
+close
+call assert_equal(editor, win_getid())
+call term_sendkeys(terminal, 'q')
+''' + self.closed() + r'''
+call assert_equal(editor, win_getid())
+call assert_equal('new content', getline(1))
+call assert_true(&modified)
+call assert_equal(1, tabpagenr('$'))
+''')
+
+    def test_missing_executable_and_immediate_failure(self):
+        self.terminal_vim(r'''
+let home = bufnr('%')
+let buffers = map(getbufinfo(), 'v:val.bufnr')
+let $PATH = '/nonexistent-vim-terminal-test'
+VimGit
+call assert_match('LazyGit requires lazygit in PATH', execute('messages'))
+call assert_equal(home, bufnr('%'))
+call assert_equal(1, tabpagenr('$'))
+VimTerminal /nonexistent-vim-terminal-test/program
+let terminal = bufnr('%')
+for attempt in range(200)
+  sleep 10m
+  if tabpagenr('$') == 1 | break | endif
+endfor
+call assert_equal(home, bufnr('%'))
+call assert_equal(1, tabpagenr('$'))
+call assert_equal(buffers, map(getbufinfo(), 'v:val.bufnr'))
+''')
+
+    def test_modules_load_through_symlink(self):
+        config = self.work / 'linked.vimrc'
+        config.symlink_to(ROOT / '.vimrc')
+        self.terminal_vim(r'''
+call assert_match('git.vim', execute('scriptnames'))
+call assert_match('terminal.vim', execute('scriptnames'))
+VimGit
+''' + self.ready() + r'''
+call term_sendkeys(terminal, 'q')
+''' + self.closed() + r'''
+call assert_equal('vimdashboard', &filetype)
+''', config=config)
+
+    def test_exit_drains_channel_without_polling(self):
+        helper = self.work / 'bin' / 'terminal-stream'
+        helper.write_text(f'#!{sys.executable}\n' + r'''
+import os, signal, sys, time, tty
+from pathlib import Path
+signal.signal(signal.SIGHUP, signal.SIG_IGN)
+tty.setraw(sys.stdin.fileno())
+print('READY', flush=True)
+os.read(sys.stdin.fileno(), 1)
+if os.fork():
+    os._exit(0)
+deadline = time.monotonic() + 5
+while not Path('release').exists():
+    if time.monotonic() > deadline:
+        os._exit(2)
+    time.sleep(0.005)
+os.write(1, b'FINAL OUTPUT\r\n')
+os._exit(0)
+''')
+        helper.chmod(0o755)
+        self.terminal_vim('VimTerminal terminal-stream\n' + self.ready() + r'''
+let job = term_getjob(terminal)
+call assert_equal([], filter(timer_info(), 'string(v:val.callback) =~# "_Finish"'))
+let g:terminal_final_output = ''
+autocmd BufWipeout <buffer> let g:terminal_final_output = join(getbufline(str2nr(expand('<abuf>')), 1, '$'), "\n")
+call term_sendkeys(terminal, 'q')
+for attempt in range(200)
+  if job_status(job) ==# 'dead' | break | endif
+  sleep 10m
+endfor
+sleep 30m
+call assert_true(bufexists(terminal), 'Wait for both process exit and channel closure')
+call assert_equal([], filter(timer_info(), 'string(v:val.callback) =~# "_Finish"'))
+call assert_equal('dead', job_status(job))
+call writefile([], 'release')
+''' + self.closed() + r'''
+call assert_equal('vimdashboard', &filetype)
+call assert_match('FINAL OUTPUT', g:terminal_final_output)
+''')
+
+    def test_user_created_empty_buffer_is_preserved(self):
+        self.terminal_vim(r'''
+enew
+let empty_buffer = bufnr('%')
+let origin = win_getid()
+VimGit
+''' + self.ready() + r'''
+call term_sendkeys(terminal, 'q')
+''' + self.closed() + r'''
+call assert_equal(origin, win_getid())
+call assert_equal(empty_buffer, bufnr('%'))
+call assert_equal('', bufname('%'))
+call assert_equal([''], getline(1, '$'))
+call assert_equal([empty_buffer], map(getbufinfo({'buflisted': 1}), 'v:val.bufnr'))
+''')
+
+    def test_last_terminal_window_exits_vim(self):
+        report = self.work / 'terminal-errors'
+        leaving = self.work / 'leaving'
+        self.terminal_vim(r'''
+VimGit
+''' + self.ready() + r'''
+tabonly
+call assert_equal(1, tabpagenr('$'))
+''' + f'call writefile(v:errors, {quoted(report)})\n'
+            + f'autocmd VimLeavePre * call writefile([], {quoted(leaving)})\n'
+            + r'''
+call term_sendkeys(terminal, 'q')
+sleep 2
+call assert_report('The last terminal window should have exited Vim')
+''')
+        self.assertTrue(leaving.exists())
 
 
 class SearchTests(VimSession):
@@ -884,7 +1136,7 @@ call assert_equal([], popup_list())
     def split_config(self):
         config = self.work / 'fallback config'
         config.mkdir()
-        for name in ('.vimrc', 'search.sh', 'dashboard.vim'):
+        for name in ('.vimrc', 'search.sh', 'dashboard.vim', 'tree.vim'):
             shutil.copyfile(ROOT / name, config / name)
         # Simulate a Vim without popup windows while exercising the actual split implementation.
         (config / 'search.vim').write_text((ROOT / 'search.vim').read_text().replace(
@@ -1144,6 +1396,9 @@ class InstallerTests(unittest.TestCase):
         colors.mkdir(parents=True)
         dashboard = self.target / '.vim' / 'dashboard.vim'
         dashboard.write_text('" old dashboard\n')
+        modules = [self.target / '.vim' / name for name in ('git.vim', 'terminal.vim', 'tree.vim')]
+        for module in modules:
+            module.write_text('" old module\n')
         (colors / "unrelated.vim").write_text('" leave alone\n')
         self.install("--config-only")
         self.assertEqual(external.read_text(), '" original\n')
@@ -1153,11 +1408,15 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
-        for name in ('search.vim', 'search.sh', 'lsp.vim'):
+        for name in ('search.vim', 'search.sh', 'lsp.vim', 'git.vim', 'terminal.vim', 'tree.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         dashboard_backups = list(dashboard.parent.glob('dashboard.vim.bak.*'))
         self.assertEqual(len(dashboard_backups), 1)
         self.assertEqual(dashboard_backups[0].read_text(), '" old dashboard\n')
+        module_backups = {module: list(module.parent.glob(module.name + '.bak.*')) for module in modules}
+        for backups_for_module in module_backups.values():
+            self.assertEqual(len(backups_for_module), 1)
+            self.assertEqual(backups_for_module[0].read_text(), '" old module\n')
         for source in (ROOT / "colors").iterdir():
             self.assertEqual((colors / source.name).read_bytes(), source.read_bytes())
         plugin = self.target / '.vim' / 'vendor' / 'vim-lsp'
@@ -1171,7 +1430,8 @@ class InstallerTests(unittest.TestCase):
              '-c', 'Dashboard',
              '-c', 'if &filetype !=# "vimdashboard" | cquit | endif',
              '-c', f'if stridx(execute("scriptnames"), {quoted(dashboard)}) < 0 | cquit | endif',
-             '-c', 'if !exists(":VimFind") || !exists(":VimSearch") | cquit | endif',
+             '-c', 'if !exists(":VimFind") || !exists(":VimSearch") || !exists(":Lexplore") | cquit | endif',
+             '-c', 'if !exists(":VimGit") || !exists(":VimTerminal") | cquit | endif',
              '-c', 'if !exists(":VimLspStatus") || !exists(":LspDefinition") | cquit | endif',
              '-c', 'VimConfig',
              '-c', f'if expand("%:p") !=# {quoted(self.target / ".vimrc")} | cquit | endif',
@@ -1181,6 +1441,8 @@ class InstallerTests(unittest.TestCase):
         self.install("--config-only")
         self.assertEqual(list(self.target.glob(".vimrc.bak.*")), backups)
         self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), dashboard_backups)
+        for module, backups_for_module in module_backups.items():
+            self.assertEqual(list(module.parent.glob(module.name + '.bak.*')), backups_for_module)
         self.assertEqual((colors / "unrelated.vim").read_text(), '" leave alone\n')
         self.assertFalse(list(self.target.rglob("*.tmp.*")))
         self.assertFalse(list(plugin.parent.glob('vim-lsp.bak.*')))

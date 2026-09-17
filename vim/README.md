@@ -6,8 +6,10 @@
 主题默认透明背景，不需要特殊字体。
 
 `.vimrc` 保留基础设置、通用功能和快捷键；`dashboard.vim` 管理首页，
+`tree.vim` 集中管理 netrw 侧边文件树的加载、选项和快捷键；
 `search.vim` 和 `search.sh` 连接 Vim 内置终端与 fd/ripgrep/fzf，均由配置显式加载。
 `lsp.vim` 显式加载 `vendor/vim-lsp/`，提供 Python、C/C++ 的基础语言服务。
+`git.vim` 提供 LazyGit 入口，`terminal.vim` 统一管理 LazyGit 和普通 shell 的终端退出清理。
 
 ## 安装
 
@@ -26,6 +28,9 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 ```text
 ~/.vimrc
 ~/.vim/dashboard.vim
+~/.vim/tree.vim
+~/.vim/git.vim
+~/.vim/terminal.vim
 ~/.vim/search.vim
 ~/.vim/search.sh
 ~/.vim/lsp.vim
@@ -148,7 +153,7 @@ slogan 以整个 Vim 界面的中心为锚点，打开、关闭或调整文件�
 | `<leader>fh` | 清除本次搜索高亮 |
 | `[q` / `]q` | 上一个／下一个 quickfix 结果 |
 | `<leader>xQ` / `xL` | 开关 quickfix／location list |
-| `<leader>;` | 新标签页打开内置终端，使用 Vim 的 `shell` 设置 |
+| `<leader>;` | 新标签页打开内置终端，使用 Vim 的 `shell` 设置，退出 shell 后关闭终端页 |
 | 终端内双 `Esc` | 进入终端普通模式；按 `i` 返回输入 |
 | `<leader>nh` / `q` | 查看消息历史／退出当前窗口，未保存时提示 |
 | `<leader>gg` | 在新标签页的内置终端中打开 LazyGit，退出后自动关闭该标签页 |
@@ -165,8 +170,13 @@ slogan 以整个 Vim 界面的中心为锚点，打开、关闭或调整文件�
 Alt、Ctrl-方向键的传递取决于终端和 tmux 设置。
 
 LazyGit 使用当前 Vim 工作目录；从项目目录启动 Vim，按空格后再按 `gg` 即可。
-需要系统已有 `lazygit` 且 Vim 支持 `+terminal`，缺失时只提示，不自动下载。
+两个终端入口需要 Vim 支持 `+terminal` 和 `+timers`；LazyGit 还需要系统已有 `lazygit`。
+缺失时只提示，不自动下载。
 LazyGit 内使用它自己的按键，通常按 `q` 退出；不需要任何 Vim Git 插件。
+从首页启动时，退出后回到原首页，不留下空 buffer；从文件启动时回到原编辑窗口。
+若已切到其他窗口则保留当前焦点，已有文件和未保存内容不会被清理。
+也可使用 `:VimGit` 或 `:VimTerminal [command]`；后者不带参数时使用 `shell` 设置，
+带参数时直接运行指定程序，不解释 shell 管道或重定向。重载配置不会终止运行中的终端。
 
 ## Python / C++ 工作流
 
@@ -354,7 +364,8 @@ OSC 52 要求本地终端允许应用写入剪贴板；tmux 内还需要 `set -g
 python3 ~/Dotfiles/vim/tests/test_vim.py
 ```
 
-测试在临时目录执行，覆盖配置、主题、首页启动与交互、buffer、搜索、复制及安装脚本。
+测试在临时目录执行，覆盖配置、主题、首页启动与交互、buffer、搜索、终端退出清理、复制及安装脚本。
+LazyGit 生命周期测试使用模拟程序，验证首页返回、未保存内容、后台退出和配置重载。
 LSP 测试用 Python 标准库实现的本地 stdio 协议服务，验证初始化、文件同步、定义跳转、
 引用、文档、手动补全、中文位置、配置重载、缺失依赖和插件安装升级，不访问网络。
 其中一项预期失败记录上述非 BMP 位置问题，不代表已经修复。
