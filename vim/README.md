@@ -4,8 +4,8 @@
 主题全部在本目录，无插件管理器、第三方插件、语言服务器或自动下载。
 主题默认透明背景，不需要特殊字体。
 
-`.vimrc` 保留基础设置、通用功能和快捷键；`dashboard.vim` 独立管理首页，
-由 `.vimrc` 显式加载。
+`.vimrc` 保留基础设置、通用功能和快捷键；`dashboard.vim` 管理首页，
+`search.vim` 和 `search.sh` 连接 Vim 内置终端与 fd/ripgrep/fzf，均由配置显式加载。
 
 ## 安装
 
@@ -24,6 +24,8 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 ```text
 ~/.vimrc
 ~/.vim/dashboard.vim
+~/.vim/search.vim
+~/.vim/search.sh
 ~/.vim/colors/tokyonight-night.vim
 ~/.vim/colors/LICENSE.tokyonight
 ~/.vim/colors/README.md
@@ -33,6 +35,18 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 `sudo`，不要用 `sudo` 执行整个脚本，否则会安装到 root 的用户目录。
 缺失 Vim 且机器断网时，需要先用系统的离线软件包安装 Vim，或使用 `--config-only`。
 有 Vim 但版本过旧、缺少必要功能时，也会尝试系统软件安装，并再次检查。
+
+文件查找需要 `fd`（或 `fdfind`）和 `fzf`；文本搜索需要 `rg` 和 `fzf`。
+fzf 以 **0.44.1 及以上版本**为兼容基线；Vim 需要 `+terminal` 和 `+timers`。
+安装脚本只提示缺失的搜索工具，不会安装或下载它们；`--config-only` 不检查依赖。
+请自行安装，例如 Debian/Ubuntu：
+
+```bash
+sudo apt install fd-find ripgrep fzf
+```
+
+其他发行版安装对应的 fd、ripgrep、fzf 软件包，并确认命令位于 `PATH`。
+不需要建立 `fd` 到 `fdfind` 的链接，也不需要安装 fzf.vim、bat 或 Python。
 
 已有同名文件先改名为 `原文件.bak.时间戳.进程号`；符号链接会备份链接本身，
 不会改写它指向的文件。内容相同的普通文件跳过，不重复备份。其他主题和旧插件
@@ -105,8 +119,8 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 | `Ctrl-Up/Down` | 窗口高度减小／增大 2 行 |
 | `Ctrl-Left/Right` | 窗口宽度减小／增大 2 列 |
 | `<leader>v` / `e` | 垂直分屏／开关左侧内置文件浏览器 |
-| `<leader>ff` | `:find` 文件查找，输入路径或名字后 Tab 补全 |
-| `<leader>fp` | 搜索字面文本，再输入一个文件 glob；留空使用源码范围 |
+| `<leader>ff` | fd/fdfind 枚举文件，fzf 即时模糊筛选 |
+| `<leader>fp` | ripgrep 实时正则搜索，预览并跳转到匹配位置 |
 | `<leader>fo` | 从 Vim 保存的最近文件记录中输入编号选择 |
 | `<leader>fh` | 清除本次搜索高亮 |
 | `[q` / `]q` | 上一个／下一个 quickfix 结果 |
@@ -142,21 +156,50 @@ LazyGit 内使用它自己的按键，通常按 `q` 退出；不需要任何 Vim
 - 已有 tags 文件时使用 `Ctrl-]` 和 `Ctrl-t`；配置不自动生成索引。
 - 构建使用项目自己的命令或 `:make`，不默认指定 C++ 标准或自动运行代码。
 
-从项目目录启动 Vim。`<leader>ff` 递归查找当前目录下文件；`<leader>fp`
-先输入**字面文本**（不是正则），再输入一个 glob，例如 `src/**/*.cpp`、
-`src with spaces/**/*.py` 或 `**/CMakeLists.txt`；不需要给路径额外加引号。
-文件范围留空时搜索 `py/pyi/c/cc/cpp/cxx/h/hh/hpp/hxx/cu/cuh`。
-取消提示不执行搜索。
+## 文件和文本搜索
 
-搜索过滤 `.git`、`.venv`、`venv`、`__pycache__`、`build`、`dist`、`node_modules`
-目录。搜索使用 Vim 自带的同步实现，大项目建议指定较小的目录范围，执行时可用
-`Ctrl-c` 中断；这些过滤不等同于 Git 的 ignore 规则，也不承诺避免目录遍历。
-结果进入 quickfix；无结果时清空旧结果并提示。
+搜索从当前文件目录向上找最近的 `.git`、`_darcs`、`.hg`、`.bzr`、`.svn`、
+`Makefile`、`package.json` 或 `pom.xml`；首页和无文件 buffer 从当前工作目录开始。
+找不到标记时使用当前工作目录。仅搜索进程切换目录，Vim 的 `:pwd` 保持不变。
 
-文件选择使用命令行补全或编号列表，不提供 Telescope 的模糊搜索界面。
+- `ff`：优先用 `fd`，否则使用 `fdfind`；默认排除隐藏文件，遵守 ignore 规则。
+  fzf 按文件路径进行智能大小写的模糊筛选，不启用 fzf 扩展查询语法；默认不显示预览。
+- `fp`：直接输入 **ripgrep 正则**，约 100 ms 防抖后刷新结果。小写查询忽略大小写，
+  包含大写则区分大小写。包含隐藏文件、排除 `.git`，遵守 ignore 规则；搜索所有文本
+  文件，不再限于 Python/C++，也不再询问 glob。空查询不扫描文件。
+- `.gitignore`、`.ignore` 等由 fd/rg 按各自的原生规则处理；不再硬编码排除 `build`
+  等目录，需要排除的生成文件应写入项目 ignore 文件。搜索读取磁盘内容。
+
+fzf 在居中终端弹窗中运行，宽约 90%、高约 80%，沿用 TokyoNight 配色与透明设置。
+不支持终端弹窗的 Vim 使用底部分屏；缺少必要功能或程序时提示，不使用旧同步搜索。
+`fp` 宽屏右侧显示带行号的上下文，窄屏自动改为上下布局，命中行带标记和颜色。
+
+| 搜索界面按键 | 功能 |
+| --- | --- |
+| 直接输入 | 模糊筛选文件／刷新文本搜索 |
+| `Ctrl-j/k`、方向键 | 下一个／上一个结果 |
+| `Ctrl-n/p` | 下一条／上一条查询历史 |
+| `Ctrl-u/d` | `fp` 预览上翻／下翻半页 |
+| `Enter` | 在原窗口打开文件；文本搜索定位到行、列 |
+| `Esc`、`Ctrl-c` | 取消并返回原窗口 |
+
+这里采用 fzf 的单一输入模式，没有 Telescope 的普通／插入模式切换。
+搜索期间将终端按键序列的等待上限设为 30 ms；确认单次 `Esc` 后直接发送取消指令，
+避免 Vim 与 fzf 叠加等待。搜索结束或配置重载时恢复原设置，普通映射的等待时间不变。
+无匹配时保持空列表；无效正则显示错误，可以继续编辑查询。取消搜索不丢弃未保存内容，
+也不清空原有 quickfix。结果直接打开文件，不自动写入 quickfix。
+文件名及查询中的空格、中文、引号和 shell 特殊字符会作为数据处理。
+
+两类查询分别保存在 `${XDG_STATE_HOME:-~/.local/state}/vim-lite/search/`，各保留 100 条。
+历史目录不可写时仍可搜索，但不保存历史。搜索界面隔离 `FZF_DEFAULT_OPTS`、
+`FZF_DEFAULT_COMMAND` 和 ripgrep 用户配置文件，以保持按键、数据格式和搜索规则一致；
+不修改当前 shell 的环境设置。
+
+## 其他边界
+
 最近文件来自 viminfo，当前会话新开的文件不一定立即进入该列表。
 窗口导航限于 Vim 内部，不跨 tmux 窗格。没有 LSP、DAP、Git hunk、Flash、
-Tree-sitter、浮动终端或项目替换界面；普通文本替换可用 Vim 自带 `:%s`。
+Tree-sitter、浮动 shell 或项目替换界面；普通文本替换可用 Vim 自带 `:%s`。
 
 ## SSH 剪贴板
 
@@ -179,6 +222,8 @@ python3 ~/Dotfiles/vim/tests/test_vim.py
 ```
 
 测试在临时目录执行，覆盖配置、主题、首页启动与交互、buffer、搜索、复制及安装脚本。
-软件包安装使用模拟命令，不实际安装系统软件或联网。
+fd/rg 数据规则使用真实程序验证；终端生命周期另有模拟 fzf 的测试。真实按键测试通过
+PTY 测量单次 Esc 的退出延迟，并验证方向键和设置恢复。真实 fzf 交互测试
+需要已安装 fzf，缺少时明确跳过。软件包安装使用模拟命令，不实际安装系统软件或联网。
 本机实测 Vim 9.1；Vim 8 采用传统 Vimscript 和特性检查，但未在独立 Vim 8 上实测。
 缺少 `+terminal` 的 Vim 不注册终端快捷键；没有 `+clipboard` 也可使用内部复制和 OSC 52。

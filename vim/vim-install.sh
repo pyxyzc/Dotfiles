@@ -17,6 +17,7 @@ usage() {
 
 只为系统软件安装调用 sudo；请以目标用户身份运行整个脚本。
 支持 apt-get、dnf、yum、apk、pacman、zypper，不下载任何 Vim 插件。
+搜索需要 fd/fdfind、ripgrep 和 fzf 0.44.1+；缺少时只提示，不自动安装。
 EOF
 }
 
@@ -38,6 +39,8 @@ done
 [[ -f "$script_dir/.vimrc" && -f "$script_dir/colors/tokyonight-night.vim" ]] \
     || die '缺少 .vimrc 或 colors/tokyonight-night.vim，请复制完整的 vim 目录'
 [[ -f "$script_dir/dashboard.vim" ]] || die '缺少 dashboard.vim，请复制完整的 vim 目录'
+[[ -f "$script_dir/search.vim" && -f "$script_dir/search.sh" ]] \
+    || die '缺少 search.vim 或 search.sh，请复制完整的 vim 目录'
 [[ -f "$script_dir/colors/LICENSE.tokyonight" && -f "$script_dir/colors/README.md" ]] \
     || die '缺少主题来源或许可证文件，请复制完整的 vim 目录'
 [[ ! -e "$install_target" || -d "$install_target" ]] || die "不是目录：$install_target"
@@ -78,11 +81,20 @@ if (( ! config_only )); then
         hash -r
         vim_usable || die '安装后 vim 仍不可用或功能不足，请检查 PATH 和 Vim 版本'
     fi
+    missing_search=()
+    command -v fd >/dev/null 2>&1 || command -v fdfind >/dev/null 2>&1 || missing_search+=(fd/fdfind)
+    command -v rg >/dev/null 2>&1 || missing_search+=(ripgrep)
+    command -v fzf >/dev/null 2>&1 || missing_search+=(fzf)
+    if (( ${#missing_search[@]} )); then
+        printf '搜索依赖缺失：%s；请手动安装，不影响配置复制。\n' "${missing_search[*]}"
+        printf 'Debian/Ubuntu 示例：sudo apt install fd-find ripgrep fzf\n'
+    fi
 fi
 
 mkdir -p -- "$install_target/.vim/colors"
 install_target="$(cd -- "$install_target" && pwd)"
-for destination in "$install_target/.vimrc" "$install_target/.vim/dashboard.vim" "$install_target/.vim/colors/tokyonight-night.vim" \
+for destination in "$install_target/.vimrc" "$install_target/.vim/dashboard.vim" \
+    "$install_target/.vim/search.vim" "$install_target/.vim/search.sh" "$install_target/.vim/colors/tokyonight-night.vim" \
     "$install_target/.vim/colors/LICENSE.tokyonight" "$install_target/.vim/colors/README.md"; do
     [[ ! -d "$destination" ]] || die "目标文件被目录占用：$destination"
 done
@@ -118,6 +130,8 @@ install_file() {
 
 install_file "$script_dir/.vimrc" "$install_target/.vimrc"
 install_file "$script_dir/dashboard.vim" "$install_target/.vim/dashboard.vim"
+install_file "$script_dir/search.vim" "$install_target/.vim/search.vim"
+install_file "$script_dir/search.sh" "$install_target/.vim/search.sh"
 for source in "$script_dir"/colors/*; do
     [[ -f "$source" ]] || continue
     install_file "$source" "$install_target/.vim/colors/$(basename -- "$source")"

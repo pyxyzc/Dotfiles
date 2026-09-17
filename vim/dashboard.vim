@@ -107,6 +107,7 @@ augroup vimrc_lite_dashboard
   autocmd!
   autocmd ColorScheme * highlight VimDashboardSlogan term=italic cterm=italic gui=italic ctermfg=NONE ctermbg=NONE guifg=NONE guibg=NONE
   autocmd User VimrcLiteReload call s:DashboardLeave()
+  autocmd User VimrcLiteSearchClosed call s:DashboardEnter()
   autocmd StdinReadPre * let s:dashboard_stdin = 1
   autocmd VimEnter * call s:DashboardStartup()
   autocmd WinLeave * call s:DashboardRestoreStatus()

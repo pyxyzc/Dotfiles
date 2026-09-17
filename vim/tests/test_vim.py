@@ -3,6 +3,7 @@
 
 import base64
 import fcntl
+import json
 import os
 from pathlib import Path
 import pty
@@ -10,6 +11,7 @@ import select
 import shutil
 import subprocess
 import struct
+import sys
 import tempfile
 import termios
 import time
@@ -22,14 +24,16 @@ BASH = shutil.which("bash")
 
 
 def quoted(value):
-    return "'" + str(value).replace("'", "''") + "'"
+    return "'" + str(value).replace("'", "''").replace('\n', "' . \"\\n\" . '") + "'"
 
 
-class VimTests(unittest.TestCase):
+class VimSession(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="vim-lite-tests-")
         self.addCleanup(self.temp.cleanup)
         self.work = Path(self.temp.name)
+        self.env = os.environ.copy()
+        self.env['XDG_STATE_HOME'] = str(self.work / 'state')
 
     def vim(self, body, config=None, before=None):
         report = self.work / "errors.txt"
@@ -55,14 +59,14 @@ class VimTests(unittest.TestCase):
         result = subprocess.run(
             command + ["-S", str(script)], cwd=self.work,
             stdin=subprocess.DEVNULL, capture_output=True, text=True,
-            timeout=20, start_new_session=True,
+            timeout=20, start_new_session=True, env=self.env,
         )
         errors = report.read_text() if report.exists() else ""
         self.assertEqual(result.returncode, 0, errors + result.stdout + result.stderr)
         self.assertEqual(errors, "")
         return result
 
-    def terminal_vim(self, body, args=(), before=(), stdin=None):
+    def terminal_vim(self, body, args=(), before=(), stdin=None, config=None):
         """Send checks after VimEnter, so startup is not bypassed by -S/-c."""
         ready = self.work / 'ready'
         report = self.work / 'terminal-errors'
@@ -70,16 +74,20 @@ class VimTests(unittest.TestCase):
             path.unlink(missing_ok=True)
         script = self.work / 'terminal-check.vim'
         script.write_text(
-            'set nomore\ntry\n' + body + '\ncatch\n'
+            'set nomore\n'
+            'function! TerminalScreen(buf) abort\n'
+            '  return join(map(range(1, term_getsize(a:buf)[0]), '
+            "'term_getline(a:buf, v:val)'), \"\\n\")\n"
+            'endfunction\ntry\n' + body + '\ncatch\n'
             "call add(v:errors, v:exception . ' at ' . v:throwpoint)\nendtry\n"
             f'call writefile(v:errors, {quoted(report)})\n'
             'if !empty(v:errors) | cquit | endif\nqa!\n', encoding='utf-8',
         )
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
-        env = os.environ.copy()
+        env = self.env.copy()
         env['TERM'] = 'xterm-256color'
-        command = [VIM, '-Nu', str(ROOT / '.vimrc'), '-i', 'NONE', '-n',
+        command = [VIM, '-Nu', str(config or ROOT / '.vimrc'), '-i', 'NONE', '-n',
                    '--cmd', f'autocmd VimEnter * call writefile([], {quoted(ready)})']
         for setting in before:
             command += ['--cmd', setting]
@@ -108,7 +116,7 @@ class VimTests(unittest.TestCase):
                     break
             self.assertTrue(sent, repr(output[-2000:]))
             self.assertEqual(process.wait(timeout=2), 0,
-                             (report.read_text() if report.exists() else '') + repr(output[-2000:]))
+                             (report.read_text(errors='replace') if report.exists() else '') + repr(output[-2000:]))
         finally:
             if process.poll() is None:
                 process.kill()
@@ -117,6 +125,7 @@ class VimTests(unittest.TestCase):
         self.assertEqual(report.read_text(), '')
         return output
 
+class VimTests(VimSession):
     def test_dashboard_terminal_startup_and_new_file(self):
         output = self.terminal_vim(r'''
 call assert_equal('vimdashboard', &filetype)
@@ -461,35 +470,13 @@ call assert_equal('no tty', @")
 call assert_match('OSC 52 unavailable', execute('messages'))
 ''')
 
-    def test_literal_search_paths_filters_and_lists(self):
-        needle = r"needle/a\b|x"
-        (self.work / "src with spaces").mkdir()
-        filename = self.work / "src with spaces" / "中文 | file.cpp"
-        filename.write_text("first\n" + needle + "\n")
-        (self.work / "build").mkdir()
-        (self.work / "build" / "ignored.cpp").write_text(needle)
-        (self.work / "notes.txt").write_text(needle)
-        self.vim("let needle = " + quoted(needle) + r'''
-call Call('Grep', [needle, ''])
-let results = getqflist()
-call assert_equal(1, len(results))
-call assert_equal(2, results[0].lnum)
-call assert_match('中文 | file.cpp$', bufname(results[0].bufnr))
+    def test_quickfix_and_location_lists(self):
+        self.vim(r'''
+call setqflist([{'filename': 'notes.txt', 'lnum': 1, 'text': 'quickfix'}])
+call Call('ToggleList', [0])
 call assert_true(getqflist({'winid': 0}).winid > 0)
 call Call('ToggleList', [0])
 call assert_equal(0, getqflist({'winid': 0}).winid)
-call Call('ToggleList', [0])
-call assert_true(getqflist({'winid': 0}).winid > 0)
-cclose
-call Call('Grep', [needle, 'src with spaces/*.cpp'])
-call assert_equal(1, len(getqflist()))
-call Call('Grep', [needle, 'notes.txt'])
-call assert_equal('notes.txt', bufname(getqflist()[0].bufnr))
-call Call('Grep', ['not present', ''])
-call assert_equal([], getqflist())
-call assert_equal(0, getqflist({'winid': 0}).winid)
-call Call('Grep', [needle, 'missing/*.py'])
-call assert_equal([], getqflist())
 call setloclist(0, [{'filename': 'notes.txt', 'lnum': 1, 'text': 'location'}])
 call Call('ToggleList', [1])
 call assert_true(getloclist(0, {'winid': 0}).winid > 0)
@@ -528,6 +515,462 @@ endif
 ''')
 
 
+class SearchTests(VimSession):
+    def setUp(self):
+        super().setUp()
+        self.project = self.work / 'project with spaces'
+        self.project.mkdir()
+        (self.project / '.git').mkdir()
+        (self.project / 'src').mkdir()
+        self.session = self.work / 'search session'
+        self.session.mkdir()
+
+    def helper(self, mode, *args):
+        result = subprocess.run(
+            [BASH, str(ROOT / 'search.sh'), mode, *map(str, args)],
+            cwd=self.project, env=self.env, capture_output=True, timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        return result.stdout
+
+    @staticmethod
+    def records(output):
+        return [record.decode().split('\t', 3) for record in output.split(b'\0') if record]
+
+    def require_backends(self):
+        if not shutil.which('rg') or not (shutil.which('fd') or shutil.which('fdfind')):
+            self.skipTest('Requires manually installed rg and fd/fdfind')
+
+    def fake_fzf(self):
+        """Exercise the real Vim terminal and helpers without claiming to test fzf UI."""
+        self.require_backends()
+        directory = self.work / 'bin'
+        directory.mkdir()
+        path = directory / 'fzf'
+        path.write_text(f'#!{sys.executable}\n' + r'''
+import os, shlex, subprocess, sys, time
+if os.environ.get('SEARCH_TEST_WAIT'):
+    time.sleep(30)
+if os.environ.get('SEARCH_TEST_CANCEL'):
+    sys.exit(130)
+source = os.environ['FZF_DEFAULT_COMMAND']
+if '--disabled' in sys.argv:
+    source = next(arg.split('change:reload:', 1)[1] for arg in sys.argv if 'change:reload:' in arg)
+    source = source.replace('{q}', shlex.quote(os.environ['SEARCH_TEST_QUERY']))
+result = subprocess.run(source, shell=True, executable=os.environ['SHELL'], capture_output=True)
+if result.returncode:
+    sys.stderr.buffer.write(result.stderr)
+    sys.exit(2)
+records = [item for item in result.stdout.split(b'\0') if item]
+needle = os.environ.get('SEARCH_TEST_PICK', '').encode()
+records = [item for item in records if needle in item]
+if not records:
+    sys.exit(1)
+sys.stdout.buffer.write(records[0] + b'\0')
+''')
+        path.chmod(0o755)
+        self.env['PATH'] = str(directory) + os.pathsep + self.env['PATH']
+
+    @staticmethod
+    def wait_search():
+        return r'''
+let terminals = filter(getbufinfo(), 'getbufvar(v:val.bufnr, "&buftype") ==# "terminal"')
+call assert_equal(1, len(terminals))
+let terminal = terminals[0].bufnr
+let search_job = term_getjob(terminal)
+let temporary = job_info(search_job).cmd[4]
+for attempt in range(400)
+  sleep 10m
+  if !bufexists(terminal) && !isdirectory(temporary) | break | endif
+endfor
+call assert_false(bufexists(terminal))
+call assert_false(isdirectory(temporary))
+call assert_equal([], popup_list())
+'''
+
+    def test_backend_scope_ignore_case_and_regular_expressions(self):
+        self.require_backends()
+        for name in ['notes.txt', '.hidden', 'ignored.txt', 'src/main.cpp', '.git/config']:
+            (self.project / name).write_text('first\nneedle123\nNeedle456\n')
+        (self.project / '.gitignore').write_text('ignored.txt\n')
+        files = self.records(self.helper('files', self.session))
+        self.assertEqual({item[3] for item in files}, {'notes.txt', 'src/main.cpp'})
+        matches = self.records(self.helper('query', self.session, r'needle\d+'))
+        self.assertEqual(len(matches), 6)
+        self.assertEqual({item[1] for item in matches}, {'2', '3'})
+        self.assertTrue(any('.hidden' in item[0] for item in matches))
+        self.assertFalse(any('ignored' in item[0] or '.git/' in item[0] for item in matches))
+        matches = self.records(self.helper('query', self.session, r'Needle\d+'))
+        self.assertEqual(len(matches), 3)
+        self.assertEqual({item[1] for item in matches}, {'3'})
+        self.assertEqual(self.helper('query', self.session, ''), b'')
+        self.assertEqual(self.helper('query', self.session, 'not-present'), b'')
+        errors = self.records(self.helper('query', self.session, '['))
+        self.assertEqual(errors[0][:3], ['', '0', '0'])
+        self.assertIn('error', errors[0][3])
+        self.assertEqual(list(self.session.glob('rg.*')), [])
+
+    def test_backend_special_paths_preview_and_safe_queries(self):
+        self.require_backends()
+        name = "src/中文 :12:3: ' | $(touch injected) %09\t\n.cpp"
+        (self.project / name).write_text('before\nxx safe-value\n\x1b]51;bad\x07\n')
+        matches = self.records(self.helper('query', self.session, 'safe-value'))
+        self.assertEqual(len(matches), 1)
+        encoded, line, column, display = matches[0]
+        self.assertEqual([line, column], ['2', '4'])
+        preview = self.helper('preview', encoded, line, display).decode()
+        self.assertIn('>     2 xx safe-value', preview)
+        self.assertNotIn('\x1b]51;', preview)
+        self.helper('query', self.session, "$(touch injected)|'|`touch injected`")
+        self.assertFalse((self.project / 'injected').exists())
+        self.assertIn('%2509%09%0A', encoded)
+        (self.project / name).write_text(''.join(f'context {index}\n' for index in range(1, 201)))
+        preview = self.helper('preview', encoded, '150', display).decode()
+        self.assertIn('>   150 context 150', preview)
+        self.assertIn('   200 context 200', preview)
+
+    def test_project_roots_and_current_directory_are_independent(self):
+        nested = self.project / 'src' / 'nested'
+        nested.mkdir()
+        (nested / 'Makefile').touch()
+        self.vim(r'''
+let search_prefix = matchstr(execute('command VimFind'), '<SNR>\d\+_')
+let Root = function(search_prefix . 'ProjectRoot')
+let original_directory = getcwd()
+execute 'edit ' . fnameescape(''' + quoted(nested / 'new.py') + r''')
+call assert_equal(''' + quoted(nested) + r''', Root())
+execute 'edit ' . fnameescape(''' + quoted(self.project / 'src' / 'main.py') + r''')
+call assert_equal(''' + quoted(self.project) + r''', Root())
+call assert_equal(original_directory, getcwd())
+edit outside.py
+call assert_equal(original_directory, Root())
+execute 'lcd ' . fnameescape(''' + quoted(self.project / 'src') + r''')
+Dashboard
+call assert_equal(''' + quoted(self.project) + r''', Root())
+''')
+
+    def test_terminal_selection_opens_exact_file_and_preserves_unsaved_buffer(self):
+        self.fake_fzf()
+        name = "中文 :12:3: ' | $(touch injected) %09\t\n.py"
+        target = self.project / 'src' / name
+        target.write_text('first\nxx needle\n')
+        self.env['SEARCH_TEST_QUERY'] = 'needle'
+        self.terminal_vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(self.project / 'unsaved.py') + r''')
+call setline(1, 'keep this')
+let original = bufnr('%')
+let original_directory = getcwd()
+let origin_window = win_getid()
+VimSearch
+''' + self.wait_search() + r'''
+call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+call assert_equal([2, 4], [line('.'), col('.')])
+call assert_equal(origin_window, win_getid())
+call assert_equal(original_directory, getcwd())
+call assert_equal(['keep this'], getbufline(original, 1, '$'))
+call assert_true(getbufvar(original, '&modified'))
+''')
+        self.assertFalse((self.project / 'injected').exists())
+
+    def test_dashboard_file_selection_and_cancel(self):
+        self.fake_fzf()
+        target = self.project / 'file with spaces.py'
+        target.write_text('hello\n')
+        self.terminal_vim(r'''
+execute 'cd ' . fnameescape(''' + quoted(self.project) + r''')
+let home = bufnr('%')
+call feedkeys("\<Space>ff", 'xt')
+''' + self.wait_search() + r'''
+call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+call assert_false(bufexists(home))
+call assert_equal([1, 1, 2], [&number, &relativenumber, &laststatus])
+''')
+        self.env['SEARCH_TEST_CANCEL'] = '1'
+        self.terminal_vim(r'''
+let home = bufnr('%')
+call feedkeys("\<Space>fp", 'xt')
+''' + self.wait_search() + r'''
+call assert_equal(home, bufnr('%'))
+call assert_equal('vimdashboard', &filetype)
+call assert_equal([0, 0, 0], [&number, &relativenumber, &laststatus])
+''')
+
+    def test_popup_resize_reload_and_cleanup(self):
+        self.fake_fzf()
+        self.env['SEARCH_TEST_WAIT'] = '1'
+        self.terminal_vim(r'''
+let original_options = [&timeout, &timeoutlen, &ttimeout, &ttimeoutlen]
+VimFind
+let popup = popup_list()[0]
+let terminal = winbufnr(popup)
+let search_job = term_getjob(terminal)
+let temporary = job_info(search_job).cmd[4]
+set columns=60 lines=18
+doautocmd VimResized
+let dimensions = term_getsize(terminal)
+call assert_true(dimensions[0] <= 18 && dimensions[1] <= 60)
+call assert_equal(1, winnr('$'))
+source ''' + str(ROOT / '.vimrc') + r'''
+sleep 100m
+call assert_equal([], popup_list())
+call assert_false(bufexists(terminal))
+call assert_false(isdirectory(temporary))
+call assert_notequal('run', job_status(search_job))
+call assert_equal('vimdashboard', &filetype)
+call assert_equal(original_options, [&timeout, &timeoutlen, &ttimeout, &ttimeoutlen])
+''')
+
+    def test_missing_dependencies_only_warn(self):
+        self.vim(r'''
+let $PATH = '/nonexistent-vim-search-test'
+let original = bufnr('%')
+VimFind
+call assert_match('missing bash, fzf, fd/fdfind', execute('messages'))
+VimSearch
+call assert_match('rg (ripgrep)', execute('messages'))
+call assert_equal(original, bufnr('%'))
+call assert_equal([], popup_list())
+''')
+
+    def split_config(self):
+        config = self.work / 'fallback config'
+        config.mkdir()
+        for name in ('.vimrc', 'search.sh', 'dashboard.vim'):
+            shutil.copyfile(ROOT / name, config / name)
+        # Simulate a Vim without popup windows while exercising the actual split implementation.
+        (config / 'search.vim').write_text((ROOT / 'search.vim').read_text().replace(
+            "if exists('*popup_create')", 'if 0'))
+        return config / '.vimrc'
+
+    def test_split_fallback_restores_layout_and_missing_history_is_nonfatal(self):
+        self.fake_fzf()
+        target = self.project / 'target.py'
+        target.write_text('target\n')
+        config = self.split_config()
+        state = self.work / 'not a directory'
+        state.touch()
+        self.env['XDG_STATE_HOME'] = str(state)
+        self.terminal_vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(self.project / 'origin.py') + r''')
+vsplit
+let windows = map(getwininfo(), 'v:val.winid')
+let origin = win_getid()
+VimFind
+call assert_equal([], popup_list())
+call assert_equal(3, winnr('$'))
+''' + self.wait_search() + r'''
+call assert_equal(windows, map(getwininfo(), 'v:val.winid'))
+call assert_equal(origin, win_getid())
+call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+call assert_match('history unavailable', execute('messages'))
+let $SEARCH_TEST_CANCEL = '1'
+VimFind
+''' + self.wait_search() + r'''
+call assert_equal(origin, win_getid())
+call assert_equal(windows, map(getwininfo(), 'v:val.winid'))
+''', config=config)
+
+    def test_query_error_keeps_original_buffer_and_cleans_session(self):
+        self.fake_fzf()
+        self.env['SEARCH_TEST_QUERY'] = '['
+        self.terminal_vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(self.project / 'original.py') + r''')
+let original = bufnr('%')
+VimSearch
+''' + self.wait_search() + r'''
+call assert_equal(original, bufnr('%'))
+call assert_match('regex parse error', execute('messages'))
+''')
+
+    def keyboard_search(self, command, editing=False, exercise_arrows=False, config=None):
+        """Send actual PTY bytes through Vim's key decoder and mappings, not term_sendkeys()."""
+        startup = self.work / 'keyboard-startup'
+        ready = self.work / 'keyboard-ready'
+        closed = self.work / 'keyboard-closed'
+        script = self.work / 'keyboard-check.vim'
+        for path in (startup, ready, closed):
+            path.unlink(missing_ok=True)
+        script.write_text(r'''
+set nomore
+''' + ("enew\nfile unsaved.py\ncall setline(1, 'keep unsaved text')\n" if editing else '') + r'''
+let g:keyboard_origin = bufnr('%')
+let g:keyboard_window = win_getid()
+let g:keyboard_options = [&timeout, &timeoutlen, &ttimeout, &ttimeoutlen]
+''' + command + r'''
+let g:keyboard_terminal = filter(getbufinfo(), 'getbufvar(v:val.bufnr, "&buftype") ==# "terminal"')[0].bufnr
+let g:keyboard_directory = job_info(term_getjob(g:keyboard_terminal)).cmd[4]
+function! KeyboardObserve(timer) abort
+  if bufexists(g:keyboard_terminal)
+    let screen = join(map(range(1, term_getsize(g:keyboard_terminal)[0]), 'term_getline(g:keyboard_terminal, v:val)'), "\n")
+    if screen =~# '\(Files\|Live grep\)>'
+      call writefile([], ''' + quoted(ready) + r''')
+    endif
+  elseif !isdirectory(g:keyboard_directory)
+    let result = {'same_buffer': bufnr('%') == g:keyboard_origin,
+          \ 'same_window': win_getid() == g:keyboard_window, 'popups': popup_list(),
+          \ 'original_options': g:keyboard_options,
+          \ 'restored_options': [&timeout, &timeoutlen, &ttimeout, &ttimeoutlen],
+          \ 'filetype': &filetype, 'modified': &modified, 'line': getline(1)}
+    call writefile([json_encode(result)], ''' + quoted(str(closed) + '.tmp') + r''')
+    call rename(''' + quoted(str(closed) + '.tmp') + ', ' + quoted(closed) + r''')
+    call timer_stop(a:timer)
+  endif
+endfunction
+call timer_start(5, 'KeyboardObserve', {'repeat': -1})
+''')
+        master, slave = pty.openpty()
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
+        process = subprocess.Popen(
+            [VIM, '-Nu', str(config or ROOT / '.vimrc'), '-i', 'NONE', '-n',
+             '--cmd', f'autocmd VimEnter * call writefile([], {quoted(startup)})'],
+            cwd=self.project, env=dict(self.env, TERM='xterm-256color'),
+            stdin=slave, stdout=slave, stderr=slave,
+        )
+        os.close(slave)
+        output = bytearray()
+
+        def pump(seconds):
+            deadline = time.monotonic() + seconds
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], min(0.003, max(0, deadline - time.monotonic())))[0]:
+                    try:
+                        output.extend(os.read(master, 65536))
+                    except OSError:
+                        return
+
+        def wait_file(path, timeout=4):
+            deadline = time.monotonic() + timeout
+            while not path.exists() and time.monotonic() < deadline and process.poll() is None:
+                pump(0.005)
+            self.assertTrue(path.exists(), repr(bytes(output[-2000:])))
+
+        try:
+            wait_file(startup)
+            os.write(master, f':source {script}\r'.encode())
+            wait_file(ready)
+            if exercise_arrows:
+                # A split escape sequence must remain an arrow, not cancel the search.
+                os.write(master, b'\x1b')
+                pump(0.01)
+                os.write(master, b'[A\x1b[B\x0a\x0b')
+                pump(0.15)
+                self.assertFalse(closed.exists(), 'Arrow/Ctrl-j/Ctrl-k closed the search')
+            started = time.monotonic()
+            os.write(master, b'\x1b')
+            wait_file(closed)
+            elapsed = time.monotonic() - started
+            result = json.loads(closed.read_text())
+            os.write(master, b':qa!\r')
+            deadline = time.monotonic() + 2
+            while process.poll() is None and time.monotonic() < deadline:
+                pump(0.01)
+            self.assertEqual(process.wait(timeout=1), 0)
+            return elapsed, result
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            os.close(master)
+
+    @unittest.skipUnless(shutil.which('fzf'), 'Real keyboard latency test requires fzf')
+    def test_real_keyboard_escape_latency_and_key_sequences(self):
+        self.require_backends()
+        (self.project / 'sample.py').write_text('needle\n')
+        for command in ('VimFind', 'VimSearch'):
+            for editing in (False, True):
+                with self.subTest(command=command, editing=editing):
+                    elapsed, result = self.keyboard_search(command, editing, exercise_arrows=True)
+                    self.assertLess(elapsed, 0.2, f'Esc cancellation took {elapsed * 1000:.0f} ms')
+                    self.assertTrue(result['same_buffer'])
+                    self.assertTrue(result['same_window'])
+                    self.assertEqual(result['popups'], [])
+                    self.assertEqual(result['original_options'], result['restored_options'])
+                    if editing:
+                        self.assertEqual(result['line'], 'keep unsaved text')
+                        self.assertTrue(result['modified'])
+                    else:
+                        self.assertEqual(result['filetype'], 'vimdashboard')
+
+    @unittest.skipUnless(shutil.which('fzf'), 'Real keyboard latency test requires fzf')
+    def test_real_keyboard_escape_in_split(self):
+        self.require_backends()
+        (self.project / 'sample.py').write_text('needle\n')
+        elapsed, result = self.keyboard_search('VimFind', editing=True,
+                                               exercise_arrows=True, config=self.split_config())
+        self.assertLess(elapsed, 0.2, f'Esc cancellation took {elapsed * 1000:.0f} ms')
+        self.assertTrue(result['same_buffer'])
+        self.assertTrue(result['same_window'])
+        self.assertEqual(result['original_options'], result['restored_options'])
+        self.assertEqual(result['line'], 'keep unsaved text')
+        self.assertTrue(result['modified'])
+
+    @staticmethod
+    def wait_fzf(prompt):
+        return r'''
+let terminal = winbufnr(popup_list()[0])
+for attempt in range(200)
+  call term_wait(terminal, 10)
+  if stridx(TerminalScreen(terminal), ''' + quoted(prompt) + r''') >= 0 | break | endif
+endfor
+call assert_true(stridx(TerminalScreen(terminal), ''' + quoted(prompt) + r''') >= 0)
+'''
+
+    @unittest.skipUnless(shutil.which('fzf'), 'Real fzf UI requires manually installed fzf')
+    def test_real_fzf_live_reload_selection_and_history(self):
+        self.require_backends()
+        target = self.project / 'src' / '中文 : file.py'
+        target.write_text('before\nxx unique_needle\n')
+        self.terminal_vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(self.project / 'origin.py') + r''')
+VimSearch
+''' + self.wait_fzf('Live grep>') + r'''
+call term_sendkeys(terminal, 'no_such_match')
+sleep 200m
+call term_sendkeys(terminal, repeat("\x7f", strlen('no_such_match')) . 'unique_needle')
+for attempt in range(200)
+  call term_wait(terminal, 10)
+  if TerminalScreen(terminal) =~# 'unique_needle' && TerminalScreen(terminal) =~# '1/1'
+    break
+  endif
+endfor
+call assert_match('1/1', TerminalScreen(terminal))
+call term_sendkeys(terminal, "\<CR>")
+''' + self.wait_search() + r'''
+call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+call assert_equal([2, 4], [line('.'), col('.')])
+call assert_true(filereadable($XDG_STATE_HOME . '/vim-lite/search/grep.history'))
+''')
+
+    @unittest.skipUnless(shutil.which('fzf'), 'Real fzf UI requires manually installed fzf')
+    def test_real_fzf_file_fuzzy_matching_and_cancel(self):
+        self.require_backends()
+        target = self.project / 'long file name.py'
+        target.write_text('preview_only_text\n')
+        self.terminal_vim(r'''
+execute 'cd ' . fnameescape(''' + quoted(self.project) + r''')
+VimFind
+''' + self.wait_fzf('Files>') + r'''
+call term_sendkeys(terminal, 'lfnp')
+for attempt in range(200)
+  call term_wait(terminal, 10)
+  if TerminalScreen(terminal) =~# '1/1' | break | endif
+endfor
+call assert_match('1/1', TerminalScreen(terminal))
+call assert_notmatch('preview_only_text', TerminalScreen(terminal))
+call term_sendkeys(terminal, "\<CR>")
+''' + self.wait_search() + r'''
+call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+let original = bufnr('%')
+VimFind
+''' + self.wait_fzf('Files>') + r'''
+set columns=60 lines=18
+doautocmd VimResized
+call term_sendkeys(terminal, "\<Esc>")
+''' + self.wait_search() + r'''
+call assert_equal(original, bufnr('%'))
+''')
+
+
 class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="vim-lite-install-")
@@ -561,6 +1004,8 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
+        for name in ('search.vim', 'search.sh'):
+            self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         dashboard_backups = list(dashboard.parent.glob('dashboard.vim.bak.*'))
         self.assertEqual(len(dashboard_backups), 1)
         self.assertEqual(dashboard_backups[0].read_text(), '" old dashboard\n')
@@ -572,6 +1017,7 @@ class InstallerTests(unittest.TestCase):
              '-c', 'Dashboard',
              '-c', 'if &filetype !=# "vimdashboard" | cquit | endif',
              '-c', f'if stridx(execute("scriptnames"), {quoted(dashboard)}) < 0 | cquit | endif',
+             '-c', 'if !exists(":VimFind") || !exists(":VimSearch") | cquit | endif',
              '-c', 'VimConfig',
              '-c', f'if expand("%:p") !=# {quoted(self.target / ".vimrc")} | cquit | endif',
              '-c', 'qa!'], capture_output=True, text=True, timeout=10,

@@ -6,6 +6,9 @@ let maplocalleader = ' '
 if exists('#vimrc_lite_dashboard#User#VimrcLiteReload')
   doautocmd <nomodeline> vimrc_lite_dashboard User VimrcLiteReload
 endif
+if exists('#vimrc_lite_search#User#VimrcLiteReload')
+  doautocmd <nomodeline> vimrc_lite_search User VimrcLiteReload
+endif
 let s:vimrc_path = expand('<sfile>:p')
 let s:config_dir = fnamemodify(resolve(expand('<sfile>:p')), ':h')
 
@@ -235,48 +238,22 @@ function! s:ToggleList(location) abort
   execute a:location ? (info.winid ? 'lclose' : 'lopen') : (info.winid ? 'cclose' : 'copen')
 endfunction
 
-" 搜索字面文本；默认递归搜索源码，也可输入一个 glob（支持含空格路径）。
-function! s:Grep(text, scope) abort
-  if empty(a:text) | return | endif
-  let patterns = empty(a:scope)
-        \ ? map(['py', 'pyi', 'c', 'cc', 'cpp', 'cxx', 'h', 'hh', 'hpp', 'hxx', 'cu', 'cuh'], '"**/*." . v:val')
-        \ : [a:scope]
-  let files = []
-  for pattern in patterns
-    call extend(files, glob(pattern, 0, 1))
-  endfor
-  call filter(files, 'filereadable(v:val) && v:val !~# ''\v(^|/)(\.git|\.venv|venv|__pycache__|build|dist|node_modules)(/|$)''')
-  let files = uniq(sort(files))
-  call setqflist([], 'r')
-  if empty(files)
-    cclose
-    call s:Warn('no matching source files')
-    return
-  endif
-  try
-    execute 'vimgrep /\V' . escape(a:text, '\/') . '/gj ' . join(map(files, 'fnameescape(v:val)'), ' ')
-    copen
-  catch /^Vim\%((\a\+)\)\=:E480:/
-    cclose
-    call s:Warn('no matches')
-  catch
-    call s:Warn(v:exception)
-  endtry
-endfunction
-
-function! s:SearchPrompt() abort
-  try
-    let text = input('Search text: ')
-    if empty(text) | return | endif
-    let scope = input({'prompt': 'Files (one glob; empty = Python/C++): ', 'cancelreturn': "\x01"})
-    if scope ==# "\x01" | return | endif
-    call s:Grep(text, scope)
-  catch /^Vim:Interrupt$/
-  endtry
-endfunction
+" 搜索模块与首页都支持仓库试用、符号链接和复制安装。
+let s:search = s:config_dir . '/search.vim'
+if !filereadable(s:search)
+  let s:search = s:config_dir . '/.vim/search.vim'
+endif
+if !filereadable(s:search)
+  let s:search = expand('~/.vim/search.vim')
+endif
+if filereadable(s:search)
+  execute 'source ' . fnameescape(s:search)
+else
+  command! VimFind call <SID>Warn('missing search.vim; copy the complete vim directory')
+  command! VimSearch call <SID>Warn('missing search.vim; copy the complete vim directory')
+endif
 
 " 配置编辑入口与独立首页。
-command! VimSearch call <SID>SearchPrompt()
 command! VimConfig execute 'edit ' . fnameescape(s:vimrc_path)
 let s:dashboard = s:config_dir . '/dashboard.vim'
 if !filereadable(s:dashboard)
@@ -336,7 +313,7 @@ xnoremap < <gv
 xnoremap > >gv
 
 " 搜索、结果列表、消息。
-nnoremap <leader>ff :find<Space>
+nnoremap <silent> <leader>ff :VimFind<CR>
 nnoremap <silent> <leader>fp :VimSearch<CR>
 nnoremap <leader>fo :browse oldfiles<CR>
 nnoremap <silent> <leader>fh :nohlsearch<CR>
