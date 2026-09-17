@@ -5,7 +5,7 @@
 主题默认透明背景，不需要特殊字体。
 
 `.vimrc` 保留基础设置、通用功能和快捷键；`dashboard.vim` 独立管理首页，
-由 `.vimrc` 显式加载。首页通过 `:VimSearch` 和 `:VimConfig` 复用搜索与配置入口。
+由 `.vimrc` 显式加载。
 
 ## 安装
 
@@ -65,20 +65,11 @@ vim --cmd 'let g:vimrc_lite_transparent = 0' -u ~/Dotfiles/vim/.vimrc
 
 ## 首页
 
-直接运行 `vim` 会显示居中的 slogan `Les annees heureuses sont des annees perdues.`
-和七行纯文本入口，格式为 `[f]  Find file`，每行与 slogan 左侧对齐。
-全部使用普通正文样式，无图标、下划线、背景高亮或页脚。
-直接按对应字母执行；不提供菜单选中状态或额外的方向键／回车操作。
-
-| 按键 | 功能 |
-| --- | --- |
-| `f` | 进入 `:find` 查找文件，支持 Tab 补全 |
-| `n` | 新建空 buffer 并进入插入模式 |
-| `e` | 用 netrw 浏览当前工作目录 |
-| `r` | 从最近文件记录中输入编号选择 |
-| `t` | 搜索文本，使用现有范围提示和 quickfix 结果 |
-| `c` | 编辑当前加载的 vimrc |
-| `q` | 退出 Vim；有未保存内容时提示确认 |
+直接运行 `vim`，首页只显示一句居中的 slogan：
+`Les annees heureuses sont des annees perdues.`
+文字使用斜体，沿用正文颜色，无菜单、图标、下划线、背景高亮或页脚，也不注册首页专用按键。
+斜体显示需要终端和字体支持。
+可通过原有 `<leader>ff`、`<leader>fp` 搜索，或用 `<leader>bn` 新建文件。
 
 用 `:Dashboard` 可手动回到首页，已打开文件及未保存内容会保留。
 关闭自动首页后，该命令仍可使用：

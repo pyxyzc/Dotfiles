@@ -275,7 +275,7 @@ function! s:SearchPrompt() abort
   endtry
 endfunction
 
-" 首页只依赖 VimSearch 和 VimConfig 两个入口。
+" 配置编辑入口与独立首页。
 command! VimSearch call <SID>SearchPrompt()
 command! VimConfig execute 'edit ' . fnameescape(s:vimrc_path)
 let s:dashboard = s:config_dir . '/dashboard.vim'

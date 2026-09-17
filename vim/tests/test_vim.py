@@ -123,15 +123,21 @@ call assert_equal('vimdashboard', &filetype)
 call assert_equal(['nofile', 'wipe', 0, 0, 0], [&buftype, &bufhidden, &buflisted, &swapfile, &modifiable])
 call assert_equal([0, 0, 0, 0], [&number, &relativenumber, &laststatus, &cursorline])
 let content = map(filter(getline(1, '$'), '!empty(v:val)'), 'substitute(v:val, "^ *", "", "")')
-call assert_equal(['Les annees heureuses sont des annees perdues.', '[f]  Find file', '[n]  New file', '[e]  Browse directory', '[r]  Recent files', '[t]  Find text', '[c]  Config', '[q]  Quit'], content)
-for row in range(1, line('$'))
-  call assert_equal(0, synID(row, max([1, match(getline(row), '\S') + 1]), 1))
+call assert_equal(['Les annees heureuses sont des annees perdues.'], content)
+call assert_equal(0, synID(line('$'), 1, 1))
+let slogan = synID(line('$'), match(getline('$'), '\S') + 1, 1)
+call assert_equal('VimDashboardSlogan', synIDattr(slogan, 'name'))
+for mode in ['gui', 'cterm']
+  call assert_equal('1', synIDattr(slogan, 'italic', mode))
+  call assert_equal('', synIDattr(slogan, 'bg', mode))
+  call assert_equal('', synIDattr(slogan, 'reverse', mode))
+  call assert_equal('', synIDattr(slogan, 'underline', mode))
 endfor
-for key in ['j', 'k', "\<Down>", "\<Up>", "\<CR>"]
+for key in ['f', 'n', 'e', 'r', 't', 'c', 'q', 'j', 'k', "\<Down>", "\<Up>", "\<CR>"]
   call assert_false(get(maparg(key, 'n', 0, 1), 'buffer', 0), key)
 endfor
 let home = bufnr('%')
-call feedkeys("nhello\<Esc>", 'xt')
+call feedkeys("\<Space>bnihello\<Esc>", 'xt')
 call assert_equal('hello', getline(1))
 call assert_equal('', &buftype)
 call assert_false(bufexists(home))
@@ -161,41 +167,6 @@ call assert_equal('', maparg('q', 'n'))
                     args=args, before=before, stdin=stdin,
                 )
 
-    def test_dashboard_shortcuts(self):
-        (self.work / 'space file.py').write_text('needle\n')
-        self.vim(r'''
-Dashboard
-call feedkeys("fspace\\ file.py\<CR>", 'xt')
-call assert_equal('space file.py', bufname('%'))
-Dashboard
-call feedkeys('e', 'xt')
-call assert_equal('netrw', &filetype)
-call assert_equal(getcwd(), substitute(b:netrw_curdir, '/$', '', ''))
-Dashboard
-call feedkeys('c', 'xt')
-call assert_equal(''' + quoted(ROOT / '.vimrc') + r''', expand('%:p'))
-Dashboard
-let home = bufnr('%')
-call feedkeys("f\<Esc>", 'xt')
-call assert_equal(home, bufnr('%'))
-call feedkeys("t\<Esc>", 'xt')
-call assert_equal(home, bufnr('%'))
-call feedkeys("tneedle\<CR>**/*.py\<CR>", 'xt')
-call assert_equal('quickfix', &buftype)
-call assert_equal(['needle'], map(getqflist(), 'v:val.text'))
-cclose
-Dashboard
-let v:oldfiles = [getcwd() . '/space file.py']
-call feedkeys("r1\<CR>", 'xt')
-call assert_equal('needle', getline(1))
-''')
-        self.vim(r'''
-Dashboard
-call feedkeys('q', 'xt')
-call writefile(['unexpected'], 'after-quit')
-''')
-        self.assertFalse((self.work / 'after-quit').exists())
-
     def test_dashboard_loads_through_symlink(self):
         config = self.work / 'linked vimrc'
         config.symlink_to(ROOT / '.vimrc')
@@ -203,7 +174,7 @@ call writefile(['unexpected'], 'after-quit')
 Dashboard
 call assert_equal('vimdashboard', &filetype)
 call assert_match('dashboard.vim', execute('scriptnames'))
-call feedkeys('c', 'xt')
+VimConfig
 call assert_equal(''' + quoted(config) + r''', expand('%:p'))
 ''', config=config)
 
@@ -220,7 +191,6 @@ let home = bufnr('%')
 call assert_equal(0, &laststatus)
 Dashboard
 call assert_equal(home, bufnr('%'))
-call feedkeys("q\<Esc>", 'xt')
 call assert_true(bufexists(original))
 call assert_equal(['keep this'], getbufline(original, 1, '$'))
 call assert_true(getbufvar(original, '&modified'))
@@ -253,22 +223,20 @@ doautocmd VimResized
 let header = search('Les annees', 'nw')
 call assert_equal('Les annees heureuses sont des annees perdues.', getline(header))
 call assert_true(abs((header - 1) - (winheight(0) - line('$'))) <= 1)
-call assert_equal('[q]  Quit', getline('$'))
+call assert_equal(header, line('$'))
 set columns=100 lines=30
 doautocmd VimResized
 let header = search('Les annees', 'nw')
 call assert_equal((winwidth(0) - strdisplaywidth('Les annees heureuses sont des annees perdues.')) / 2, match(getline(header), '\S'))
-for row in range(header + 2, line('$'))
-  call assert_equal(match(getline(header), '\S'), match(getline(row), '\S'))
-endfor
+call assert_equal(header, line('$'))
 call assert_true(abs((header - 1) - (winheight(0) - line('$'))) <= 1)
 source ''' + str(ROOT / '.vimrc') + r'''
 source ''' + str(ROOT / '.vimrc') + r'''
 call assert_equal(1, len(filter(split(execute('autocmd vimrc_lite_dashboard VimEnter'), '\n'), 'v:val =~# "DashboardStartup"')))
 call assert_equal([0, 0], [&laststatus, &cursorline])
 colorscheme tokyonight-night
-call assert_equal(0, synID(line('$'), match(getline('$'), '\S') + 1, 1))
-call feedkeys("ntext\<Esc>", 'xt')
+call assert_equal('1', synIDattr(synID(line('$'), match(getline('$'), '\S') + 1, 1), 'italic', 'gui'))
+call feedkeys("\<Space>bnitext\<Esc>", 'xt')
 call assert_equal('text', getline(1))
 call assert_equal([1, 1, 2], [&number, &relativenumber, &laststatus])
 ''')

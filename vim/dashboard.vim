@@ -1,4 +1,4 @@
-" 原生首页：普通文本和直接按键，不进入普通 buffer 列表。
+" 原生首页：只显示居中的 slogan，不进入普通 buffer 列表。
 let s:dashboard_options = ['number', 'relativenumber', 'cursorline', 'cursorcolumn',
       \ 'foldcolumn', 'signcolumn', 'foldenable', 'wrap', 'list', 'spell',
       \ 'colorcolumn', 'scrolloff', 'sidescrolloff', 'fillchars']
@@ -25,14 +25,11 @@ function! s:DashboardRender() abort
   if !get(b:, 'vimrc_lite_dashboard', 0) | return | endif
   let slogan = 'Les annees heureuses sont des annees perdues.'
   let indent = repeat(' ', max([0, (winwidth(0) - strdisplaywidth(slogan)) / 2]))
-  let menu = ['[f]  Find file', '[n]  New file', '[e]  Browse directory',
-        \ '[r]  Recent files', '[t]  Find text', '[c]  Config', '[q]  Quit']
-  let lines = [indent . slogan, ''] + map(menu, 'indent . v:val')
-  let padding = max([0, (winheight(0) - len(lines)) / 2])
+  let padding = max([0, (winheight(0) - 1) / 2])
   setlocal modifiable
   try
     silent %delete _
-    call setline(1, repeat([''], padding) + lines)
+    call setline(1, repeat([''], padding) + [indent . slogan])
   finally
     setlocal nomodified nomodifiable
   endtry
@@ -45,6 +42,8 @@ function! s:DashboardEnter() abort
     call s:DashboardLeave()
     return
   endif
+  syntax clear
+  syntax match VimDashboardSlogan /\S.*/
   if !exists('w:vimrc_lite_dashboard_options')
     " 分屏继承首页选项时，也使用进入首页前的原始选项。
     let w:vimrc_lite_dashboard_options = copy(b:dashboard_window_options)
@@ -78,13 +77,6 @@ function! s:Dashboard() abort
   let b:dashboard_window_options = options
   setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile
   setlocal undolevels=-1 filetype=vimdashboard
-  nnoremap <nowait><buffer> f :find<Space>
-  nnoremap <silent><nowait><buffer> n :enew<Bar>startinsert<CR>
-  nnoremap <silent><nowait><buffer> e :execute 'Explore ' . fnameescape(getcwd())<CR>
-  nnoremap <nowait><buffer> r :browse oldfiles<CR>
-  nnoremap <silent><nowait><buffer> t :VimSearch<CR>
-  nnoremap <silent><nowait><buffer> c :VimConfig<CR>
-  nnoremap <silent><nowait><buffer> q :confirm qall<CR>
   call s:DashboardEnter()
 endfunction
 
@@ -113,12 +105,14 @@ endfunction
 command! Dashboard call <SID>Dashboard()
 augroup vimrc_lite_dashboard
   autocmd!
+  autocmd ColorScheme * highlight VimDashboardSlogan term=italic cterm=italic gui=italic ctermfg=NONE ctermbg=NONE guifg=NONE guibg=NONE
   autocmd User VimrcLiteReload call s:DashboardLeave()
   autocmd StdinReadPre * let s:dashboard_stdin = 1
   autocmd VimEnter * call s:DashboardStartup()
   autocmd WinLeave * call s:DashboardRestoreStatus()
   autocmd BufWinEnter,WinEnter,VimResized * call s:DashboardEnter()
 augroup END
+doautocmd <nomodeline> vimrc_lite_dashboard ColorScheme
 if get(b:, 'vimrc_lite_dashboard', 0)
   call s:DashboardEnter()
 endif
