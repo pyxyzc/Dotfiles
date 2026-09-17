@@ -950,6 +950,8 @@ class SearchTests(VimSession):
         path = directory / 'fzf'
         path.write_text(f'#!{sys.executable}\n' + r'''
 import os, shlex, subprocess, sys, time
+if '--filter=' in sys.argv:
+    sys.exit(1)
 if os.environ.get('SEARCH_TEST_WAIT'):
     time.sleep(30)
 if os.environ.get('SEARCH_TEST_CANCEL'):
@@ -1330,11 +1332,13 @@ sleep 200m
 call term_sendkeys(terminal, repeat("\x7f", strlen('no_such_match')) . 'unique_needle')
 for attempt in range(200)
   call term_wait(terminal, 10)
-  if TerminalScreen(terminal) =~# 'unique_needle' && TerminalScreen(terminal) =~# '1/1'
+  if TerminalScreen(terminal) =~# 'before' && TerminalScreen(terminal) =~# '1/1'
     break
   endif
 endfor
 call assert_match('1/1', TerminalScreen(terminal))
+call assert_match('before', TerminalScreen(terminal))
+call term_sendkeys(terminal, "\<C-u>\<C-d>")
 call term_sendkeys(terminal, "\<CR>")
 ''' + self.wait_search() + r'''
 call assert_equal(''' + quoted(target) + r''', expand('%:p'))

@@ -18,7 +18,7 @@ usage() {
 
 只为系统软件安装调用 sudo；请以目标用户身份运行整个脚本。
 支持 apt-get、dnf、yum、apk、pacman、zypper，不下载任何 Vim 插件。
-搜索需要 fd/fdfind、ripgrep 和 fzf 0.44.1+；缺少时只提示，不自动安装。
+搜索需要 fd/fdfind、ripgrep 和 fzf 0.29.0+；缺少时只提示，不自动安装。
 LSP 使用本目录保存的 vim-lsp；Pyright/clangd 由用户自行安装，缺失时只提示。
 EOF
 }

@@ -83,8 +83,14 @@ preview() {
     ' < "$search_path"
 }
 
+# 空输入的 filter 模式不打开终端；0/1 表示参数有效，2 表示不支持。
+fzf_supports() {
+    fzf "$@" --filter='' < /dev/null > /dev/null 2>&1
+    [[ $? == [01] ]]
+}
+
 run() {
-    local mode=$1 session=$2 history=$3 colors=$4 command preview_command status record encoded rest line column
+    local mode=$1 session=$2 history=$3 colors=$4 command preview_command preview_window status record encoded rest line column
     local -a options=(--read0 --print0 --delimiter=$'\t' --with-nth=4..
         --no-multi --no-mouse --layout=default --border=rounded --info=inline
         --color="$colors" --bind='ctrl-j:down,ctrl-k:up,esc:abort,ctrl-c:abort')
@@ -94,13 +100,20 @@ run() {
     printf -v command '%q %q' "$BASH" "$search_script"
     if [[ "$mode" == files ]]; then
         printf -v FZF_DEFAULT_COMMAND '%s files %q' "$command" "$session"
-        options+=(--prompt='Files> ' --no-extended --scheme=path)
+        options+=(--prompt='Files> ' --no-extended)
+        # 0.33.0 起支持路径评分；旧版保留默认模糊评分。
+        if fzf_supports --scheme=path; then options+=(--scheme=path); fi
     else
         printf -v FZF_DEFAULT_COMMAND '%s query %q %q' "$command" "$session" ''
         printf -v preview_command '%s preview {s1} {2} {4..}' "$command"
+        preview_window='right,55%,+{2}/2,<40(down,50%,+{2}/2)'
+        # 0.31.0 起支持自动布局；旧版固定下方预览，保证窄屏可读。
+        if ! fzf_supports --preview-window="$preview_window"; then
+            preview_window='down,50%,+{2}/2'
+        fi
         options+=(--prompt='Live grep> ' --disabled --no-sort
             --bind="change:reload:$command query $(printf '%q' "$session") {q}"
-            --preview="$preview_command" '--preview-window=right,55%,+{2}/2,<40(down,50%,+{2}/2)'
+            --preview="$preview_command" --preview-window="$preview_window"
             --bind='ctrl-u:preview-half-page-up,ctrl-d:preview-half-page-down')
     fi
     export FZF_DEFAULT_COMMAND
@@ -108,7 +121,7 @@ run() {
     status=$?
     if (( status != 0 )); then
         if (( status != 1 && status != 130 )); then
-            printf 'fzf failed (status %s); requires fzf 0.44.1 or newer\n' "$status" > "$session/error"
+            printf 'fzf failed (status %s); requires fzf 0.29.0 or newer\n' "$status" > "$session/error"
         fi
         return "$status"
     fi
