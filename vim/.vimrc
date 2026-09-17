@@ -81,6 +81,20 @@ function! s:Warn(message) abort
   echohl None
 endfunction
 
+" LSP 模块与其固定版本客户端一起部署，显式加载以保留插件隔离。
+let s:lsp = s:config_dir . '/lsp.vim'
+if !filereadable(s:lsp)
+  let s:lsp = s:config_dir . '/.vim/lsp.vim'
+endif
+if !filereadable(s:lsp)
+  let s:lsp = expand('~/.vim/lsp.vim')
+endif
+if filereadable(s:lsp)
+  execute 'source ' . fnameescape(s:lsp)
+else
+  command! VimLspStatus call <SID>Warn('missing lsp.vim; copy the complete vim directory')
+endif
+
 function! s:GoBuffer(index) abort
   let buffers = getbufinfo({'buflisted': 1})
   if a:index <= len(buffers)

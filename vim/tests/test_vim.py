@@ -54,6 +54,8 @@ class VimSession(unittest.TestCase):
         )
         command = [VIM, "-Nu", str(config or ROOT / ".vimrc"), "-i", "NONE", "-n", "-es", "-V1"]
         command += ["--cmd", "let g:vimrc_lite_osc52 = 0"]
+        command += ["--cmd", "let g:vimrc_lite_lsp_pyright_cmd = ['/missing-vim-lite-pyright']",
+                    "--cmd", "let g:vimrc_lite_lsp_clangd_cmd = ['/missing-vim-lite-clangd']"]
         for setting in before or []:
             command += ["--cmd", setting]
         result = subprocess.run(
@@ -88,6 +90,8 @@ class VimSession(unittest.TestCase):
         env = self.env.copy()
         env['TERM'] = 'xterm-256color'
         command = [VIM, '-Nu', str(config or ROOT / '.vimrc'), '-i', 'NONE', '-n',
+                   '--cmd', "let g:vimrc_lite_lsp_pyright_cmd = ['/missing-vim-lite-pyright']",
+                   '--cmd', "let g:vimrc_lite_lsp_clangd_cmd = ['/missing-vim-lite-clangd']",
                    '--cmd', f'autocmd VimEnter * call writefile([], {quoted(ready)})']
         for setting in before:
             command += ['--cmd', setting]
@@ -134,14 +138,7 @@ call assert_equal([0, 0, 0, 0], [&number, &relativenumber, &laststatus, &cursorl
 let content = map(filter(getline(1, '$'), '!empty(v:val)'), 'substitute(v:val, "^ *", "", "")')
 call assert_equal(['Les annees heureuses sont des annees perdues.'], content)
 call assert_equal(0, synID(line('$'), 1, 1))
-let slogan = synID(line('$'), match(getline('$'), '\S') + 1, 1)
-call assert_equal('VimDashboardSlogan', synIDattr(slogan, 'name'))
-for mode in ['gui', 'cterm']
-  call assert_equal('1', synIDattr(slogan, 'italic', mode))
-  call assert_equal('', synIDattr(slogan, 'bg', mode))
-  call assert_equal('', synIDattr(slogan, 'reverse', mode))
-  call assert_equal('', synIDattr(slogan, 'underline', mode))
-endfor
+call assert_equal(0, synID(line('$'), match(getline('$'), '\S') + 1, 1))
 for key in ['f', 'n', 'e', 'r', 't', 'c', 'q', 'j', 'k', "\<Down>", "\<Up>", "\<CR>"]
   call assert_false(get(maparg(key, 'n', 0, 1), 'buffer', 0), key)
 endfor
@@ -244,7 +241,7 @@ source ''' + str(ROOT / '.vimrc') + r'''
 call assert_equal(1, len(filter(split(execute('autocmd vimrc_lite_dashboard VimEnter'), '\n'), 'v:val =~# "DashboardStartup"')))
 call assert_equal([0, 0], [&laststatus, &cursorline])
 colorscheme tokyonight-night
-call assert_equal('1', synIDattr(synID(line('$'), match(getline('$'), '\S') + 1, 1), 'italic', 'gui'))
+call assert_equal(0, synID(line('$'), match(getline('$'), '\S') + 1, 1))
 call feedkeys("\<Space>bnitext\<Esc>", 'xt')
 call assert_equal('text', getline(1))
 call assert_equal([1, 1, 2], [&number, &relativenumber, &laststatus])
@@ -255,7 +252,7 @@ call assert_equal([1, 1, 2], [&number, &relativenumber, &laststatus])
 call assert_equal('tokyonight-night', g:colors_name)
 call assert_equal('', &packpath)
 call assert_equal($VIMRUNTIME, split(&runtimepath, ',')[0])
-call assert_equal(2, len(split(&runtimepath, ',')))
+call assert_equal(3, len(split(&runtimepath, ',')))
 call assert_false(&loadplugins)
 call assert_equal(2, exists(':Lexplore'))
 call assert_notmatch('/pack/\|/nvim/', execute('scriptnames'))
@@ -1004,13 +1001,18 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
-        for name in ('search.vim', 'search.sh'):
+        for name in ('search.vim', 'search.sh', 'lsp.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         dashboard_backups = list(dashboard.parent.glob('dashboard.vim.bak.*'))
         self.assertEqual(len(dashboard_backups), 1)
         self.assertEqual(dashboard_backups[0].read_text(), '" old dashboard\n')
         for source in (ROOT / "colors").iterdir():
             self.assertEqual((colors / source.name).read_bytes(), source.read_bytes())
+        plugin = self.target / '.vim' / 'vendor' / 'vim-lsp'
+        for source in (ROOT / 'vendor' / 'vim-lsp').rglob('*'):
+            if source.is_file():
+                relative = source.relative_to(ROOT / 'vendor' / 'vim-lsp')
+                self.assertEqual((plugin / relative).read_bytes(), source.read_bytes())
         result = subprocess.run(
             [VIM, '-Nu', str(self.target / '.vimrc'), '-i', 'NONE', '-n', '-es',
              '-c', 'if get(g:, "colors_name", "") !=# "tokyonight-night" | cquit | endif',
@@ -1018,6 +1020,7 @@ class InstallerTests(unittest.TestCase):
              '-c', 'if &filetype !=# "vimdashboard" | cquit | endif',
              '-c', f'if stridx(execute("scriptnames"), {quoted(dashboard)}) < 0 | cquit | endif',
              '-c', 'if !exists(":VimFind") || !exists(":VimSearch") | cquit | endif',
+             '-c', 'if !exists(":VimLspStatus") || !exists(":LspDefinition") | cquit | endif',
              '-c', 'VimConfig',
              '-c', f'if expand("%:p") !=# {quoted(self.target / ".vimrc")} | cquit | endif',
              '-c', 'qa!'], capture_output=True, text=True, timeout=10,
@@ -1028,6 +1031,32 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), dashboard_backups)
         self.assertEqual((colors / "unrelated.vim").read_text(), '" leave alone\n')
         self.assertFalse(list(self.target.rglob("*.tmp.*")))
+        self.assertFalse(list(plugin.parent.glob('vim-lsp.bak.*')))
+
+    def test_plugin_upgrade_removes_stale_files_and_backs_up_symlink(self):
+        self.install('--config-only')
+        plugin = self.target / '.vim' / 'vendor' / 'vim-lsp'
+        (plugin / 'stale.vim').write_text('old plugin file\n')
+        (plugin / 'plugin' / 'lsp.vim').write_text('old client\n')
+        unrelated = plugin.parent / 'unrelated-plugin'
+        unrelated.mkdir()
+        (unrelated / 'keep.vim').write_text('preserved\n')
+        self.install('--config-only')
+        self.assertFalse((plugin / 'stale.vim').exists())
+        backups = list(plugin.parent.glob('vim-lsp.bak.*'))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual((backups[0] / 'stale.vim').read_text(), 'old plugin file\n')
+        self.assertEqual((unrelated / 'keep.vim').read_text(), 'preserved\n')
+        external = self.work / 'external-plugin'
+        plugin.rename(external)
+        plugin.symlink_to(external, target_is_directory=True)
+        self.install('--config-only')
+        self.assertFalse(plugin.is_symlink())
+        link_backups = [path for path in plugin.parent.glob('vim-lsp.bak.*') if path.is_symlink()]
+        self.assertEqual(len(link_backups), 1)
+        self.assertEqual(link_backups[0].resolve(), external)
+        self.assertTrue((external / 'plugin' / 'lsp.vim').is_file())
+        self.assertFalse(list(plugin.parent.glob('*.tmp.*')))
 
     def test_default_skips_package_manager_when_vim_exists(self):
         result = self.install()
@@ -1078,4 +1107,6 @@ if [ "$1" = install ]; then touch "$VIM_LITE_TEST_READY"; fi
 if __name__ == "__main__":
     if not VIM or not BASH:
         raise SystemExit("Tests require Vim and Bash; no dependencies are downloaded.")
+    sys.dont_write_bytecode = True
+    from test_lsp import LspTests
     unittest.main(verbosity=2)

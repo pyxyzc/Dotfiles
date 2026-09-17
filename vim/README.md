@@ -1,11 +1,13 @@
 # 离线极简 Vim
 
 面向 Linux 上的完整 Vim 8/9，主要用于 Python、C/C++。配置与 TokyoNight Night
-主题全部在本目录，无插件管理器、第三方插件、语言服务器或自动下载。
+主题全部在本目录，随配置保存一个固定版本的第三方插件 `vim-lsp`。
+没有插件管理器或自动下载；语言服务器 Pyright、clangd 及其运行环境由用户自行安装。
 主题默认透明背景，不需要特殊字体。
 
 `.vimrc` 保留基础设置、通用功能和快捷键；`dashboard.vim` 管理首页，
 `search.vim` 和 `search.sh` 连接 Vim 内置终端与 fd/ripgrep/fzf，均由配置显式加载。
+`lsp.vim` 显式加载 `vendor/vim-lsp/`，提供 Python、C/C++ 的基础语言服务。
 
 ## 安装
 
@@ -15,7 +17,7 @@
 # Vim 已可用时直接安装配置；否则通过系统包管理器安装 Vim。
 bash ~/Dotfiles/vim/vim-install.sh
 
-# 完全离线：仅复制配置和主题，不检查或安装系统软件。
+# 完全离线：复制配置、主题和内置的 LSP 客户端，不检查或安装依赖。
 bash ~/Dotfiles/vim/vim-install.sh --config-only
 ```
 
@@ -26,6 +28,8 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 ~/.vim/dashboard.vim
 ~/.vim/search.vim
 ~/.vim/search.sh
+~/.vim/lsp.vim
+~/.vim/vendor/vim-lsp/
 ~/.vim/colors/tokyonight-night.vim
 ~/.vim/colors/LICENSE.tokyonight
 ~/.vim/colors/README.md
@@ -51,8 +55,10 @@ sudo apt install fd-find ripgrep fzf
 已有同名文件先改名为 `原文件.bak.时间戳.进程号`；符号链接会备份链接本身，
 不会改写它指向的文件。内容相同的普通文件跳过，不重复备份。其他主题和旧插件
 文件保留在原处；此配置清空 `packpath` 并关闭 `plugin` 脚本的自动加载，
-所以已有的插件包不会自动加载。运行时只保留 Vim 自带目录和本地主题所在目录。
-回退时将相应备份复制回原路径即可。安装不修改 Neovim、shell 或 tmux 配置。
+所以已有的插件包不会自动加载。运行时仅加入 Vim 自带目录、本地主题所在目录和
+随配置保存的 vim-lsp。插件目录整体暂存、备份和替换，升级不会残留旧文件；
+目录内容相同则跳过。回退时恢复对应配置文件和整个插件目录的备份，
+不要将旧、新插件目录合并。安装不修改 Neovim、shell 或 tmux 配置。
 
 ```bash
 # 安装到指定用户目录，也便于试装。
@@ -76,13 +82,18 @@ vim --cmd 'let g:vimrc_lite_transparent = 0' -u ~/Dotfiles/vim/.vimrc
 | `g:vimrc_lite_transparent` | `1` | 背景透明；设为 `0` 恢复原版背景 |
 | `g:vimrc_lite_osc52` | 检测 SSH 环境 | 是否为显式复制发送 OSC 52；可手动设为 `0` 或 `1` |
 | `g:vimrc_lite_dashboard` | `1` | 无参数交互启动时显示首页；设为 `0` 关闭自动显示 |
+| `g:vimrc_lite_lsp` | `1` | 根据文件类型自动启动已安装的语言服务器；设为 `0` 禁用 LSP |
+| `g:vimrc_lite_lsp_pyright_cmd` | `['pyright-langserver', '--stdio']` | Python 服务器的命令参数列表 |
+| `g:vimrc_lite_lsp_clangd_cmd` | `['clangd', '--background-index']` | C/C++ 服务器的命令参数列表 |
+
+LSP 选项在启动时读取一次；修改命令、环境或开关后重启 Vim。
+重载 vimrc 会恢复客户端运行路径，不重复加载插件、注册服务器或创建进程。
 
 ## 首页
 
 直接运行 `vim`，首页只显示一句居中的 slogan：
 `Les annees heureuses sont des annees perdues.`
-文字使用斜体，沿用正文颜色，无菜单、图标、下划线、背景高亮或页脚，也不注册首页专用按键。
-斜体显示需要终端和字体支持。
+文字使用普通正文样式，无菜单、图标、下划线、背景高亮或页脚，也不注册首页专用按键。
 可通过原有 `<leader>ff`、`<leader>fp` 搜索，或用 `<leader>bn` 新建文件。
 
 用 `:Dashboard` 可手动回到首页，已打开文件及未保存内容会保留。
@@ -151,10 +162,120 @@ LazyGit 内使用它自己的按键，通常按 `q` 退出；不需要任何 Vim
 - Python 按缩进折叠，C/C++/CUDA 按 Vim 语法折叠，打开文件时全部展开。
   保留 `za/zA`、`zo/zO`、`zc/zC`、`zR/zM`、`zr/zm` 等原生操作。
 - 插入模式用 `Ctrl-n/p` 补全当前及已加载 buffer 中的词和现有 tags，
-  用 `Ctrl-x Ctrl-f` 补全路径。这些不提供 LSP 语义补全。
+  用 `Ctrl-x Ctrl-f` 补全路径；连接 LSP 后可用 `Ctrl-x Ctrl-o` 手动语义补全。
 - 原生 `%` 匹配括号，`i{`/`a{` 等选择括号内容；不模拟函数、类、循环的结构文本对象。
 - 已有 tags 文件时使用 `Ctrl-]` 和 `Ctrl-t`；配置不自动生成索引。
 - 构建使用项目自己的命令或 `:make`，不默认指定 C++ 标准或自动运行代码。
+
+## 极简 LSP
+
+客户端为 [prabirshrestha/vim-lsp](https://github.com/prabirshrestha/vim-lsp)，
+固定提交 `bbffa60cb08a6a2d67e2086a89699ab00a084fe9`。运行文件及许可证随配置保存，
+来源、校验值和人工升级步骤见 [vendor/vim-lsp/SOURCE.md](vendor/vim-lsp/SOURCE.md)。
+安装和 Vim 启动时均不下载或更新插件。
+
+Vim 需要 `+job`、`+channel`、`+timers`、`+lambda` 和 JSON 编解码函数。
+不需要 Vim 的 `+python3`、`+lua`，也不需要自动补全或服务器安装管理插件。
+基础配置继续面向 Vim 8/9；LSP 缺少必要功能时自动跳过，可用 `:VimLspStatus` 查看原因。
+
+### 安装服务器与使用
+
+服务器不包含在配置中。请先按各自文档安装
+[Pyright](https://github.com/microsoft/pyright/blob/main/docs/installation.md)
+和 [clangd](https://clangd.llvm.org/installation)，确保命令在 `PATH` 中。
+例如，在具备 Node.js/npm 的环境安装 Pyright：
+
+```bash
+npm install -g pyright
+```
+
+clangd 可通过系统包管理器或其官方发行包安装。离线机器应提前准备好服务器和
+所需运行环境；仅复制本配置不会带入 Node.js 或 clangd。
+
+打开 Python 文件时启动 Pyright，打开 C/C++ 文件时启动 clangd。
+服务器成功连接后，仅在对应的普通文件 buffer 中启用以下按键：
+
+| 按键 | 功能 |
+| --- | --- |
+| `gd` | 跳转定义；多个目标显示在 quickfix |
+| `gr` | 在 quickfix 中列出引用 |
+| `K` | 查看类型和文档；支持浮窗时使用浮窗，否则使用预览窗口 |
+| `Ctrl-x Ctrl-o` | 插入模式手动语义补全，使用 Vim 原生补全菜单 |
+| `Ctrl-o` | 使用原生跳转记录返回 |
+
+引用和多目标列表复用 `[q`、`]q`、`<leader>xQ`；预览窗口可用 `:pclose` 关闭。
+保留原生词补全和 tags 按键。默认关闭诊断显示、自动签名提示、符号高亮、
+语义高亮、内嵌提示及 LSP 折叠；不增加格式化或重命名快捷键。
+客户端自带的其他 `:Lsp...` 命令仍由上游插件提供。
+
+没有服务器时，保留原生按键与基础编辑；首页、帮助和终端不会启动服务器。
+缺失客户端或服务器时不弹出阻塞提示。`:VimLspStatus` 显示启用情况、
+缺失依赖、命令列表、项目根目录和服务器状态；启动失败后也可用它检查。
+正常安装脚本仅提示缺失的默认服务器命令；`--config-only` 不检查依赖。
+
+命令可指定绝对路径或版本化名称，参数分开填写，不写成 shell 命令字符串：
+
+```vim
+" 放在 vimrc 顶部，或在加载配置前通过 --cmd 设置。
+let g:vimrc_lite_lsp_pyright_cmd = ['/opt/node/bin/pyright-langserver', '--stdio']
+let g:vimrc_lite_lsp_clangd_cmd = ['/usr/bin/clangd-18', '--background-index']
+```
+
+```bash
+# 禁用 LSP，保留其余配置。
+vim --cmd 'let g:vimrc_lite_lsp = 0'
+```
+
+### 项目根目录与环境
+
+每个 Vim 会话面向一个项目，每种语言服务器首次启动时确定根目录，后续文件复用
+该进程。不同项目或不同 Python 环境使用不同 Vim 会话；本配置不管理多个独立工作区。
+LSP 不改变 Vim 的 `:pwd`，搜索模块也继续使用自己的项目定位规则。
+
+- Python：从当前文件目录向上找最近的 `pyrightconfig.json`、`pyproject.toml`、
+  `setup.py`、`setup.cfg` 或 `.git`。
+- C/C++：找最近的 `.clangd`、`compile_commands.json`、`CMakeLists.txt`、
+  `Makefile` 或 `.git`。
+- 找不到标记时，使用当前文件所在目录。
+
+Python 沿用启动 Vim 时的环境和项目配置。可在激活虚拟环境后启动 Vim；
+若使用项目目录下的 `.venv`，也可在项目已有的 `pyrightconfig.json` 中合并：
+
+```json
+{
+  "venvPath": ".",
+  "venv": ".venv"
+}
+```
+
+这两个路径设置相对于配置文件；也可放在 `pyproject.toml` 的 `[tool.pyright]`
+中。详见 [Pyright 配置文档](https://github.com/microsoft/pyright/blob/main/docs/configuration.md)。
+配置不自动创建虚拟环境，也不改写项目文件。
+
+clangd 需要正确的头文件路径、宏和编译选项。使用 CMake 的 Makefile/Ninja 生成器时，
+可由项目生成编译数据库：
+
+```bash
+cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
+
+若数据库保存在 `build/compile_commands.json`，可在项目根目录的 `.clangd` 中配置：
+
+```yaml
+CompileFlags:
+  CompilationDatabase: build
+```
+
+详见 [clangd 编译数据库设置](https://clangd.llvm.org/config#compilationdatabase)。
+本配置不执行构建，不生成数据库，也不硬编码 C++ 标准。未配置编译参数时，
+clangd 的跨文件跳转和补全可能不完整。首版不注册 CUDA 文件的语言服务器。
+
+### 已知上游限制
+
+此固定提交的部分位置转换按 Unicode 字符计数，未完整处理 LSP 默认的 UTF-16
+代理对。若目标符号前有 emoji 等非 BMP 字符，跳转列和请求位置可能偏移；
+中文等 BMP 字符已有离线测试覆盖。上游源码保持原样，测试以一项 `expected failure`
+记录该问题，升级客户端时应重新核验。
 
 ## 文件和文本搜索
 
@@ -198,7 +319,7 @@ fzf 在居中终端弹窗中运行，宽约 90%、高约 80%，沿用 TokyoNight
 ## 其他边界
 
 最近文件来自 viminfo，当前会话新开的文件不一定立即进入该列表。
-窗口导航限于 Vim 内部，不跨 tmux 窗格。没有 LSP、DAP、Git hunk、Flash、
+窗口导航限于 Vim 内部，不跨 tmux 窗格。没有 DAP、Git hunk、Flash、
 Tree-sitter、浮动 shell 或项目替换界面；普通文本替换可用 Vim 自带 `:%s`。
 
 ## SSH 剪贴板
@@ -222,6 +343,11 @@ python3 ~/Dotfiles/vim/tests/test_vim.py
 ```
 
 测试在临时目录执行，覆盖配置、主题、首页启动与交互、buffer、搜索、复制及安装脚本。
+LSP 测试用 Python 标准库实现的本地 stdio 协议服务，验证初始化、文件同步、定义跳转、
+引用、文档、手动补全、中文位置、配置重载、缺失依赖和插件安装升级，不访问网络。
+其中一项预期失败记录上述非 BMP 位置问题，不代表已经修复。
+真实 Pyright/clangd 验收需另在装有服务器的机器上完成：用 Python 跨模块引用以及
+带编译数据库的 C++ 工程检查 `gd`、`gr`、`K` 和手动补全，确认 `Ctrl-o` 可返回。
 fd/rg 数据规则使用真实程序验证；终端生命周期另有模拟 fzf 的测试。真实按键测试通过
 PTY 测量单次 Esc 的退出延迟，并验证方向键和设置恢复。真实 fzf 交互测试
 需要已安装 fzf，缺少时明确跳过。软件包安装使用模拟命令，不实际安装系统软件或联网。

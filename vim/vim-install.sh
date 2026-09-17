@@ -5,19 +5,21 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 install_target="${HOME}"
 config_only=0
 staged_file=''
+staged_directory=''
 
 usage() {
     cat <<'EOF'
 用法：vim-install.sh [--config-only] [--target-dir DIR]
 
-默认：检查 Vim，缺失或功能不足时通过系统包管理器安装；备份并复制配置和主题。
-  --config-only     仅安装配置和主题，不检查或安装 Vim，不使用网络
+默认：检查 Vim，缺失或功能不足时通过系统包管理器安装；备份并复制配置、主题和固定版本 LSP 客户端。
+  --config-only     仅复制配置、主题和 LSP 客户端，不检查依赖，不使用网络
   --target-dir DIR  配置目标用户目录，默认当前用户的 $HOME
   -h, --help        显示帮助
 
 只为系统软件安装调用 sudo；请以目标用户身份运行整个脚本。
 支持 apt-get、dnf、yum、apk、pacman、zypper，不下载任何 Vim 插件。
 搜索需要 fd/fdfind、ripgrep 和 fzf 0.44.1+；缺少时只提示，不自动安装。
+LSP 使用本目录保存的 vim-lsp；Pyright/clangd 由用户自行安装，缺失时只提示。
 EOF
 }
 
@@ -43,6 +45,10 @@ done
     || die '缺少 search.vim 或 search.sh，请复制完整的 vim 目录'
 [[ -f "$script_dir/colors/LICENSE.tokyonight" && -f "$script_dir/colors/README.md" ]] \
     || die '缺少主题来源或许可证文件，请复制完整的 vim 目录'
+[[ -f "$script_dir/lsp.vim" ]] || die '缺少 lsp.vim，请复制完整的 vim 目录'
+for required in plugin/lsp.vim autoload/lsp.vim LICENSE LICENSE-THIRD-PARTY SOURCE.md; do
+    [[ -f "$script_dir/vendor/vim-lsp/$required" ]] || die "缺少 vendor/vim-lsp/$required，请复制完整的 vim 目录"
+done
 [[ ! -e "$install_target" || -d "$install_target" ]] || die "不是目录：$install_target"
 
 vim_usable() {
@@ -89,11 +95,17 @@ if (( ! config_only )); then
         printf '搜索依赖缺失：%s；请手动安装，不影响配置复制。\n' "${missing_search[*]}"
         printf 'Debian/Ubuntu 示例：sudo apt install fd-find ripgrep fzf\n'
     fi
+    missing_lsp=()
+    command -v pyright-langserver >/dev/null 2>&1 || missing_lsp+=(pyright-langserver)
+    command -v clangd >/dev/null 2>&1 || missing_lsp+=(clangd)
+    if (( ${#missing_lsp[@]} )); then
+        printf 'LSP 服务器缺失：%s；请手动安装或配置命令路径，不影响基础编辑和配置复制。\n' "${missing_lsp[*]}"
+    fi
 fi
 
-mkdir -p -- "$install_target/.vim/colors"
+mkdir -p -- "$install_target/.vim/colors" "$install_target/.vim/vendor"
 install_target="$(cd -- "$install_target" && pwd)"
-for destination in "$install_target/.vimrc" "$install_target/.vim/dashboard.vim" \
+for destination in "$install_target/.vimrc" "$install_target/.vim/dashboard.vim" "$install_target/.vim/lsp.vim" \
     "$install_target/.vim/search.vim" "$install_target/.vim/search.sh" "$install_target/.vim/colors/tokyonight-night.vim" \
     "$install_target/.vim/colors/LICENSE.tokyonight" "$install_target/.vim/colors/README.md"; do
     [[ ! -d "$destination" ]] || die "目标文件被目录占用：$destination"
@@ -102,6 +114,9 @@ done
 cleanup() {
     if [[ -n "$staged_file" && -f "$staged_file" ]]; then
         rm -f -- "$staged_file"
+    fi
+    if [[ -n "$staged_directory" && -d "$staged_directory" ]]; then
+        rm -rf -- "$staged_directory"
     fi
 }
 trap cleanup EXIT
@@ -128,7 +143,33 @@ install_file() {
     printf '已安装：%s\n' "$destination"
 }
 
+install_plugin() {
+    local source="$script_dir/vendor/vim-lsp" destination="$install_target/.vim/vendor/vim-lsp" backup=''
+    if [[ -d "$destination" && ! -L "$destination" ]] \
+        && [[ -z "$(find "$destination" -type l -print -quit)" ]] \
+        && diff -qr -- "$source" "$destination" >/dev/null 2>&1; then
+        printf '已是最新：%s\n' "$destination"
+        return
+    fi
+    staged_directory="$(mktemp -d "${destination}.tmp.XXXXXX")"
+    cp -R -- "$source/." "$staged_directory/"
+    chmod 755 "$staged_directory"
+    if [[ -e "$destination" || -L "$destination" ]]; then
+        backup="${destination}.bak.$(date +%Y%m%d-%H%M%S).$$"
+        mv -- "$destination" "$backup"
+        printf '已备份：%s\n' "$backup"
+    fi
+    if ! mv -- "$staged_directory" "$destination"; then
+        if [[ -n "$backup" ]]; then mv -- "$backup" "$destination"; fi
+        die "无法安装：$destination"
+    fi
+    staged_directory=''
+    printf '已安装：%s\n' "$destination"
+}
+
+install_plugin
 install_file "$script_dir/.vimrc" "$install_target/.vimrc"
+install_file "$script_dir/lsp.vim" "$install_target/.vim/lsp.vim"
 install_file "$script_dir/dashboard.vim" "$install_target/.vim/dashboard.vim"
 install_file "$script_dir/search.vim" "$install_target/.vim/search.vim"
 install_file "$script_dir/search.sh" "$install_target/.vim/search.sh"

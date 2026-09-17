@@ -42,8 +42,6 @@ function! s:DashboardEnter() abort
     call s:DashboardLeave()
     return
   endif
-  syntax clear
-  syntax match VimDashboardSlogan /\S.*/
   if !exists('w:vimrc_lite_dashboard_options')
     " 分屏继承首页选项时，也使用进入首页前的原始选项。
     let w:vimrc_lite_dashboard_options = copy(b:dashboard_window_options)
@@ -105,7 +103,6 @@ endfunction
 command! Dashboard call <SID>Dashboard()
 augroup vimrc_lite_dashboard
   autocmd!
-  autocmd ColorScheme * highlight VimDashboardSlogan term=italic cterm=italic gui=italic ctermfg=NONE ctermbg=NONE guifg=NONE guibg=NONE
   autocmd User VimrcLiteReload call s:DashboardLeave()
   autocmd User VimrcLiteSearchClosed call s:DashboardEnter()
   autocmd StdinReadPre * let s:dashboard_stdin = 1
@@ -113,7 +110,6 @@ augroup vimrc_lite_dashboard
   autocmd WinLeave * call s:DashboardRestoreStatus()
   autocmd BufWinEnter,WinEnter,VimResized * call s:DashboardEnter()
 augroup END
-doautocmd <nomodeline> vimrc_lite_dashboard ColorScheme
 if get(b:, 'vimrc_lite_dashboard', 0)
   call s:DashboardEnter()
 endif
