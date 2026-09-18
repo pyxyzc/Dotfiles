@@ -75,6 +75,21 @@ function! s:Warn(message) abort
   echohl None
 endfunction
 
+" 剪贴板模块先于文件树加载，提供 OSC 52 复制与粘贴回退；同样支持三种安装方式。
+let s:clipboard = s:config_dir . '/clipboard.vim'
+if !filereadable(s:clipboard)
+  let s:clipboard = s:config_dir . '/.vim/clipboard.vim'
+endif
+if !filereadable(s:clipboard)
+  let s:clipboard = expand('~/.vim/clipboard.vim')
+endif
+if filereadable(s:clipboard)
+  execute 'source ' . fnameescape(s:clipboard)
+else
+  command! VimCopyPath call <SID>Warn('missing clipboard.vim; copy the complete vim directory')
+  command! VimCopyContent call <SID>Warn('missing clipboard.vim; copy the complete vim directory')
+endif
+
 " 文件树模块支持仓库试用、符号链接和复制安装。
 let s:tree = s:config_dir . '/tree.vim'
 if !filereadable(s:tree)
@@ -413,57 +428,7 @@ function! s:CommentOperator(type) abort
   call s:ToggleComments(line("'["), line("']"))
 endfunction
 
-" 编码内容经 stdin 传入，不拼进 shell 命令。OSC 52 只写剪贴板。
-function! s:Osc52(text) abort
-  if !executable('base64')
-    throw 'base64 is unavailable; content remains in the Vim register'
-  endif
-  let encoded = system('base64', a:text)
-  if v:shell_error
-    throw 'base64 failed; content remains in the Vim register'
-  endif
-  return "\e]52;c;" . substitute(encoded, '[\r\n]', '', 'g') . "\x07"
-endfunction
-
-function! s:Copy(text, regtype) abort
-  call setreg('"', a:text, a:regtype)
-  let remote = !empty($SSH_TTY) || !empty($SSH_CONNECTION)
-  if get(g:, 'vimrc_lite_osc52', remote)
-    try
-      call writefile([s:Osc52(a:text)], '/dev/tty', 'b')
-      echom 'Copied to Vim; OSC 52 sent (requires terminal clipboard support)'
-    catch
-      call s:Warn('OSC 52 unavailable; copied to Vim only. ' . v:exception)
-    endtry
-  elseif has('clipboard')
-    try
-      call setreg('+', a:text, a:regtype)
-      echom 'Copied to Vim and system clipboard'
-    catch
-      call s:Warn('system clipboard unavailable; copied to Vim only')
-    endtry
-  else
-    echom 'Copied to Vim register'
-  endif
-endfunction
-
-function! s:CopyPath() abort
-  if &buftype !=# '' || empty(bufname('%'))
-    call s:Warn('current buffer has no file path')
-    return
-  endif
-  call s:Copy(expand('%:p'), 'v')
-endfunction
-
-function! s:CopyContent() abort
-  if &buftype !=# ''
-    call s:Warn('current buffer is not a file')
-    return
-  endif
-  let ending = &fileformat ==# 'dos' ? "\r\n" : (&fileformat ==# 'mac' ? "\r" : "\n")
-  let text = join(getline(1, '$'), ending) . (&endofline ? ending : '')
-  call s:Copy(text, &endofline && &fileformat !=# 'mac' ? 'V' : 'v')
-endfunction
+" 编码复制与 OSC 52 同步逻辑集中在 clipboard.vim 模块。
 
 function! s:ToggleList(location) abort
   let info = a:location ? getloclist(0, {'winid': 0}) : getqflist({'winid': 0})
@@ -541,8 +506,8 @@ nnoremap <leader>bp :ls<CR>:buffer<Space>
 for s:index in range(1, 9)
   execute 'nnoremap <silent> <leader>' . s:index . ' :call <SID>GoBuffer(' . s:index . ')<CR>'
 endfor
-nnoremap <silent> <leader>bP :call <SID>CopyPath()<CR>
-nnoremap <silent> <leader>bC :call <SID>CopyContent()<CR>
+nnoremap <silent> <leader>bP :VimCopyPath<CR>
+nnoremap <silent> <leader>bC :VimCopyContent<CR>
 nnoremap <silent> <leader>bD :call <SID>ClearBuffer()<CR>
 xnoremap <silent> <leader>bD "_d
 nnoremap <silent> <leader>bw :call <SID>TrimWhitespace()<CR>

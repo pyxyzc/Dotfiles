@@ -233,7 +233,10 @@ endfunction
 
 function! s:YankText(text) abort
   call setreg('"', a:text)
-  if has('clipboard')
+  " 剪贴板模块在场时经它同步（SSH 会话发送 OSC 52）；否则退回原生行为。
+  if exists('*' . get(g:, 'vimrc_lite_clipboard_sync', ''))
+    call call(function(g:vimrc_lite_clipboard_sync), [a:text, 'v'])
+  elseif has('clipboard')
     call setreg('+', a:text)
   endif
   echom 'Vim tree: yanked ' . a:text

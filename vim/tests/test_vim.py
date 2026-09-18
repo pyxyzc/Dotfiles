@@ -54,6 +54,7 @@ class VimSession(unittest.TestCase):
         )
         command = [VIM, "-Nu", str(config or ROOT / ".vimrc"), "-i", "NONE", "-n", "-es", "-V1"]
         command += ["--cmd", "let g:vimrc_lite_osc52 = 0"]
+        command += ["--cmd", "let g:vimrc_lite_clipboard_yank = 0"]
         command += ["--cmd", "let g:vimrc_lite_lsp_pyright_cmd = ['/missing-vim-lite-pyright']",
                     "--cmd", "let g:vimrc_lite_lsp_clangd_cmd = ['/missing-vim-lite-clangd']"]
         for setting in before or []:
@@ -68,7 +69,7 @@ class VimSession(unittest.TestCase):
         self.assertEqual(errors, "")
         return result
 
-    def terminal_vim(self, body, args=(), before=(), stdin=None, config=None):
+    def terminal_vim(self, body, args=(), before=(), stdin=None, config=None, controlling_tty=False):
         """Send checks after VimEnter, so startup is not bypassed by -S/-c."""
         ready = self.work / 'ready'
         report = self.work / 'terminal-errors'
@@ -92,12 +93,21 @@ class VimSession(unittest.TestCase):
         command = [VIM, '-Nu', str(config or ROOT / '.vimrc'), '-i', 'NONE', '-n',
                    '--cmd', "let g:vimrc_lite_lsp_pyright_cmd = ['/missing-vim-lite-pyright']",
                    '--cmd', "let g:vimrc_lite_lsp_clangd_cmd = ['/missing-vim-lite-clangd']",
+                   '--cmd', "let g:vimrc_lite_osc52 = 0",
+                   '--cmd', "let g:vimrc_lite_clipboard_yank = 0",
                    '--cmd', f'autocmd VimEnter * call writefile([], {quoted(ready)})']
         for setting in before:
             command += ['--cmd', setting]
+
+        def acquire_tty():
+            # Make the pty the controlling terminal so writes to /dev/tty reach it.
+            os.setsid()
+            fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
         process = subprocess.Popen(
             command + list(args), cwd=self.work, env=env,
             stdin=slave if stdin is None else subprocess.PIPE, stdout=slave, stderr=slave,
+            preexec_fn=acquire_tty if controlling_tty else None,
         )
         os.close(slave)
         output = b''
@@ -183,6 +193,8 @@ Dashboard
 call assert_equal('vimdashboard', &filetype)
 call assert_match('dashboard.vim', execute('scriptnames'))
 call assert_match('tree.vim', execute('scriptnames'))
+call assert_match('clipboard.vim', execute('scriptnames'))
+call assert_notequal('', get(g:, 'vimrc_lite_clipboard_sync', ''), 'clipboard module loaded')
 VimConfig
 call assert_equal(''' + quoted(config) + r''', expand('%:p'))
 ''', config=config)
@@ -656,35 +668,117 @@ call assert_equal(['# a', '# b', 'c'], getline(1, '$'))
         text = "中文\nquotes '\" and $() \\ / |\n"
         payload = base64.b64encode(text.encode()).decode()
         self.vim(r'''
+let s:clip = matchstr(execute('command VimCopyPath'), '<SNR>\d\+_')
+function! Clip(name, args) abort
+  return call(function(s:clip . a:name), a:args)
+endfunction
 execute 'edit ' . fnameescape('space 中文.py')
-call Call('CopyPath', [])
+call Clip('CopyPath', [])
 call assert_equal(expand('%:p'), @")
 call setline(1, ['中文', 'second line'])
-call Call('CopyContent', [])
+call Clip('CopyContent', [])
 call assert_equal("中文\nsecond line\n", @")
 setlocal noendofline
-call Call('CopyContent', [])
+call Clip('CopyContent', [])
 call assert_equal("中文\nsecond line", @")
 setlocal endofline fileformat=dos
-call Call('CopyContent', [])
+call Clip('CopyContent', [])
 call assert_equal("中文\r\nsecond line\r\n", @")
 let text = "中文\nquotes '\" and $() \\ / |\n"
-call assert_equal("\e]52;c;" . ''' + quoted(payload) + r''' . "\x07", Call('Osc52', [text]))
+call assert_equal("\e]52;c;" . ''' + quoted(payload) + r''' . "\x07", Clip('Osc52', [text]))
 let old_path = $PATH
 let $PATH = getcwd() . '/missing-bin'
 try
   let g:vimrc_lite_osc52 = 1
-  call Call('Copy', ['fallback', 'v'])
+  call Clip('Copy', ['fallback', 'v'])
   call assert_equal('fallback', @")
   call assert_match('base64 is unavailable', execute('messages'))
 finally
   let $PATH = old_path
 endtry
 " The subprocess has no controlling tty: exercise a delivery failure safely.
-call Call('Copy', ['no tty', 'v'])
+call Clip('Copy', ['no tty', 'v'])
 call assert_equal('no tty', @")
 call assert_match('OSC 52 unavailable', execute('messages'))
 ''')
+
+    def test_clipboard_yank_sends_osc52(self):
+        """Yank and delete propagation reaches the terminal, like Neovim's unnamedplus."""
+        payload = lambda s: b'\x1b]52;c;' + base64.b64encode(s.encode()) + b'\x07'
+        output = self.terminal_vim(r'''
+execute 'edit ' . fnameescape('copy.txt')
+call setline(1, ['中文 line', 'second', 'gone'])
+let g:vimrc_lite_osc52 = 1
+let g:vimrc_lite_clipboard_yank = 1
+normal! ggyy
+normal! ggVjy
+call assert_equal('中文 line' . "\n" . 'second' . "\n", getreg('"'))
+normal! 3Gdd
+call assert_equal(['中文 line', 'second'], getline(1, '$'))
+call assert_equal('gone' . "\n", getreg('"'))
+''', controlling_tty=True)
+        self.assertIn(payload('中文 line'), output)
+        self.assertIn(payload('中文 line\nsecond'), output)
+        self.assertIn(payload('gone'), output)
+
+    def test_clipboard_yank_skips_named_registers_and_disabled_flag(self):
+        output = self.terminal_vim(r'''
+execute 'edit ' . fnameescape('copy.txt')
+call setline(1, ['alpha', 'beta'])
+let g:vimrc_lite_osc52 = 1
+let g:vimrc_lite_clipboard_yank = 1
+let @a = ''
+normal! "ayy
+normal! "_dd
+let g:vimrc_lite_clipboard_yank = 0
+normal! yy
+call assert_equal('beta' . "\n", getreg('"'))
+''', controlling_tty=True)
+        self.assertNotIn(b'\x1b]52', output)
+
+    def test_clipboard_sync_failure_warns_once(self):
+        self.vim(r'''
+execute 'edit ' . fnameescape('yank.txt')
+call setline(1, ['alpha', 'beta'])
+let g:vimrc_lite_osc52 = 1
+let g:vimrc_lite_clipboard_yank = 1
+let old_path = $PATH
+let $PATH = getcwd() . '/missing-bin'
+try
+  normal! yy
+  call assert_equal('alpha' . "\n", getreg('"'))
+  call assert_match('clipboard sync skipped', execute('messages'))
+  let seen = len(split(execute('messages'), "\n"))
+  normal! jyy
+  call assert_equal('beta' . "\n", getreg('"'))
+  call assert_equal(seen, len(split(execute('messages'), "\n")))
+finally
+  let $PATH = old_path
+endtry
+''')
+
+    def test_clipboard_paste_falls_back_to_unnamed_register(self):
+        self.vim(r'''
+call setline(1, ['alpha', 'beta', 'gamma', 'delta'])
+call assert_equal('""p', maparg('"+p', 'n'))
+call assert_equal('""P', maparg('"+P', 'n'))
+call assert_equal('""p', maparg('"*p', 'x'))
+call assert_equal('<C-R>"', maparg('<C-r>+', 'i'))
+call assert_equal('<C-R>"', maparg('<C-r>*', 'i'))
+normal! ggyl
+call cursor(2, 1)
+call feedkeys("\"+p", 'xt')
+call assert_equal('baeta', getline(2))
+call cursor(3, 1)
+call feedkeys("\"*P", 'xt')
+call assert_equal('agamma', getline(3))
+call cursor(4, 1)
+call feedkeys("ve\"+p", 'xt')
+call assert_equal('a', getline(4))
+call cursor(1, 1)
+call feedkeys("A\<C-r>+\<Esc>", 'xt')
+call assert_equal('alphadelta', getline(1))
+''', before=["let g:vimrc_lite_osc52 = 1"])
 
     def test_quickfix_and_location_lists(self):
         self.vim(r'''
@@ -770,6 +864,18 @@ let hidden = g:netrw_list_hide
 call feedkeys('H', 'xt')
 call assert_notequal(hidden, g:netrw_list_hide)
 ''')
+
+    def test_file_tree_yank_sends_osc52(self):
+        """Tree yanks go through the clipboard module, like Neovim's setreg("+")."""
+        (self.work / 'nested.txt').write_text('nested\n')
+        output = self.terminal_vim(r'''
+let g:vimrc_lite_osc52 = 1
+call feedkeys("\<Space>e", 'xt')
+call search('nested.txt', 'w')
+call feedkeys('y', 'xt')
+call assert_equal('nested.txt', @")
+''', controlling_tty=True)
+        self.assertIn(b'\x1b]52;c;' + base64.b64encode(b'nested.txt') + b'\x07', output)
 
     def test_terminal_opens_one_window_in_new_tab(self):
         self.vim(r'''
@@ -1351,6 +1457,7 @@ call timer_start(5, 'KeyboardObserve', {'repeat': -1})
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
         process = subprocess.Popen(
             [VIM, '-Nu', str(config or ROOT / '.vimrc'), '-i', 'NONE', '-n',
+             '--cmd', 'let g:vimrc_lite_clipboard_yank = 0',
              '--cmd', f'autocmd VimEnter * call writefile([], {quoted(startup)})'],
             cwd=self.project, env=dict(self.env, TERM='xterm-256color'),
             stdin=slave, stdout=slave, stderr=slave,
@@ -1553,7 +1660,7 @@ class InstallerTests(unittest.TestCase):
         colors.mkdir(parents=True)
         dashboard = self.target / '.vim' / 'dashboard.vim'
         dashboard.write_text('" old dashboard\n')
-        modules = [self.target / '.vim' / name for name in ('git.vim', 'terminal.vim', 'tree.vim')]
+        modules = [self.target / '.vim' / name for name in ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim')]
         for module in modules:
             module.write_text('" old module\n')
         (colors / "unrelated.vim").write_text('" leave alone\n')
@@ -1565,7 +1672,7 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
-        for name in ('search.vim', 'search.sh', 'lsp.vim', 'git.vim', 'terminal.vim', 'tree.vim'):
+        for name in ('search.vim', 'search.sh', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         dashboard_backups = list(dashboard.parent.glob('dashboard.vim.bak.*'))
         self.assertEqual(len(dashboard_backups), 1)
@@ -1589,7 +1696,7 @@ class InstallerTests(unittest.TestCase):
              '-c', f'if stridx(execute("scriptnames"), {quoted(dashboard)}) < 0 | cquit | endif',
              '-c', 'if !exists(":VimFind") || !exists(":VimSearch") || !exists(":Lexplore") | cquit | endif',
              '-c', 'if !exists(":VimGit") || !exists(":VimTerminal") | cquit | endif',
-             '-c', 'if !exists(":VimLspStatus") || !exists(":LspDefinition") | cquit | endif',
+             '-c', 'if !exists(":VimCopyPath") || !exists(":VimCopyContent") || !exists(":VimLspStatus") || !exists(":LspDefinition") | cquit | endif',
              '-c', 'VimConfig',
              '-c', f'if expand("%:p") !=# {quoted(self.target / ".vimrc")} | cquit | endif',
              '-c', 'qa!'], capture_output=True, text=True, timeout=10,

@@ -6,6 +6,7 @@
 主题默认透明背景，不需要特殊字体。
 
 `.vimrc` 保留基础设置、通用功能和快捷键；`dashboard.vim` 管理首页，
+`clipboard.vim` 管理 OSC 52 远程剪贴板与复制粘贴回退，
 `tree.vim` 集中管理 netrw 侧边文件树的加载、选项和快捷键；
 `search.vim` 和 `search.sh` 连接 Vim 内置终端与 fd/ripgrep/fzf，均由配置显式加载。
 `lsp.vim` 显式加载 `vendor/vim-lsp/`，提供 Python、C/C++ 的基础语言服务。
@@ -28,6 +29,7 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 ```text
 ~/.vimrc
 ~/.vim/dashboard.vim
+~/.vim/clipboard.vim
 ~/.vim/tree.vim
 ~/.vim/git.vim
 ~/.vim/terminal.vim
@@ -85,7 +87,8 @@ vim --cmd 'let g:vimrc_lite_transparent = 0' -u ~/Dotfiles/vim/.vimrc
 | --- | --- | --- |
 | `g:vimrc_lite_truecolor` | `1` | 使用真彩色；设为 `0` 使用主题的静态 256 色 |
 | `g:vimrc_lite_transparent` | `1` | 背景透明；设为 `0` 恢复原版背景 |
-| `g:vimrc_lite_osc52` | 检测 SSH 环境 | 是否为显式复制发送 OSC 52；可手动设为 `0` 或 `1` |
+| `g:vimrc_lite_osc52` | 检测 SSH 环境 | 是否经 OSC 52 向终端发送复制内容；可手动设为 `0` 或 `1` |
+| `g:vimrc_lite_clipboard_yank` | `1` | 未指定寄存器的 yank/删除/修改是否自动同步剪贴板，对应 Neovim 的 `clipboard=unnamedplus` |
 | `g:vimrc_lite_dashboard` | `1` | 无参数交互启动时显示首页；设为 `0` 关闭自动显示 |
 | `g:vimrc_lite_lsp` | `1` | 根据文件类型自动启动已安装的语言服务器；设为 `0` 禁用 LSP |
 | `g:vimrc_lite_lsp_pyright_cmd` | `['pyright-langserver', '--stdio']` | Python 服务器的命令参数列表 |
@@ -137,7 +140,8 @@ slogan 以整个 Vim 界面的中心为锚点，打开、关闭或调整文件�
 | `<leader>bn` | 新建空 buffer |
 | `<leader>bp` | 列出 buffer，然后输入编号或名称；支持 Tab 补全 |
 | `<leader>1`～`9` | 跳到按 buffer 编号排序的第 1～9 个已列出 buffer |
-| `<leader>bP` / `bC` | 复制文件绝对路径／全文 |
+| `<leader>bP` / `bC` | 复制文件绝对路径／全文；远端会话同时发送 OSC 52 |
+| `"+p`、`"+P`、`"*p`、`"*P` | 远端会话或无系统剪贴板时退回粘贴未命名寄存器；插入模式为 `Ctrl-r +`/`*` |
 | `<leader>bD` | 清空全文；可视模式下删除选区，保留复制寄存器 |
 | `<leader>bw` | 删除行尾空白，保留视图和搜索记录，可撤销 |
 | `gcc`、`gc{motion}` | 注释／取消注释当前行、动作范围或可视选区，可带计数；空行保持不变 |
@@ -151,7 +155,7 @@ slogan 以整个 Vim 界面的中心为锚点，打开、关闭或调整文件�
 | 文件树内 `a` | 新建文件；名称以 `/` 结尾则新建目录；光标在目录上时建在该目录内 |
 | 文件树内 `r` / `d` | 重命名／删除光标所在文件或目录，删除前确认 |
 | 文件树内 `c` / `x` / `p` | 复制／剪切／粘贴，粘贴到光标所在目录或当前浏览目录 |
-| 文件树内 `y` / `Y` | 复制文件名／相对树根的路径 |
+| 文件树内 `y` / `Y` | 复制文件名／相对树根的路径；远端会话同时发送 OSC 52 |
 | 文件树内 `R` / `H` | 刷新列表／显示或隐藏点文件 |
 | `<leader>ff` | fd/fdfind 枚举文件，fzf 即时模糊筛选 |
 | `<leader>fp` | ripgrep 实时正则搜索，预览并跳转到匹配位置 |
@@ -360,15 +364,24 @@ Tree-sitter、浮动 shell 或项目替换界面；普通文本替换可用 Vim 
 
 ## SSH 剪贴板
 
-`<leader>bP` 和 `<leader>bC` 总会写入 Vim 未命名寄存器，可直接用 `p` 粘贴。
-检测到 `SSH_TTY` 或 `SSH_CONNECTION` 时，还会借助系统已有的 `base64`
-向当前终端发送 OSC 52。无 SSH 时，如果 Vim 支持系统剪贴板，则同步到 `+` 寄存器。
-普通 `y` 和删除操作不触发自定义远程复制。
+剪贴板逻辑集中在 `clipboard.vim`，对齐 Neovim 配置中 `clipboard=unnamedplus`
+加 OSC 52 提供者的行为。检测到 `SSH_TTY` 或 `SSH_CONNECTION` 时，未显式指定
+寄存器的 `y`、`d`、`c` 与 `<leader>bP`、`<leader>bC`、文件树 `y`/`Y` 一样，
+都会用系统已有的 `base64` 编码后向当前终端发送 OSC 52，把内容写入本地剪贴板。
+命名寄存器（如 `"ay`）和黑洞寄存器（`"_d`）保持 Vim 原生行为，
+`g:vimrc_lite_clipboard_yank = 0` 可让普通 yank/删除只留在 Vim 寄存器内，
+`g:vimrc_lite_osc52 = 0` 则完全关闭 OSC 52 传输。
+
+与 Neovim 自定义的 paste 处理器一致，粘贴不读取远程剪贴板：远端会话中
+`"+p`、`"+P`、`"*p`、`"*P` 与插入模式 `Ctrl-r +`/`*` 退回未命名寄存器，
+等价于 `p`。无 SSH 时，如果 Vim 支持系统剪贴板，则自动同步写入 `+` 寄存器，
+`"+p` 仍是本机剪贴板粘贴。
 
 OSC 52 要求本地终端允许应用写入剪贴板；tmux 内还需要 `set -g set-clipboard on`
 及相应终端剪贴板能力。本 Dotfiles 的 tmux 配置已有该选项。机器缺少 `base64`、
-没有可写终端或编码失败时，只保留内部复制并提示，不会安装依赖。
-终端可能拒绝 OSC 52 或限制长度；“已发送”不表示本地已接收，也不会读取远程剪贴板确认。
+没有可写终端或编码失败时，显式复制会提示，普通 yank 的同步失败对同一原因只提示
+一次，不会中断编辑，也不会安装依赖。终端可能拒绝 OSC 52 或限制长度；
+“已发送”不表示本地已接收，也不会读取远程剪贴板确认。
 实际效果请在 SSH/tmux 中复制中文、多行文本，再在本地应用粘贴验证。
 
 ## 验证
@@ -378,7 +391,8 @@ OSC 52 要求本地终端允许应用写入剪贴板；tmux 内还需要 `set -g
 python3 ~/Dotfiles/vim/tests/test_vim.py
 ```
 
-测试在临时目录执行，覆盖配置、主题、首页启动与交互、buffer、搜索、终端退出清理、复制及安装脚本。
+测试在临时目录执行，覆盖配置、主题、首页启动与交互、buffer、搜索、终端退出清理、
+剪贴板（含通过伪终端验证 OSC 52 到达终端）、复制及安装脚本。
 LazyGit 生命周期测试使用模拟程序，验证首页返回、未保存内容、后台退出和配置重载。
 LSP 测试用 Python 标准库实现的本地 stdio 协议服务，验证初始化、文件同步、定义跳转、
 引用、文档、手动补全、中文位置、配置重载、缺失依赖和插件安装升级，不访问网络。
@@ -390,3 +404,4 @@ PTY 测量单次 Esc 的退出延迟，并验证方向键和设置恢复。真�
 需要已安装 fzf，缺少时明确跳过。软件包安装使用模拟命令，不实际安装系统软件或联网。
 本机实测 Vim 9.1；Vim 8 采用传统 Vimscript 和特性检查，但未在独立 Vim 8 上实测。
 缺少 `+terminal` 的 Vim 不注册终端快捷键；没有 `+clipboard` 也可使用内部复制和 OSC 52。
+自动 yank 同步需要 Vim 8.0.1396+ 的 `TextYankPost` 事件，过旧的版本仅保留显式复制。
