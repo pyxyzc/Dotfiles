@@ -10,20 +10,32 @@ if exists('#vimrc_lite_search#User#VimrcLiteReload')
   doautocmd <nomodeline> vimrc_lite_search User VimrcLiteReload
 endif
 let s:vimrc_path = expand('<sfile>:p')
-let s:config_dir = fnamemodify(resolve(expand('<sfile>:p')), ':h')
+let s:config_dir = fnamemodify(resolve(s:vimrc_path), ':h')
+
+" 仓库内直接试用、符号链接安装、复制安装共用同一查找顺序。
+function! s:FindModule(name) abort
+  for candidate in [s:config_dir . '/' . a:name,
+        \ s:config_dir . '/.vim/' . a:name, expand('~/.vim/' . a:name)]
+    if filereadable(candidate)
+      return candidate
+    endif
+  endfor
+  return ''
+endfunction
+
+function! s:SourceModule(name) abort
+  let module = s:FindModule(a:name)
+  if empty(module) | return 0 | endif
+  execute 'source ' . fnameescape(module)
+  return 1
+endfunction
 
 " 隔离已有 pack 插件并关闭 plugin 脚本自动加载；注册本地主题目录。
 set noloadplugins
 let &runtimepath = escape($VIMRUNTIME, ',')
 set packpath=
-let s:theme = s:config_dir . '/colors/tokyonight-night.vim'
-if !filereadable(s:theme)
-  let s:theme = s:config_dir . '/.vim/colors/tokyonight-night.vim'
-endif
-if !filereadable(s:theme)
-  let s:theme = expand('~/.vim/colors/tokyonight-night.vim')
-endif
-if filereadable(s:theme)
+let s:theme = s:FindModule('colors/tokyonight-night.vim')
+if !empty(s:theme)
   let &runtimepath .= ',' . escape(fnamemodify(s:theme, ':h:h'), ',')
 endif
 filetype plugin indent on
@@ -51,7 +63,7 @@ if exists('+termguicolors')
 endif
 
 " 仓库内直接试用、符号链接安装、复制安装均可。
-if filereadable(s:theme)
+if !empty(s:theme)
   colorscheme tokyonight-night
 else
   echohl WarningMsg
@@ -75,46 +87,19 @@ function! s:Warn(message) abort
   echohl None
 endfunction
 
-" 剪贴板模块先于文件树加载，提供 OSC 52 复制与粘贴回退；同样支持三种安装方式。
-let s:clipboard = s:config_dir . '/clipboard.vim'
-if !filereadable(s:clipboard)
-  let s:clipboard = s:config_dir . '/.vim/clipboard.vim'
-endif
-if !filereadable(s:clipboard)
-  let s:clipboard = expand('~/.vim/clipboard.vim')
-endif
-if filereadable(s:clipboard)
-  execute 'source ' . fnameescape(s:clipboard)
-else
+" 剪贴板模块先于文件树加载，提供 OSC 52 复制与粘贴回退。
+if !s:SourceModule('clipboard.vim')
   command! VimCopyPath call <SID>Warn('missing clipboard.vim; copy the complete vim directory')
   command! VimCopyContent call <SID>Warn('missing clipboard.vim; copy the complete vim directory')
 endif
 
-" 文件树模块支持仓库试用、符号链接和复制安装。
-let s:tree = s:config_dir . '/tree.vim'
-if !filereadable(s:tree)
-  let s:tree = s:config_dir . '/.vim/tree.vim'
-endif
-if !filereadable(s:tree)
-  let s:tree = expand('~/.vim/tree.vim')
-endif
-if filereadable(s:tree)
-  execute 'source ' . fnameescape(s:tree)
-else
+" 文件树模块。
+if !s:SourceModule('tree.vim')
   call s:Warn('missing tree.vim; copy the complete vim directory')
 endif
 
 " LSP 模块与其固定版本客户端一起部署，显式加载以保留插件隔离。
-let s:lsp = s:config_dir . '/lsp.vim'
-if !filereadable(s:lsp)
-  let s:lsp = s:config_dir . '/.vim/lsp.vim'
-endif
-if !filereadable(s:lsp)
-  let s:lsp = expand('~/.vim/lsp.vim')
-endif
-if filereadable(s:lsp)
-  execute 'source ' . fnameescape(s:lsp)
-else
+if !s:SourceModule('lsp.vim')
   command! VimLspStatus call <SID>Warn('missing lsp.vim; copy the complete vim directory')
 endif
 
@@ -164,8 +149,9 @@ function! s:BufferLine() abort
   let buffers = s:ListedBuffers()
   if empty(buffers) | return '%#TabLineFill#' | endif
   let names = s:BufferNames(buffers)
-  let current = index(map(copy(buffers), 'v:val.bufnr'), bufnr('%'))
-  let focus = current >= 0 ? current : max([0, index(map(copy(buffers), 'v:val.bufnr'), bufnr('#'))])
+  let numbers = map(copy(buffers), 'v:val.bufnr')
+  let current = index(numbers, bufnr('%'))
+  let focus = current >= 0 ? current : max([0, index(numbers, bufnr('#'))])
   let tabs = tabpagenr('$') > 1 ? printf(' Tab %d/%d ', tabpagenr(), tabpagenr('$')) : ''
   " 极窄窗口优先保留当前 buffer 编号和状态。
   if &columns < 40 | let tabs = '' | endif
@@ -335,6 +321,11 @@ function! s:TrimWhitespace() abort
 endfunction
 
 " 注释切换以文件类型的 commentstring 为准，支持行注释和单行块注释。
+" 前缀去掉尾部空白、后缀去掉首部空白后，转义成可拼接的正则字面量。
+function! s:CommentToken(text, trim) abort
+  return escape(substitute(a:text, a:trim, '', ''), '\.*$^~[]')
+endfunction
+
 function! s:CommentStyle() abort
   let comment = &l:commentstring
   if empty(&l:filetype) || comment !~# '%s'
@@ -350,7 +341,7 @@ endfunction
 
 " 前缀末尾空格按一个可选空格匹配，避免把 #include 误判为注释。
 function! s:CommentStart(prefix) abort
-  let pattern = escape(substitute(a:prefix, '\s\+$', '', ''), '\.*$^~[]')
+  let pattern = s:CommentToken(a:prefix, '\s\+$')
   if a:prefix =~# '\s$'
     return pattern . '\%(\s\|$\)\@='
   endif
@@ -362,7 +353,7 @@ function! s:IsCommented(line, prefix, suffix) abort
   if empty(body) | return 0 | endif
   if body !~# '^' . s:CommentStart(a:prefix) | return 0 | endif
   if !empty(a:suffix)
-    let tail = escape(substitute(a:suffix, '^\s\+', '', ''), '\.*$^~[]')
+    let tail = s:CommentToken(a:suffix, '^\s\+')
     if body !~# tail . '\s*$' | return 0 | endif
   endif
   return 1
@@ -383,12 +374,12 @@ endfunction
 function! s:UncommentLine(line, prefix, suffix) abort
   let indent = matchstr(a:line, '^\s*')
   let body = strpart(a:line, len(indent))
-  let bare = escape(substitute(a:prefix, '\s\+$', '', ''), '\.*$^~[]')
+  let bare = s:CommentToken(a:prefix, '\s\+$')
   if body =~# '^' . s:CommentStart(a:prefix)
     let body = substitute(body, '^' . bare . '\s\?', '', '')
   endif
   if !empty(a:suffix)
-    let tail = escape(substitute(a:suffix, '^\s\+', '', ''), '\.*$^~[]')
+    let tail = s:CommentToken(a:suffix, '^\s\+')
     let body = substitute(body, '\s\?' . tail . '\s*$', '', '')
   endif
   return indent . body
@@ -435,60 +426,24 @@ function! s:ToggleList(location) abort
   execute a:location ? (info.winid ? 'lclose' : 'lopen') : (info.winid ? 'cclose' : 'copen')
 endfunction
 
-" 搜索模块与首页都支持仓库试用、符号链接和复制安装。
-let s:search = s:config_dir . '/search.vim'
-if !filereadable(s:search)
-  let s:search = s:config_dir . '/.vim/search.vim'
-endif
-if !filereadable(s:search)
-  let s:search = expand('~/.vim/search.vim')
-endif
-if filereadable(s:search)
-  execute 'source ' . fnameescape(s:search)
-else
+" 搜索模块与首页。
+if !s:SourceModule('search.vim')
   command! VimFind call <SID>Warn('missing search.vim; copy the complete vim directory')
   command! VimSearch call <SID>Warn('missing search.vim; copy the complete vim directory')
 endif
 
-" 终端模块先于 Git 加载；支持仓库试用、符号链接和复制安装。
-let s:terminal = s:config_dir . '/terminal.vim'
-if !filereadable(s:terminal)
-  let s:terminal = s:config_dir . '/.vim/terminal.vim'
-endif
-if !filereadable(s:terminal)
-  let s:terminal = expand('~/.vim/terminal.vim')
-endif
-if filereadable(s:terminal)
-  execute 'source ' . fnameescape(s:terminal)
-else
+" 终端模块先于 Git 加载。
+if !s:SourceModule('terminal.vim')
   command! -nargs=* VimTerminal call <SID>Warn('missing terminal.vim; copy the complete vim directory')
 endif
 
-let s:git = s:config_dir . '/git.vim'
-if !filereadable(s:git)
-  let s:git = s:config_dir . '/.vim/git.vim'
-endif
-if !filereadable(s:git)
-  let s:git = expand('~/.vim/git.vim')
-endif
-if filereadable(s:git)
-  execute 'source ' . fnameescape(s:git)
-else
+if !s:SourceModule('git.vim')
   command! VimGit call <SID>Warn('missing git.vim; copy the complete vim directory')
 endif
 
 " 配置编辑入口与独立首页。
 command! VimConfig execute 'edit ' . fnameescape(s:vimrc_path)
-let s:dashboard = s:config_dir . '/dashboard.vim'
-if !filereadable(s:dashboard)
-  let s:dashboard = s:config_dir . '/.vim/dashboard.vim'
-endif
-if !filereadable(s:dashboard)
-  let s:dashboard = expand('~/.vim/dashboard.vim')
-endif
-if filereadable(s:dashboard)
-  execute 'source ' . fnameescape(s:dashboard)
-else
+if !s:SourceModule('dashboard.vim')
   call s:Warn('missing dashboard.vim; copy the complete vim directory')
 endif
 

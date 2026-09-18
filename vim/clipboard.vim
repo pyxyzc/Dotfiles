@@ -30,13 +30,18 @@ function! s:Osc52(text) abort
   return "\e]52;c;" . substitute(encoded, '[\r\n]', '', 'g') . "\x07"
 endfunction
 
+" 把编码后的 OSC 52 序列写入终端；失败时抛出，由调用方决定如何提示。
+function! s:SendOsc52(text) abort
+  call writefile([s:Osc52(a:text)], '/dev/tty', 'b')
+endfunction
+
 " 静默同步剪贴板：远端发送 OSC 52，本地尽力写入 + 寄存器。
 " 供 yank 钩子与文件树复用；同一失败原因只提示一次，不中断编辑。
 let s:notified = ''
 function! s:Sync(text, regtype) abort
   try
     if s:Osc52Enabled()
-      call writefile([s:Osc52(a:text)], '/dev/tty', 'b')
+      call s:SendOsc52(a:text)
     elseif has('clipboard')
       call setreg('+', a:text, a:regtype)
     endif
@@ -53,7 +58,7 @@ function! s:Copy(text, regtype) abort
   call setreg('"', a:text, a:regtype)
   if s:Osc52Enabled()
     try
-      call writefile([s:Osc52(a:text)], '/dev/tty', 'b')
+      call s:SendOsc52(a:text)
       echom 'Copied to Vim; OSC 52 sent (requires terminal clipboard support)'
     catch
       call s:Warn('OSC 52 unavailable; copied to Vim only. ' . v:exception)
@@ -114,14 +119,12 @@ endif
 " 远端会话或无系统剪贴板时，+/* 寄存器粘贴退回未命名寄存器，
 " 与 Neovim 自定义 OSC 52 paste 处理器一致：不读取远程剪贴板。
 if s:Osc52Enabled() || !has('clipboard')
-  nnoremap <silent> "+p ""p
-  nnoremap <silent> "+P ""P
-  nnoremap <silent> "*p ""p
-  nnoremap <silent> "*P ""P
-  xnoremap <silent> "+p ""p
-  xnoremap <silent> "+P ""P
-  xnoremap <silent> "*p ""p
-  xnoremap <silent> "*P ""P
-  inoremap <silent> <C-r>+ <C-r>"
-  inoremap <silent> <C-r>* <C-r>"
+  for s:register in ['+', '*']
+    for s:key in ['p', 'P']
+      execute 'nnoremap <silent> "' . s:register . s:key . ' ""' . s:key
+      execute 'xnoremap <silent> "' . s:register . s:key . ' ""' . s:key
+    endfor
+    execute 'inoremap <silent> <C-r>' . s:register . ' <C-r>"'
+  endfor
+  unlet! s:register s:key
 endif

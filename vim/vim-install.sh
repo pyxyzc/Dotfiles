@@ -4,8 +4,31 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 install_target="${HOME}"
 config_only=0
-staged_file=''
-staged_directory=''
+staged=''
+
+# 必需文件只在此处登记；预检、占用检查与安装共用同一清单。
+config_files=(
+    dashboard.vim
+    lsp.vim
+    clipboard.vim
+    tree.vim
+    terminal.vim
+    git.vim
+    search.vim
+    search.sh
+)
+color_files=(
+    colors/tokyonight-night.vim
+    colors/LICENSE.tokyonight
+    colors/README.md
+)
+plugin_files=(
+    vendor/vim-lsp/plugin/lsp.vim
+    vendor/vim-lsp/autoload/lsp.vim
+    vendor/vim-lsp/LICENSE
+    vendor/vim-lsp/LICENSE-THIRD-PARTY
+    vendor/vim-lsp/SOURCE.md
+)
 
 usage() {
     cat <<'EOF'
@@ -38,20 +61,9 @@ while (( $# )); do
     esac
 done
 
-[[ -f "$script_dir/.vimrc" && -f "$script_dir/colors/tokyonight-night.vim" ]] \
-    || die '缺少 .vimrc 或 colors/tokyonight-night.vim，请复制完整的 vim 目录'
-[[ -f "$script_dir/dashboard.vim" ]] || die '缺少 dashboard.vim，请复制完整的 vim 目录'
-[[ -f "$script_dir/clipboard.vim" ]] || die '缺少 clipboard.vim，请复制完整的 vim 目录'
-[[ -f "$script_dir/tree.vim" ]] || die '缺少 tree.vim，请复制完整的 vim 目录'
-[[ -f "$script_dir/terminal.vim" && -f "$script_dir/git.vim" ]] \
-    || die '缺少 terminal.vim 或 git.vim，请复制完整的 vim 目录'
-[[ -f "$script_dir/search.vim" && -f "$script_dir/search.sh" ]] \
-    || die '缺少 search.vim 或 search.sh，请复制完整的 vim 目录'
-[[ -f "$script_dir/colors/LICENSE.tokyonight" && -f "$script_dir/colors/README.md" ]] \
-    || die '缺少主题来源或许可证文件，请复制完整的 vim 目录'
-[[ -f "$script_dir/lsp.vim" ]] || die '缺少 lsp.vim，请复制完整的 vim 目录'
-for required in plugin/lsp.vim autoload/lsp.vim LICENSE LICENSE-THIRD-PARTY SOURCE.md; do
-    [[ -f "$script_dir/vendor/vim-lsp/$required" ]] || die "缺少 vendor/vim-lsp/$required，请复制完整的 vim 目录"
+[[ -f "$script_dir/.vimrc" ]] || die '缺少 .vimrc，请复制完整的 vim 目录'
+for required in "${config_files[@]}" "${color_files[@]}" "${plugin_files[@]}"; do
+    [[ -f "$script_dir/$required" ]] || die "缺少 $required，请复制完整的 vim 目录"
 done
 [[ ! -e "$install_target" || -d "$install_target" ]] || die "不是目录：$install_target"
 
@@ -109,82 +121,58 @@ fi
 
 mkdir -p -- "$install_target/.vim/colors" "$install_target/.vim/vendor"
 install_target="$(cd -- "$install_target" && pwd)"
-for destination in "$install_target/.vimrc" "$install_target/.vim/dashboard.vim" "$install_target/.vim/lsp.vim" \
-    "$install_target/.vim/clipboard.vim" "$install_target/.vim/terminal.vim" "$install_target/.vim/git.vim" \
-    "$install_target/.vim/tree.vim" "$install_target/.vim/search.vim" "$install_target/.vim/search.sh" \
-    "$install_target/.vim/colors/tokyonight-night.vim" \
-    "$install_target/.vim/colors/LICENSE.tokyonight" "$install_target/.vim/colors/README.md"; do
+for destination in "$install_target/.vimrc" \
+    "${config_files[@]/#/$install_target/.vim/}" "${color_files[@]/#/$install_target/.vim/}"; do
     [[ ! -d "$destination" ]] || die "目标文件被目录占用：$destination"
 done
 
 cleanup() {
-    if [[ -n "$staged_file" && -f "$staged_file" ]]; then
-        rm -f -- "$staged_file"
-    fi
-    if [[ -n "$staged_directory" && -d "$staged_directory" ]]; then
-        rm -rf -- "$staged_directory"
-    fi
+    [[ -z "$staged" ]] || rm -rf -- "$staged"
 }
 trap cleanup EXIT
 
-install_file() {
+# 安装单个文件或目录：内容一致时跳过；否则暂存、备份旧版、原子替换，失败时回滚。
+install_entry() {
     local source="$1" destination="$2" backup=''
-    if [[ -f "$destination" && ! -L "$destination" ]] && cmp -s -- "$source" "$destination"; then
-        printf '已是最新：%s\n' "$destination"
-        return
+    if [[ -d "$source" ]]; then
+        if [[ -d "$destination" && ! -L "$destination" ]] \
+            && [[ -z "$(find "$destination" -type l -print -quit)" ]] \
+            && diff -qr -- "$source" "$destination" >/dev/null 2>&1; then
+            printf '已是最新：%s\n' "$destination"
+            return
+        fi
+        staged="$(mktemp -d "${destination}.tmp.XXXXXX")"
+        cp -R -- "$source/." "$staged/"
+        chmod 755 "$staged"
+    else
+        if [[ -f "$destination" && ! -L "$destination" ]] && cmp -s -- "$source" "$destination"; then
+            printf '已是最新：%s\n' "$destination"
+            return
+        fi
+        staged="$(mktemp "${destination}.tmp.XXXXXX")"
+        cp -- "$source" "$staged"
+        chmod 644 "$staged"
     fi
-    staged_file="$(mktemp "${destination}.tmp.XXXXXX")"
-    cp -- "$source" "$staged_file"
-    chmod 644 "$staged_file"
     if [[ -e "$destination" || -L "$destination" ]]; then
         backup="${destination}.bak.$(date +%Y%m%d-%H%M%S).$$"
         mv -- "$destination" "$backup"
         printf '已备份：%s\n' "$backup"
     fi
-    if ! mv -- "$staged_file" "$destination"; then
-        if [[ -n "$backup" ]]; then mv -- "$backup" "$destination"; fi
+    if ! mv -- "$staged" "$destination"; then
+        [[ -z "$backup" ]] || mv -- "$backup" "$destination"
         die "无法安装：$destination"
     fi
-    staged_file=''
+    staged=''
     printf '已安装：%s\n' "$destination"
 }
 
-install_plugin() {
-    local source="$script_dir/vendor/vim-lsp" destination="$install_target/.vim/vendor/vim-lsp" backup=''
-    if [[ -d "$destination" && ! -L "$destination" ]] \
-        && [[ -z "$(find "$destination" -type l -print -quit)" ]] \
-        && diff -qr -- "$source" "$destination" >/dev/null 2>&1; then
-        printf '已是最新：%s\n' "$destination"
-        return
-    fi
-    staged_directory="$(mktemp -d "${destination}.tmp.XXXXXX")"
-    cp -R -- "$source/." "$staged_directory/"
-    chmod 755 "$staged_directory"
-    if [[ -e "$destination" || -L "$destination" ]]; then
-        backup="${destination}.bak.$(date +%Y%m%d-%H%M%S).$$"
-        mv -- "$destination" "$backup"
-        printf '已备份：%s\n' "$backup"
-    fi
-    if ! mv -- "$staged_directory" "$destination"; then
-        if [[ -n "$backup" ]]; then mv -- "$backup" "$destination"; fi
-        die "无法安装：$destination"
-    fi
-    staged_directory=''
-    printf '已安装：%s\n' "$destination"
-}
-
-install_plugin
-install_file "$script_dir/.vimrc" "$install_target/.vimrc"
-install_file "$script_dir/lsp.vim" "$install_target/.vim/lsp.vim"
-install_file "$script_dir/dashboard.vim" "$install_target/.vim/dashboard.vim"
-install_file "$script_dir/clipboard.vim" "$install_target/.vim/clipboard.vim"
-install_file "$script_dir/tree.vim" "$install_target/.vim/tree.vim"
-install_file "$script_dir/terminal.vim" "$install_target/.vim/terminal.vim"
-install_file "$script_dir/git.vim" "$install_target/.vim/git.vim"
-install_file "$script_dir/search.vim" "$install_target/.vim/search.vim"
-install_file "$script_dir/search.sh" "$install_target/.vim/search.sh"
+install_entry "$script_dir/vendor/vim-lsp" "$install_target/.vim/vendor/vim-lsp"
+install_entry "$script_dir/.vimrc" "$install_target/.vimrc"
+for name in "${config_files[@]}"; do
+    install_entry "$script_dir/$name" "$install_target/.vim/$name"
+done
 for source in "$script_dir"/colors/*; do
     [[ -f "$source" ]] || continue
-    install_file "$source" "$install_target/.vim/colors/$(basename -- "$source")"
+    install_entry "$source" "$install_target/.vim/colors/$(basename -- "$source")"
 done
 printf '\n完成。运行 vim 即可；目标目录：%s\n' "$install_target"

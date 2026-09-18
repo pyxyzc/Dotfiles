@@ -22,18 +22,14 @@ function! s:Warn(message) abort
 endfunction
 
 " 树形列表每层以 "| " 或 "│ " 缩进；统计深度，并去掉缩进、提示文本和尾部标记。
+let s:indent = '^\%(\%(|\|│\) \)*'
+
 function! s:Depth(line) abort
-  let depth = 0
-  let rest = a:line
-  while rest =~# '^\(|\|│\) '
-    let rest = substitute(rest, '^\(|\|│\) ', '', '')
-    let depth += 1
-  endwhile
-  return depth
+  return strchars(matchstr(a:line, s:indent)) / 2
 endfunction
 
 function! s:Name(line) abort
-  let name = substitute(a:line, '^\(\(|\|│\) \)*', '', '')
+  let name = substitute(a:line, s:indent, '', '')
   let name = substitute(name, '\t -->.*$', '', '')
   return substitute(name, '[@*]$', '', '')
 endfunction
@@ -126,24 +122,21 @@ function! s:Create(islocal) abort
   if name ==# ''
     return ''
   endif
+  " 名称以 / 结尾则建目录；目标已存在时拒绝，缺失的父目录一并创建。
+  let directory = name =~# '/$'
   let target = s:Join(s:BaseDir(), name)
-  if name =~# '/$'
+  if directory
     let target = substitute(target, '/\+$', '', '')
-    if isdirectory(target) || filereadable(target)
-      call s:Warn('already exists: ' . target)
-      return ''
-    endif
-    call mkdir(target, 'p')
-    return 'refresh'
   endif
-  if filereadable(target) || isdirectory(target)
+  if isdirectory(target) || filereadable(target)
     call s:Warn('already exists: ' . target)
     return ''
   endif
-  let parent = fnamemodify(target, ':h')
-  if !isdirectory(parent)
-    call mkdir(parent, 'p')
+  if directory
+    call mkdir(target, 'p')
+    return 'refresh'
   endif
+  call mkdir(fnamemodify(target, ':h'), 'p')
   call writefile([], target)
   return ['refresh', 'call ' . s:sid . 'Open(' . string(target) . ')']
 endfunction

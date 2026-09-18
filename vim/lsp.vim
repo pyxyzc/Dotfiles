@@ -19,7 +19,7 @@ let s:servers = {
 
 function! s:Status() abort
   echom 'Vim LSP: ' . (s:ready ? 'enabled' : s:reason)
-  for name in ['pyright', 'clangd']
+  for name in sort(keys(s:servers))
     let server = s:servers[name]
     let status = !empty(server.reason) ? server.reason
           \ : (s:ready ? lsp#get_server_status(name) : 'not loaded')
@@ -108,7 +108,7 @@ function! s:OnBufferEnabled() abort
   nmap <silent><buffer> K <plug>(lsp-hover)
 endfunction
 
-for s:name in ['pyright', 'clangd']
+for s:name in sort(keys(s:servers))
   let s:server = s:servers[s:name]
   if type(s:server.cmd) != type([]) || empty(s:server.cmd)
         \ || !empty(filter(copy(s:server.cmd), 'type(v:val) != type("")'))
