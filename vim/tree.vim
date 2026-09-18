@@ -93,6 +93,21 @@ function! s:BaseDir() abort
   return get(b:, 'netrw_curdir', '')
 endfunction
 
+" input() 收到 Esc 时会等待 ttimeoutlen（默认跟随 timeoutlen）来判断终端按键序列，
+" 取消输入因此显得很慢；提示期间临时缩短，退出后立即返回并恢复原值。
+function! s:Input(prompt, ...) abort
+  let keep_ttimeout = &ttimeout
+  let keep_ttimeoutlen = &ttimeoutlen
+  try
+    set ttimeout
+    let &ttimeoutlen = 30
+    return call('input', [a:prompt, a:0 ? a:1 : ''])
+  finally
+    let &ttimeout = keep_ttimeout
+    let &ttimeoutlen = keep_ttimeoutlen
+  endtry
+endfunction
+
 " 在 netrw 之外打开文件，优先使用 Lexplore 指定的编辑窗口。
 function! s:Open(path) abort
   if !filereadable(a:path) && !isdirectory(a:path)
@@ -107,7 +122,7 @@ endfunction
 
 function! s:Create(islocal) abort
   if !a:islocal | return '' | endif
-  let name = input('New file or directory: ')
+  let name = s:Input('New file or directory: ')
   if name ==# ''
     return ''
   endif
@@ -140,7 +155,7 @@ function! s:Rename(islocal) abort
     return ''
   endif
   let oldname = substitute(entry.name, '/$', '', '')
-  let newname = substitute(input('Rename to: ', oldname), '/\+$', '', '')
+  let newname = substitute(s:Input('Rename to: ', oldname), '/\+$', '', '')
   if newname ==# '' || newname ==# oldname
     return ''
   endif
@@ -163,7 +178,7 @@ function! s:Delete(islocal) abort
   if entry.path ==# ''
     return ''
   endif
-  if input('Delete "' . fnamemodify(entry.path, ':t') . '" ? (y/N) ') !~? '^y'
+  if s:Input('Delete "' . fnamemodify(entry.path, ':t') . '" ? (y/N) ') !~? '^y'
     return ''
   endif
   try

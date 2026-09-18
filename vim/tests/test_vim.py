@@ -848,6 +848,18 @@ call assert_equal('text', &filetype)
         self.assertFalse((self.work / 'newdir').exists())
         self.assertTrue((self.work / 'opened.txt').exists())
 
+    def test_file_tree_prompt_cancel(self):
+        self.vim(r'''
+call feedkeys(' e', 'xt')
+let timeoutlen = &ttimeoutlen
+let ttimeout = &ttimeout
+call cursor(1, 1)
+call feedkeys("acancel.txt\<Esc>", 'xt')
+call assert_equal(timeoutlen, &ttimeoutlen)
+call assert_equal(ttimeout, &ttimeout)
+call assert_false(filereadable('cancel.txt'))
+''')
+
     def test_file_tree_yank_and_hidden(self):
         (self.work / 'sub').mkdir()
         (self.work / 'sub' / 'nested.txt').write_text('nested\n')
