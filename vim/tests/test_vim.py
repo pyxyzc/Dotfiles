@@ -595,6 +595,63 @@ call assert_equal('aXYb', getline(1))
 call assert_equal(['aXb'], readfile('save.py'))
 ''')
 
+    def test_comment_toggle_linewise_and_block(self):
+        (self.work / "sample.py").write_text("alpha\n    beta\n\ngamma\n")
+        (self.work / "sample.c").write_text("int x;\n")
+        self.vim(r'''
+edit sample.py
+call assert_equal(['# ', ''], Call('CommentStyle', []))
+%delete _
+call setline(1, ['alpha', '    beta', '', 'gamma'])
+call Call('ToggleComments', [1, 4])
+call assert_equal(['# alpha', '    # beta', '', '# gamma'], getline(1, '$'))
+call Call('ToggleComments', [1, 4])
+call assert_equal(['alpha', '    beta', '', 'gamma'], getline(1, '$'))
+%delete _
+call setline(1, ['# alpha', '    beta'])
+call Call('ToggleComments', [1, 2])
+call assert_equal(['# # alpha', '    # beta'], getline(1, '$'))
+%delete _
+call setline(1, '    # beta')
+call Call('ToggleComments', [1, 1])
+call assert_equal(['    beta'], getline(1, '$'))
+%delete _
+call setline(1, '')
+call Call('ToggleComments', [1, 1])
+call assert_equal([''], getline(1, '$'))
+edit! sample.c
+setlocal commentstring=/*%s*/
+%delete _
+call setline(1, 'int x;')
+call Call('ToggleComments', [1, 1])
+call assert_equal('/* int x; */', getline(1))
+call Call('ToggleComments', [1, 1])
+call assert_equal('int x;', getline(1))
+call assert_true(!empty(maparg('gc', 'x')))
+call assert_true(!empty(maparg('gcc', 'n')))
+edit! sample.py
+%delete _
+call setline(1, ['a', 'b', 'c'])
+call feedkeys("ggVjgc", 'xt')
+call assert_equal(['# a', '# b', 'c'], getline(1, '$'))
+call feedkeys("ggVjgc", 'xt')
+call assert_equal(['a', 'b', 'c'], getline(1, '$'))
+%delete _
+call setline(1, ['a', 'b'])
+call feedkeys('gcc', 'xt')
+call assert_equal(['# a', 'b'], getline(1, '$'))
+%delete _
+call setline(1, ['a', 'b', 'c'])
+call feedkeys('gggcj', 'xt')
+call assert_equal(['# a', '# b', 'c'], getline(1, '$'))
+call feedkeys('u', 'xt')
+call assert_equal(['a', 'b', 'c'], getline(1, '$'))
+%delete _
+call setline(1, ['a', 'b', 'c'])
+call feedkeys('gg2gcc', 'xt')
+call assert_equal(['# a', '# b', 'c'], getline(1, '$'))
+''')
+
     def test_copy_and_osc52_fallbacks(self):
         text = "中文\nquotes '\" and $() \\ / |\n"
         payload = base64.b64encode(text.encode()).decode()
@@ -650,6 +707,68 @@ call assert_equal(2, winnr('$'))
 call assert_equal('netrw', &filetype)
 call feedkeys(' e', 'xt')
 call assert_equal(1, winnr('$'))
+''')
+
+    def test_file_tree_operations(self):
+        (self.work / 'keep.txt').write_text('keep\n')
+        (self.work / 'cut.txt').write_text('cut\n')
+        (self.work / 'sub').mkdir()
+        (self.work / 'sub' / 'nested.txt').write_text('nested\n')
+        self.vim(r'''
+call feedkeys(' e', 'xt')
+call assert_equal('netrw', &filetype)
+for key in ['a', 'r', 'd', 'c', 'x', 'p', 'y', 'Y', 'R', 'H']
+  let m = maparg(key, 'n', 0, 1)
+  call assert_equal(1, get(m, 'buffer', 0), key)
+  call assert_match('UserMaps', get(m, 'rhs', ''), key)
+endfor
+" 展开子目录后重命名嵌套文件，验证树形路径的还原。
+call search('sub/', 'w')
+call feedkeys("\<CR>", 'xt')
+call search('nested.txt', 'w')
+call feedkeys("r\<C-u>deep.txt\<CR>", 'xt')
+" 回到树根，新建目录，再把 keep.txt 复制、cut.txt 剪切进去。
+call feedkeys("\<C-l>", 'xt')
+call cursor(1, 1)
+call feedkeys("anewdir/\<CR>", 'xt')
+call search('keep.txt', 'w')
+call feedkeys('c', 'xt')
+call search('newdir/', 'w')
+call feedkeys('p', 'xt')
+call search('cut.txt', 'w')
+call feedkeys('x', 'xt')
+call search('newdir/', 'w')
+call feedkeys('p', 'xt')
+" 删除目录，然后新建文件并确认在编辑窗口打开。
+call search('newdir/', 'w')
+call feedkeys("dy\<CR>", 'xt')
+call cursor(1, 1)
+call feedkeys("aopened.txt\<CR>", 'xt')
+call assert_match('opened\.txt$', bufname('%'))
+call assert_equal('text', &filetype)
+''')
+        self.assertFalse((self.work / 'sub' / 'nested.txt').exists())
+        self.assertEqual('nested\n', (self.work / 'sub' / 'deep.txt').read_text())
+        self.assertTrue((self.work / 'keep.txt').exists())
+        self.assertFalse((self.work / 'cut.txt').exists())
+        self.assertFalse((self.work / 'newdir').exists())
+        self.assertTrue((self.work / 'opened.txt').exists())
+
+    def test_file_tree_yank_and_hidden(self):
+        (self.work / 'sub').mkdir()
+        (self.work / 'sub' / 'nested.txt').write_text('nested\n')
+        self.vim(r'''
+call feedkeys(' e', 'xt')
+call search('sub/', 'w')
+call feedkeys("\<CR>", 'xt')
+call search('nested.txt', 'w')
+call feedkeys('y', 'xt')
+call assert_equal('nested.txt', @")
+call feedkeys('Y', 'xt')
+call assert_equal('sub/nested.txt', @")
+let hidden = g:netrw_list_hide
+call feedkeys('H', 'xt')
+call assert_notequal(hidden, g:netrw_list_hide)
 ''')
 
     def test_terminal_opens_one_window_in_new_tab(self):
