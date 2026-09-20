@@ -112,15 +112,17 @@ function! s:Dashboard() abort
   call s:DashboardEnter()
 endfunction
 
-function! s:DashboardStartup() abort
-  if !get(g:, 'vimrc_lite_dashboard', 1) || s:dashboard_stdin
-        \ || !(has('gui_running') || (has('ttyin') && has('ttyout')))
-        \ || argc() || !empty(v:this_session) || tabpagenr('$') != 1 || winnr('$') != 1
-        \ || len(getbufinfo({'buflisted': 1})) != 1 || &modified || &buftype !=# ''
-        \ || !empty(bufname('%')) || line('$') != 1 || getline(1) !=# ''
-    return
-  endif
-  " --cmd 可设置首页开关；-c、+cmd、-S 和 Ex/脚本启动交还调用者。
+" 仅在干净的交互式空启动进入首页：无参数文件、会话、多余 buffer 或修改。
+function! s:StartupClean() abort
+  return get(g:, 'vimrc_lite_dashboard', 1) && !s:dashboard_stdin
+        \ && (has('gui_running') || (has('ttyin') && has('ttyout')))
+        \ && !argc() && empty(v:this_session) && tabpagenr('$') == 1 && winnr('$') == 1
+        \ && len(getbufinfo({'buflisted': 1})) == 1 && !&modified && &buftype ==# ''
+        \ && empty(bufname('%')) && line('$') == 1 && getline(1) ==# ''
+endfunction
+
+" --cmd 可设置首页开关；-c、+cmd、-S 和 Ex/脚本启动交还调用者。
+function! s:HasStartupCommands() abort
   let skip = 0
   for arg in v:argv[1:]
     if skip
@@ -128,9 +130,14 @@ function! s:DashboardStartup() abort
     elseif index(['--cmd', '-u', '-U', '-i', '-T', '-w', '-W'], arg) >= 0
       let skip = 1
     elseif arg =~# '^+' || arg =~# '^-[cS]' || arg =~# '^-[a-zA-Z]*[eEs][a-zA-Z]*$'
-      return
+      return 1
     endif
   endfor
+  return 0
+endfunction
+
+function! s:DashboardStartup() abort
+  if !s:StartupClean() || s:HasStartupCommands() | return | endif
   call s:Dashboard()
 endfunction
 

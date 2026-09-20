@@ -5,7 +5,9 @@
 没有插件管理器或自动下载；语言服务器 Pyright、clangd 及其运行环境由用户自行安装。
 主题默认透明背景，不需要特殊字体。
 
-`.vimrc` 保留基础设置、通用功能和快捷键；`dashboard.vim` 管理首页，
+`.vimrc` 保留基础设置、通用功能和快捷键；`buffers.vim` 管理顶部 buffer 栏、
+buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等编辑辅助；
+`dashboard.vim` 管理首页，
 `clipboard.vim` 管理 OSC 52 远程剪贴板与复制粘贴回退，
 `tree.vim` 集中管理 netrw 侧边文件树的加载、选项和快捷键；
 `search.vim` 和 `search.sh` 连接 Vim 内置终端与 fd/ripgrep/fzf，均由配置显式加载。
@@ -31,6 +33,8 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 ~/.vim/dashboard.vim
 ~/.vim/clipboard.vim
 ~/.vim/tree.vim
+~/.vim/buffers.vim
+~/.vim/edit.vim
 ~/.vim/git.vim
 ~/.vim/terminal.vim
 ~/.vim/search.vim

@@ -194,6 +194,8 @@ call assert_equal('vimdashboard', &filetype)
 call assert_match('dashboard.vim', execute('scriptnames'))
 call assert_match('tree.vim', execute('scriptnames'))
 call assert_match('clipboard.vim', execute('scriptnames'))
+call assert_match('buffers.vim', execute('scriptnames'))
+call assert_match('edit.vim', execute('scriptnames'))
 call assert_notequal('', get(g:, 'vimrc_lite_clipboard_sync', ''), 'clipboard module loaded')
 VimConfig
 call assert_equal(''' + quoted(config) + r''', expand('%:p'))
@@ -571,6 +573,7 @@ call assert_match('BufferLine()', &tabline)
 
     def test_content_edits_preserve_registers_and_undo(self):
         self.vim(r'''
+let s:prefix = matchstr(maparg('gc', 'n'), '<SNR>\d\+_')
 edit edits.py
 call setline(1, ['alpha  ', '    beta' . "\t", ''])
 let &undolevels = &undolevels
@@ -611,6 +614,7 @@ call assert_equal(['aXb'], readfile('save.py'))
         (self.work / "sample.py").write_text("alpha\n    beta\n\ngamma\n")
         (self.work / "sample.c").write_text("int x;\n")
         self.vim(r'''
+let s:prefix = matchstr(maparg('gc', 'n'), '<SNR>\d\+_')
 edit sample.py
 call assert_equal(['# ', ''], Call('CommentStyle', []))
 %delete _
@@ -782,6 +786,7 @@ call assert_equal('alphadelta', getline(1))
 
     def test_quickfix_and_location_lists(self):
         self.vim(r'''
+let s:prefix = matchstr(maparg("\<leader>xQ", 'n'), '<SNR>\d\+_')
 call setqflist([{'filename': 'notes.txt', 'lnum': 1, 'text': 'quickfix'}])
 call Call('ToggleList', [0])
 call assert_true(getqflist({'winid': 0}).winid > 0)
@@ -1375,7 +1380,7 @@ call assert_equal([], popup_list())
     def split_config(self):
         config = self.work / 'fallback config'
         config.mkdir()
-        for name in ('.vimrc', 'search.sh', 'dashboard.vim', 'tree.vim'):
+        for name in ('.vimrc', 'search.sh', 'dashboard.vim', 'tree.vim', 'buffers.vim', 'edit.vim'):
             shutil.copyfile(ROOT / name, config / name)
         # Simulate a Vim without popup windows while exercising the actual split implementation.
         (config / 'search.vim').write_text((ROOT / 'search.vim').read_text().replace(
@@ -1672,7 +1677,7 @@ class InstallerTests(unittest.TestCase):
         colors.mkdir(parents=True)
         dashboard = self.target / '.vim' / 'dashboard.vim'
         dashboard.write_text('" old dashboard\n')
-        modules = [self.target / '.vim' / name for name in ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim')]
+        modules = [self.target / '.vim' / name for name in ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim')]
         for module in modules:
             module.write_text('" old module\n')
         (colors / "unrelated.vim").write_text('" leave alone\n')
@@ -1684,7 +1689,7 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
-        for name in ('search.vim', 'search.sh', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim'):
+        for name in ('search.vim', 'search.sh', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         dashboard_backups = list(dashboard.parent.glob('dashboard.vim.bak.*'))
         self.assertEqual(len(dashboard_backups), 1)

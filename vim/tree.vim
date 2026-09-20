@@ -66,12 +66,12 @@ function! s:Entry() abort
     let root = curdir
   endif
   let parts = []
-  let want = depth - 1
+  let parent = depth - 1
   let lnum = line('.') - 1
-  while lnum >= 1 && want >= 1
-    if s:Depth(getline(lnum)) == want
+  while lnum >= 1 && parent >= 1
+    if s:Depth(getline(lnum)) == parent
       call insert(parts, substitute(s:Name(getline(lnum)), '/$', '', ''))
-      let want -= 1
+      let parent -= 1
     endif
     let lnum -= 1
   endwhile

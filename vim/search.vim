@@ -66,6 +66,17 @@ function! s:Colors() abort
         \ . ',fg:153,bg+:236,fg+:153,hl:111,hl+:117,border:60,prompt:111,pointer:141,info:149,header:146'
 endfunction
 
+" 依赖检查：返回缺失工具列表；bash 与 fzf 为两种模式共用的底线。
+function! s:MissingTools(mode) abort
+  let missing = filter(['bash', 'fzf'], '!executable(v:val)')
+  if a:mode ==# 'files' && !executable('fd') && !executable('fdfind')
+    call add(missing, 'fd/fdfind')
+  elseif a:mode ==# 'grep' && !executable('rg')
+    call add(missing, 'rg (ripgrep)')
+  endif
+  return missing
+endfunction
+
 " done 标志也让退出回调在取消、重载或下一次搜索后安全失效。
 function! s:Cleanup(state) abort
   if empty(a:state) || get(a:state, 'done', 0) | return | endif
@@ -142,17 +153,35 @@ function! s:Closed(state, channel) abort
   endif
 endfunction
 
+" 弹窗可用时居中显示搜索终端，否则退回底部 split。
+function! s:Show(state, width, height) abort
+  if exists('*popup_create')
+    try
+      let a:state.popup = popup_create(a:state.buf, {'minwidth': a:width, 'maxwidth': a:width,
+            \ 'minheight': a:height, 'maxheight': a:height, 'highlight': 'Normal',
+            \ 'line': max([1, (&lines - a:height) / 2]), 'col': max([1, (&columns - a:width) / 2])})
+    catch
+      let a:state.popup = 0
+    endtry
+  endif
+  " Vim 确认单次 Esc 后发送无歧义的 Ctrl-c，避免 fzf 再等 Alt/方向键序列。
+  if a:state.popup
+    call win_execute(a:state.popup, 'tnoremap <silent><nowait><buffer> <Esc> <C-c>')
+  else
+    execute 'botright ' . a:height . 'new'
+    let a:state.split = 1
+    execute 'buffer ' . a:state.buf
+    startinsert
+    tnoremap <silent><nowait><buffer> <Esc> <C-c>
+  endif
+endfunction
+
 function! s:Open(mode) abort
   if !has('terminal') || !has('timers')
     call s:Warn('requires Vim +terminal and +timers')
     return
   endif
-  let missing = filter(['bash', 'fzf'], '!executable(v:val)')
-  if a:mode ==# 'files' && !executable('fd') && !executable('fdfind')
-    call add(missing, 'fd/fdfind')
-  elseif a:mode ==# 'grep' && !executable('rg')
-    call add(missing, 'rg (ripgrep)')
-  endif
+  let missing = s:MissingTools(a:mode)
   if !empty(missing)
     call s:Warn('missing ' . join(missing, ', ') . '; install manually (Debian/Ubuntu: sudo apt install fd-find ripgrep fzf)')
     return
@@ -188,30 +217,7 @@ function! s:Open(mode) abort
     endif
     let state.job = term_getjob(state.buf)
     call setbufvar(state.buf, '&buflisted', 0)
-    if exists('*popup_create')
-      try
-        let state.popup = popup_create(state.buf, {'minwidth': width, 'maxwidth': width,
-              \ 'minheight': height, 'maxheight': height, 'highlight': 'Normal',
-              \ 'line': max([1, (&lines - height) / 2]), 'col': max([1, (&columns - width) / 2])})
-      catch
-        let state.popup = 0
-      endtry
-    endif
-    if !state.popup
-      execute 'botright ' . height . 'new'
-      let state.split = 1
-      execute 'buffer ' . state.buf
-      let window = win_getid()
-      startinsert
-    else
-      let window = state.popup
-    endif
-    " Vim 确认单次 Esc 后发送无歧义的 Ctrl-c，避免 fzf 再等 Alt/方向键序列。
-    if state.popup
-      call win_execute(window, 'tnoremap <silent><nowait><buffer> <Esc> <C-c>')
-    else
-      tnoremap <silent><nowait><buffer> <Esc> <C-c>
-    endif
+    call s:Show(state, width, height)
   catch
     let error = v:exception
     call s:Cleanup(state)

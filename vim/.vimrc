@@ -13,6 +13,8 @@ let s:vimrc_path = expand('<sfile>:p')
 let s:config_dir = fnamemodify(resolve(s:vimrc_path), ':h')
 
 " 仓库内直接试用、符号链接安装、复制安装共用同一查找顺序。
+" 与内部函数绑定的按键（buffer 栏、注释切换、文件树）由各模块自带；
+" 基于命令的模块（搜索、终端、Git、剪贴板）由本文件的按键统一接线。
 function! s:FindModule(name) abort
   for candidate in [s:config_dir . '/' . a:name,
         \ s:config_dir . '/.vim/' . a:name, expand('~/.vim/' . a:name)]
@@ -103,323 +105,15 @@ if !s:SourceModule('lsp.vim')
   command! VimLspStatus call <SID>Warn('missing lsp.vim; copy the complete vim directory')
 endif
 
-" 顶部编号与数字快捷键共用同一列表，不等同于 :buffer 的实际编号。
-function! s:ListedBuffers() abort
-  return sort(getbufinfo({'buflisted': 1}), {left, right -> left.bufnr - right.bufnr})
-endfunction
+" buffer 栏与 buffer 管理模块。
+if !s:SourceModule('buffers.vim')
+  call s:Warn('missing buffers.vim; copy the complete vim directory')
+endif
 
-function! s:BufferNames(buffers) abort
-  let paths = map(copy(a:buffers), 'split(v:val.name, "/")')
-  " 一次统计路径后缀，避免终端重绘时对所有 buffer 两两比较。
-  let counts = {}
-  for parts in paths
-    for depth in range(1, len(parts))
-      let suffix = join(parts[-depth:], '/')
-      let counts[suffix] = get(counts, suffix, 0) + 1
-    endfor
-  endfor
-  let names = []
-  for parts in paths
-    if empty(parts)
-      call add(names, '[No Name]')
-      continue
-    endif
-    let depth = 1
-    let name = parts[-1]
-    while depth < len(parts) && counts[name] > 1
-      let depth += 1
-      let name = join(parts[-depth:], '/')
-    endwhile
-    call add(names, strtrans(name))
-  endfor
-  return names
-endfunction
-
-" 按显示列截断，避免切断中文或把 tabline 控制符当作文件名执行。
-function! s:BufferLabel(name, width) abort
-  if strdisplaywidth(a:name) <= a:width | return a:name | endif
-  let name = a:name
-  while !empty(name) && strdisplaywidth(name) > a:width - 1
-    let name = strcharpart(name, 0, strchars(name) - 1)
-  endwhile
-  return name . '~'
-endfunction
-
-function! s:BufferLine() abort
-  let buffers = s:ListedBuffers()
-  if empty(buffers) | return '%#TabLineFill#' | endif
-  let names = s:BufferNames(buffers)
-  let numbers = map(copy(buffers), 'v:val.bufnr')
-  let current = index(numbers, bufnr('%'))
-  let focus = current >= 0 ? current : max([0, index(numbers, bufnr('#'))])
-  let tabs = tabpagenr('$') > 1 ? printf(' Tab %d/%d ', tabpagenr(), tabpagenr('$')) : ''
-  " 极窄窗口优先保留当前 buffer 编号和状态。
-  if &columns < 40 | let tabs = '' | endif
-  let budget = &columns - strdisplaywidth(tabs)
-  let reserve = len(buffers) > 1 ? 4 : 0
-  let labels = []
-  let widths = []
-  for index in range(len(buffers))
-    let buffer = buffers[index]
-    let prefix = printf(' %d:', index + 1)
-    let flags = (buffer.changed ? ' +' : '')
-          \ . (getbufvar(buffer.bufnr, '&readonly') ? ' [RO]' : '') . ' '
-    if getbufvar(buffer.bufnr, '&buftype') ==# 'terminal'
-      let flags = ' [term]' . flags
-    endif
-    let width = max([1, min([32, budget - reserve - strdisplaywidth(prefix . flags)])])
-    let label = prefix . s:BufferLabel(names[index], width) . flags
-    call add(labels, label)
-    call add(widths, strdisplaywidth(label))
-  endfor
-  let first = focus
-  let last = focus
-  let used = widths[focus]
-  " 从当前项向两侧扩展连续区间；隐藏项不参与重新编号。
-  while 1
-    let expanded = 0
-    if last + 1 < len(buffers)
-      let markers = (first > 0 ? 2 : 0) + (last + 2 < len(buffers) ? 2 : 0)
-      if used + widths[last + 1] + markers <= budget
-        let last += 1
-        let used += widths[last]
-        let expanded = 1
-      endif
-    endif
-    if first > 0
-      let markers = (first > 1 ? 2 : 0) + (last + 1 < len(buffers) ? 2 : 0)
-      if used + widths[first - 1] + markers <= budget
-        let first -= 1
-        let used += widths[first]
-        let expanded = 1
-      endif
-    endif
-    if !expanded | break | endif
-  endwhile
-  let line = '%#TabLineFill#' . (first > 0 ? '< ' : '')
-  for index in range(first, last)
-    let line .= index == current ? '%#TabLineSel#' : '%#VimrcBufferLine#'
-    let line .= substitute(labels[index], '%', '%%', 'g')
-  endfor
-  return line . '%#TabLineFill#' . (last + 1 < len(buffers) ? ' >' : '') . '%=' . tabs
-endfunction
-
-function! s:BufferLineColors() abort
-  highlight! link VimrcBufferLine StatusLine
-endfunction
-call s:BufferLineColors()
-set showtabline=2
-if has('gui_running') | set guioptions-=e | endif
-let &tabline = '%!' . expand('<SID>') . 'BufferLine()'
-augroup vimrc_lite_buffers
-  autocmd!
-  autocmd ColorScheme * call <SID>BufferLineColors()
-  autocmd BufAdd,BufDelete,BufEnter,BufFilePost,BufWritePost,TextChanged,TextChangedI,VimResized * redrawtabline
-  if exists('##OptionSet')
-    autocmd OptionSet readonly,buflisted redrawtabline
-  endif
-augroup END
-
-function! s:GoBuffer(index) abort
-  let buffers = s:ListedBuffers()
-  if a:index <= len(buffers)
-    execute 'buffer ' . buffers[a:index - 1].bufnr
-  else
-    call s:Warn('no buffer at position ' . a:index)
-  endif
-endfunction
-
-" 删除 buffer 前替换显示它的窗口，保留分屏布局；取消不改变布局。
-function! s:CloseBuffer() abort
-  if &buftype ==# 'terminal' && exists('*term_getstatus')
-        \ && term_getstatus(bufnr('%')) =~# 'running'
-    call s:Warn('shell is running; exit the shell before deleting its buffer')
-    return
-  endif
-  if &buftype !=# '' && &buftype !=# 'terminal'
-    confirm quit
-    return
-  endif
-  let buffers = getbufinfo({'buflisted': 1})
-  if len(buffers) <= 1
-    confirm qall
-    return
-  endif
-  let discard = 0
-  if &modified
-    let choice = confirm('Save changes before closing?', "&Save\n&Discard\n&Cancel", 3)
-    if choice == 1
-      try
-        if empty(bufname('%'))
-          let name = input('Save as: ', '', 'file')
-          if empty(name) | return | endif
-          execute 'write ' . fnameescape(name)
-        else
-          update
-        endif
-      catch
-        call s:Warn(v:exception)
-        return
-      endtry
-    elseif choice == 2
-      let discard = 1
-    else
-      return
-    endif
-  endif
-  let target = bufnr('%')
-  let replacement = bufnr('#')
-  if replacement == target || !buflisted(replacement)
-    let candidates = filter(map(buffers, 'v:val.bufnr'), 'v:val != target')
-    let replacement = candidates[0]
-  endif
-  let origin = win_getid()
-  let windows = copy(getbufinfo(target)[0].windows)
-  try
-    for window in windows
-      if win_gotoid(window)
-        execute 'keepalt buffer ' . replacement
-      endif
-    endfor
-    execute 'bdelete' . (discard ? '!' : '') . ' ' . target
-  catch
-    for window in windows
-      if win_gotoid(window) && bufexists(target)
-        execute 'keepalt buffer ' . target
-      endif
-    endfor
-    call s:Warn(v:exception)
-  finally
-    call win_gotoid(origin)
-  endtry
-endfunction
-
-function! s:Editable() abort
-  if &buftype !=# '' || !&modifiable || &readonly
-    call s:Warn('current buffer is not an editable file')
-    return 0
-  endif
-  return 1
-endfunction
-
-function! s:ClearBuffer() abort
-  if s:Editable()
-    %delete _
-  endif
-endfunction
-
-function! s:TrimWhitespace() abort
-  if !s:Editable() | return | endif
-  let view = winsaveview()
-  let search = @/
-  try
-    keeppatterns %s/\s\+$//e
-  finally
-    let @/ = search
-    call winrestview(view)
-  endtry
-endfunction
-
-" 注释切换以文件类型的 commentstring 为准，支持行注释和单行块注释。
-" 前缀去掉尾部空白、后缀去掉首部空白后，转义成可拼接的正则字面量。
-function! s:CommentToken(text, trim) abort
-  return escape(substitute(a:text, a:trim, '', ''), '\.*$^~[]')
-endfunction
-
-function! s:CommentStyle() abort
-  let comment = &l:commentstring
-  if empty(&l:filetype) || comment !~# '%s'
-    return ['# ', '']
-  endif
-  let index = stridx(comment, '%s')
-  let prefix = strpart(comment, 0, index)
-  if empty(prefix)
-    return ['# ', '']
-  endif
-  return [prefix, strpart(comment, index + 2)]
-endfunction
-
-" 前缀末尾空格按一个可选空格匹配，避免把 #include 误判为注释。
-function! s:CommentStart(prefix) abort
-  let pattern = s:CommentToken(a:prefix, '\s\+$')
-  if a:prefix =~# '\s$'
-    return pattern . '\%(\s\|$\)\@='
-  endif
-  return pattern
-endfunction
-
-function! s:IsCommented(line, prefix, suffix) abort
-  let body = substitute(a:line, '^\s*', '', '')
-  if empty(body) | return 0 | endif
-  if body !~# '^' . s:CommentStart(a:prefix) | return 0 | endif
-  if !empty(a:suffix)
-    let tail = s:CommentToken(a:suffix, '^\s\+')
-    if body !~# tail . '\s*$' | return 0 | endif
-  endif
-  return 1
-endfunction
-
-function! s:CommentLine(line, prefix, suffix) abort
-  let indent = matchstr(a:line, '^\s*')
-  let body = strpart(a:line, len(indent))
-  if empty(body) | return a:line | endif
-  let start = a:prefix
-  if start !~# '\s$' | let start .= ' ' | endif
-  if empty(a:suffix) | return indent . start . body | endif
-  let finish = a:suffix
-  if finish !~# '^\s' | let finish = ' ' . finish | endif
-  return indent . start . body . finish
-endfunction
-
-function! s:UncommentLine(line, prefix, suffix) abort
-  let indent = matchstr(a:line, '^\s*')
-  let body = strpart(a:line, len(indent))
-  let bare = s:CommentToken(a:prefix, '\s\+$')
-  if body =~# '^' . s:CommentStart(a:prefix)
-    let body = substitute(body, '^' . bare . '\s\?', '', '')
-  endif
-  if !empty(a:suffix)
-    let tail = s:CommentToken(a:suffix, '^\s\+')
-    let body = substitute(body, '\s\?' . tail . '\s*$', '', '')
-  endif
-  return indent . body
-endfunction
-
-" 选区全部为注释时取消注释，否则整体添加；空行保持原样。
-function! s:ToggleComments(first, last) abort
-  if !s:Editable() | return | endif
-  let [prefix, suffix] = s:CommentStyle()
-  let lines = getline(a:first, a:last)
-  let commented = 1
-  for line in lines
-    if line =~# '^\s*$' | continue | endif
-    if !s:IsCommented(line, prefix, suffix)
-      let commented = 0
-      break
-    endif
-  endfor
-  let view = winsaveview()
-  let search = @/
-  let replacement = []
-  for line in lines
-    if line =~# '^\s*$'
-      call add(replacement, line)
-    elseif commented
-      call add(replacement, s:UncommentLine(line, prefix, suffix))
-    else
-      call add(replacement, s:CommentLine(line, prefix, suffix))
-    endif
-  endfor
-  call setline(a:first, replacement)
-  let @/ = search
-  call winrestview(view)
-endfunction
-
-function! s:CommentOperator(type) abort
-  call s:ToggleComments(line("'["), line("']"))
-endfunction
-
-" 编码复制与 OSC 52 同步逻辑集中在 clipboard.vim 模块。
+" 编辑辅助模块：清空、去空白、注释切换。
+if !s:SourceModule('edit.vim')
+  call s:Warn('missing edit.vim; copy the complete vim directory')
+endif
 
 function! s:ToggleList(location) abort
   let info = a:location ? getloclist(0, {'winid': 0}) : getqflist({'winid': 0})
@@ -447,29 +141,12 @@ if !s:SourceModule('dashboard.vim')
   call s:Warn('missing dashboard.vim; copy the complete vim directory')
 endif
 
-" 文件、buffer、标签页。
+" 文件保存、buffer 复制与标签页；buffer 栏及切换按键由 buffers.vim 提供。
 nnoremap <silent> <C-s> :wall<CR>
 inoremap <silent> <C-s> <C-o>:wall<CR>
 xnoremap <silent> <C-s> <Esc>:wall<CR>gv
-nnoremap <silent> <C-w> :call <SID>CloseBuffer()<CR>
-nnoremap <silent> H :bprevious<CR>
-nnoremap <silent> L :bnext<CR>
-nnoremap <silent> <A-o> :bprevious<CR>
-nnoremap <silent> <A-i> :bnext<CR>
-nnoremap <silent> <leader>bn :enew<CR>
-nnoremap <leader>bp :ls<CR>:buffer<Space>
-for s:index in range(1, 9)
-  execute 'nnoremap <silent> <leader>' . s:index . ' :call <SID>GoBuffer(' . s:index . ')<CR>'
-endfor
 nnoremap <silent> <leader>bP :VimCopyPath<CR>
 nnoremap <silent> <leader>bC :VimCopyContent<CR>
-nnoremap <silent> <leader>bD :call <SID>ClearBuffer()<CR>
-xnoremap <silent> <leader>bD "_d
-nnoremap <silent> <leader>bw :call <SID>TrimWhitespace()<CR>
-" gc 作为操作符支持 gc{motion}，gcc 注释当前行（可带计数）。
-nnoremap <silent> gc :<C-u>set operatorfunc=<SID>CommentOperator<CR>g@
-nnoremap <silent> gcc :<C-u>call <SID>ToggleComments(line('.'), line('.') + v:count1 - 1)<CR>
-xnoremap <silent> gc :<C-u>call <SID>ToggleComments(line("'<"), line("'>"))<CR>
 nnoremap <silent> tn :tabnew<CR>
 nnoremap <silent> tj :tabprevious<CR>
 nnoremap <silent> tk :tabnext<CR>
@@ -480,7 +157,7 @@ nnoremap <silent> <leader>ah :-tabmove<CR>
 nnoremap <silent> <leader>al :+tabmove<CR>
 nnoremap <silent> <leader>ao :confirm tabonly<CR>
 
-" 窗口映射不递归展开，因此不会触发上面的 Ctrl-w 关闭操作。
+" 窗口跳转映射不递归展开，不会触发 buffers.vim 的 Ctrl-w 关闭操作。
 for s:direction in ['h', 'j', 'k', 'l']
   execute 'nnoremap <silent> <C-' . s:direction . '> <C-w>' . s:direction
   execute 'nnoremap <silent> <A-' . s:direction . '> <C-w>' . s:direction

@@ -12,6 +12,8 @@ config_files=(
     lsp.vim
     clipboard.vim
     tree.vim
+    buffers.vim
+    edit.vim
     terminal.vim
     git.vim
     search.vim
