@@ -1,8 +1,52 @@
-" 原生首页：只显示居中的 slogan，不进入普通 buffer 列表。
+" 原生首页：恢复 Vim 初始欢迎文字，并加入居中的 slogan。
 let s:dashboard_options = ['number', 'relativenumber', 'cursorline', 'cursorcolumn',
       \ 'foldcolumn', 'signcolumn', 'foldenable', 'wrap', 'list', 'spell',
       \ 'colorcolumn', 'scrolloff', 'sidescrolloff', 'fillchars']
 let s:dashboard_stdin = get(s:, 'dashboard_stdin', 0)
+let s:dashboard_slogan = 'Les annees heureuses sont des annees perdues.'
+
+function! s:DashboardIntro() abort
+  let version_info = execute('version')
+  let version_text = matchstr(version_info, '^VIM - Vi IMproved \zs\d\+\.\d\+')
+  if empty(version_text)
+    let version_text = printf('%d.%d', v:version / 100, v:version % 100)
+  endif
+  let patch = ''
+  for line in split(version_info, "\n")
+    if line =~# '^Included patches:'
+      let patch = matchstr(line, '\d\+$')
+      if !empty(patch)
+        let patch = '.' . patch
+      endif
+      break
+    endif
+  endfor
+
+  let intro = [
+        \ 'VIM - Vi IMproved',
+        \ s:dashboard_slogan,
+        \ '',
+        \ 'version ' . version_text . patch,
+        \ 'by Bram Moolenaar et al.',
+        \ ]
+  for line in split(version_info, "\n")
+    if line =~# '^Modified by '
+      call add(intro, line)
+      break
+    endif
+  endfor
+  call extend(intro, [
+        \ 'Vim is open source and freely distributable',
+        \ '',
+        \ 'Help poor children in Uganda!',
+        \ 'type  :help iccf<Enter>       for information',
+        \ '',
+        \ 'type  :q<Enter>               to exit',
+        \ 'type  :help<Enter>  or  <F1>  for on-line help',
+        \ 'type  :help version9<Enter>   for version info',
+        \ ])
+  return intro
+endfunction
 
 function! s:DashboardRestoreStatus() abort
   if exists('s:dashboard_laststatus')
@@ -26,19 +70,30 @@ function! s:DashboardLeave() abort
 endfunction
 
 function! s:DashboardRender() abort
-  if !get(b:, 'vimrc_lite_dashboard', 0) | return | endif
-  let slogan = 'Les annees heureuses sont des annees perdues.'
-  let width = strdisplaywidth(slogan)
+  if !get(b:, 'vimrc_lite_dashboard', 0)
+    return
+  endif
+  let intro = s:DashboardIntro()
   let [row, column] = win_screenpos(0)
-  " 以整个屏幕为锚点，再换算到窗口内；空间不足时收回窗口边界。
-  let left = (&columns - width) / 2 - column + 1
-  let top = (&lines - &cmdheight - 1) / 2 - row + 1
-  let indent = repeat(' ', max([0, min([left, winwidth(0) - width])]))
-  let padding = max([0, min([top, winheight(0) - 1])])
+  let rendered = []
+  for line in intro
+    if empty(line)
+      call add(rendered, '')
+      continue
+    endif
+    let width = strdisplaywidth(line)
+    " 以整个屏幕为锚点，再换算到窗口内；空间不足时收回窗口边界。
+    let left = (&columns - width) / 2 - column + 1
+    let indent = repeat(' ', max([0, min([left, winwidth(0) - width])]))
+    call add(rendered, indent . line)
+  endfor
+  let available = &lines - &cmdheight - 1
+  let top = (available - len(rendered) + 1) / 2 - row + 1
+  let padding = max([0, min([top, winheight(0) - len(rendered)])])
   setlocal modifiable
   try
     silent %delete _
-    call setline(1, repeat([''], padding) + [indent . slogan])
+    call setline(1, repeat([''], padding) + rendered)
   finally
     setlocal nomodified nomodifiable
   endtry
@@ -137,7 +192,9 @@ function! s:HasStartupCommands() abort
 endfunction
 
 function! s:DashboardStartup() abort
-  if !s:StartupClean() || s:HasStartupCommands() | return | endif
+  if !s:StartupClean() || s:HasStartupCommands()
+    return
+  endif
   call s:Dashboard()
 endfunction
 

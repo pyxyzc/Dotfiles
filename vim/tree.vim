@@ -117,7 +117,9 @@ function! s:Open(path) abort
 endfunction
 
 function! s:Create(islocal) abort
-  if !a:islocal | return '' | endif
+  if !a:islocal
+    return ''
+  endif
   let name = s:Input('New file or directory: ')
   if name ==# ''
     return ''
@@ -142,7 +144,9 @@ function! s:Create(islocal) abort
 endfunction
 
 function! s:Rename(islocal) abort
-  if !a:islocal | return '' | endif
+  if !a:islocal
+    return ''
+  endif
   let entry = s:Entry()
   if entry.path ==# ''
     return ''
@@ -166,7 +170,9 @@ function! s:Rename(islocal) abort
 endfunction
 
 function! s:Delete(islocal) abort
-  if !a:islocal | return '' | endif
+  if !a:islocal
+    return ''
+  endif
   let entry = s:Entry()
   if entry.path ==# ''
     return ''
@@ -187,7 +193,9 @@ function! s:Delete(islocal) abort
 endfunction
 
 function! s:Copy(islocal) abort
-  if !a:islocal | return '' | endif
+  if !a:islocal
+    return ''
+  endif
   let entry = s:Entry()
   if entry.path ==# ''
     return ''
@@ -198,7 +206,9 @@ function! s:Copy(islocal) abort
 endfunction
 
 function! s:Cut(islocal) abort
-  if !a:islocal | return '' | endif
+  if !a:islocal
+    return ''
+  endif
   let entry = s:Entry()
   if entry.path ==# ''
     return ''
@@ -209,7 +219,9 @@ function! s:Cut(islocal) abort
 endfunction
 
 function! s:Paste(islocal) abort
-  if !a:islocal | return '' | endif
+  if !a:islocal
+    return ''
+  endif
   if s:clip.path ==# ''
     call s:Warn('clipboard is empty')
     return ''
@@ -278,7 +290,9 @@ function! s:Refresh(islocal) abort
 endfunction
 
 function! s:Hidden(islocal) abort
-  if !a:islocal | return '' | endif
+  if !a:islocal
+    return ''
+  endif
   call netrw#Call('NetrwHidden', 1)
   return ''
 endfunction

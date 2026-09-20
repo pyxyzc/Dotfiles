@@ -19,7 +19,9 @@ function! s:ProjectRoot() abort
       endif
     endfor
     let parent = fnamemodify(directory, ':h')
-    if parent ==# directory | return getcwd() | endif
+    if parent ==# directory
+      return getcwd()
+    endif
     let directory = parent
   endwhile
 endfunction
@@ -29,7 +31,9 @@ function! s:Geometry() abort
 endfunction
 
 function! s:Resize() abort
-  if empty(s:active) || !get(s:active, 'popup', 0) | return | endif
+  if empty(s:active) || !get(s:active, 'popup', 0)
+    return
+  endif
   let [width, height] = s:Geometry()
   call popup_setoptions(s:active.popup, {'minwidth': width, 'maxwidth': width,
         \ 'minheight': height, 'maxheight': height,
@@ -38,7 +42,8 @@ function! s:Resize() abort
 endfunction
 
 function! s:History(mode) abort
-  let directory = (empty($XDG_STATE_HOME) ? expand('~/.local/state') : $XDG_STATE_HOME) . '/vim-lite/search'
+  let state_home = empty($XDG_STATE_HOME) ? expand('~/.local/state') : $XDG_STATE_HOME
+  let directory = state_home . '/vim-lite/search'
   try
     if !isdirectory(directory)
       call mkdir(directory, 'p', 0700)
@@ -63,7 +68,8 @@ function! s:Colors() abort
           \ . ',border:#565f89,prompt:#7aa2f7,pointer:#bb9af7,info:#9ece6a,header:#9aa5ce'
   endif
   return 'bg:' . (transparent ? '-1' : '234')
-        \ . ',fg:153,bg+:236,fg+:153,hl:111,hl+:117,border:60,prompt:111,pointer:141,info:149,header:146'
+        \ . ',fg:153,bg+:236,fg+:153,hl:111,hl+:117,border:60,'
+        \ . 'prompt:111,pointer:141,info:149,header:146'
 endfunction
 
 " 依赖检查：返回缺失工具列表；bash 与 fzf 为两种模式共用的底线。
@@ -79,7 +85,9 @@ endfunction
 
 " done 标志也让退出回调在取消、重载或下一次搜索后安全失效。
 function! s:Cleanup(state) abort
-  if empty(a:state) || get(a:state, 'done', 0) | return | endif
+  if empty(a:state) || get(a:state, 'done', 0)
+    return
+  endif
   let a:state.done = 1
   if has_key(a:state, 'job') && job_status(a:state.job) ==# 'run'
     call job_stop(a:state.job, 'term')
@@ -100,11 +108,15 @@ function! s:Cleanup(state) abort
     doautocmd <nomodeline> User VimrcLiteSearchClosed
   endif
   call delete(a:state.directory, 'rf')
-  if get(s:active, 'directory', '') ==# a:state.directory | let s:active = {} | endif
+  if get(s:active, 'directory', '') ==# a:state.directory
+    let s:active = {}
+  endif
 endfunction
 
 function! s:Finish(state, status, timer) abort
-  if get(a:state, 'done', 0) | return | endif
+  if get(a:state, 'done', 0)
+    return
+  endif
   let path = ''
   let position = []
   let error = ''
@@ -117,8 +129,12 @@ function! s:Finish(state, status, timer) abort
           \ ? join(readfile(a:state.directory . '/error'), ' ') : 'search process failed'
   endif
   call s:Cleanup(a:state)
-  if !empty(error) | call s:Warn(error) | endif
-  if empty(path) || len(position) != 2 | return | endif
+  if !empty(error)
+    call s:Warn(error)
+  endif
+  if empty(path) || len(position) != 2
+    return
+  endif
   if !win_gotoid(a:state.origin)
     call s:Warn('original window closed; selection was not opened')
     return
@@ -157,9 +173,13 @@ endfunction
 function! s:Show(state, width, height) abort
   if exists('*popup_create')
     try
-      let a:state.popup = popup_create(a:state.buf, {'minwidth': a:width, 'maxwidth': a:width,
-            \ 'minheight': a:height, 'maxheight': a:height, 'highlight': 'Normal',
-            \ 'line': max([1, (&lines - a:height) / 2]), 'col': max([1, (&columns - a:width) / 2])})
+      let a:state.popup = popup_create(a:state.buf, {
+            \ 'minwidth': a:width, 'maxwidth': a:width,
+            \ 'minheight': a:height, 'maxheight': a:height,
+            \ 'highlight': 'Normal',
+            \ 'line': max([1, (&lines - a:height) / 2]),
+            \ 'col': max([1, (&columns - a:width) / 2]),
+            \ })
     catch
       let a:state.popup = 0
     endtry
@@ -183,7 +203,9 @@ function! s:Open(mode) abort
   endif
   let missing = s:MissingTools(a:mode)
   if !empty(missing)
-    call s:Warn('missing ' . join(missing, ', ') . '; install manually (Debian/Ubuntu: sudo apt install fd-find ripgrep fzf)')
+    let message = 'missing ' . join(missing, ', ')
+          \ . '; install manually (Debian/Ubuntu: sudo apt install fd-find ripgrep fzf)'
+    call s:Warn(message)
     return
   endif
   if !filereadable(s:helper)
@@ -209,7 +231,9 @@ function! s:Open(mode) abort
     let options = {'hidden': 1, 'cwd': state.root,
           \ 'term_kill': 'term', 'norestore': 1, 'term_rows': height, 'term_cols': width,
           \ 'exit_cb': function('s:Exited', [state]), 'close_cb': function('s:Closed', [state])}
-    if exists('*term_setapi') | let options.term_api = '' | endif
+    if exists('*term_setapi')
+      let options.term_api = ''
+    endif
     let state.buf = term_start([exepath('bash'), s:helper, 'run', a:mode,
           \ state.directory, s:History(a:mode), s:Colors()], options)
     if !state.buf

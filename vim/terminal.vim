@@ -6,7 +6,9 @@ function! s:Warn(message) abort
 endfunction
 
 function! s:Finish(state, timer) abort
-  if a:state.done | return | endif
+  if a:state.done
+    return
+  endif
   if !bufexists(a:state.buf) || getbufvar(a:state.buf, '&buftype') !=# 'terminal'
     let a:state.done = 1
     return
@@ -17,7 +19,9 @@ function! s:Finish(state, timer) abort
   try
     " 先关窗口，避免直接删除最后一个 listed buffer 时生成空 buffer。
     for window in getbufinfo(a:state.buf)[0].windows
-      if !win_gotoid(window) || bufnr('%') != a:state.buf | continue | endif
+      if !win_gotoid(window) || bufnr('%') != a:state.buf
+        continue
+      endif
       if tabpagenr('$') == 1 && winnr('$') == 1
         confirm quit
       else

@@ -41,7 +41,9 @@ endfunction
 
 " 按显示列截断，避免切断中文或把 tabline 控制符当作文件名执行。
 function! s:BufferLabel(name, width) abort
-  if strdisplaywidth(a:name) <= a:width | return a:name | endif
+  if strdisplaywidth(a:name) <= a:width
+    return a:name
+  endif
   let name = a:name
   while !empty(name) && strdisplaywidth(name) > a:width - 1
     let name = strcharpart(name, 0, strchars(name) - 1)
@@ -77,21 +79,27 @@ function! s:VisibleRange(widths, focus, budget) abort
         let expanded = 1
       endif
     endif
-    if !expanded | break | endif
+    if !expanded
+      break
+    endif
   endwhile
   return [first, last]
 endfunction
 
 function! s:BufferLine() abort
   let buffers = s:ListedBuffers()
-  if empty(buffers) | return '%#TabLineFill#' | endif
+  if empty(buffers)
+    return '%#TabLineFill#'
+  endif
   let names = s:BufferNames(buffers)
   let numbers = map(copy(buffers), 'v:val.bufnr')
   let current = index(numbers, bufnr('%'))
   let focus = current >= 0 ? current : max([0, index(numbers, bufnr('#'))])
   let tabs = tabpagenr('$') > 1 ? printf(' Tab %d/%d ', tabpagenr(), tabpagenr('$')) : ''
   " 极窄窗口优先保留当前 buffer 编号和状态。
-  if &columns < 40 | let tabs = '' | endif
+  if &columns < 40
+    let tabs = ''
+  endif
   let budget = &columns - strdisplaywidth(tabs)
   let reserve = len(buffers) > 1 ? s:overflow_reserve : 0
   let labels = []
@@ -104,7 +112,8 @@ function! s:BufferLine() abort
     if getbufvar(buffer.bufnr, '&buftype') ==# 'terminal'
       let flags = ' [term]' . flags
     endif
-    let width = max([1, min([s:label_max_width, budget - reserve - strdisplaywidth(prefix . flags)])])
+    let available = budget - reserve - strdisplaywidth(prefix . flags)
+    let width = max([1, min([s:label_max_width, available])])
     let label = prefix . s:BufferLabel(names[index], width) . flags
     call add(labels, label)
     call add(widths, strdisplaywidth(label))
@@ -123,12 +132,15 @@ function! s:BufferLineColors() abort
 endfunction
 call s:BufferLineColors()
 set showtabline=2
-if has('gui_running') | set guioptions-=e | endif
+if has('gui_running')
+  set guioptions-=e
+endif
 let &tabline = '%!' . expand('<SID>') . 'BufferLine()'
 augroup vimrc_lite_buffers
   autocmd!
   autocmd ColorScheme * call <SID>BufferLineColors()
-  autocmd BufAdd,BufDelete,BufEnter,BufFilePost,BufWritePost,TextChanged,TextChangedI,VimResized * redrawtabline
+  autocmd BufAdd,BufDelete,BufEnter,BufFilePost,BufWritePost * redrawtabline
+  autocmd TextChanged,TextChangedI,VimResized * redrawtabline
   if exists('##OptionSet')
     autocmd OptionSet readonly,buflisted redrawtabline
   endif
@@ -145,14 +157,22 @@ endfunction
 
 " 未保存修改的确认；保存动作在此完成，返回 'clean'、'discard' 或 'cancel'。
 function! s:CloseDecision() abort
-  if !&modified | return 'clean' | endif
+  if !&modified
+    return 'clean'
+  endif
   let choice = confirm('Save changes before closing?', "&Save\n&Discard\n&Cancel", 3)
-  if choice == 2 | return 'discard' | endif
-  if choice != 1 | return 'cancel' | endif
+  if choice == 2
+    return 'discard'
+  endif
+  if choice != 1
+    return 'cancel'
+  endif
   try
     if empty(bufname('%'))
       let name = input('Save as: ', '', 'file')
-      if empty(name) | return 'cancel' | endif
+      if empty(name)
+        return 'cancel'
+      endif
       execute 'write ' . fnameescape(name)
     else
       update
@@ -188,7 +208,9 @@ function! s:CloseBuffer() abort
     return
   endif
   let decision = s:CloseDecision()
-  if decision ==# 'cancel' | return | endif
+  if decision ==# 'cancel'
+    return
+  endif
   let target = bufnr('%')
   let replacement = s:Replacement(target)
   let origin = win_getid()

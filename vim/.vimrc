@@ -27,7 +27,9 @@ endfunction
 
 function! s:SourceModule(name) abort
   let module = s:FindModule(a:name)
-  if empty(module) | return 0 | endif
+  if empty(module)
+    return 0
+  endif
   execute 'source ' . fnameescape(module)
   return 1
 endfunction
@@ -58,7 +60,9 @@ set wildmenu wildmode=longest:full,full
 set complete=.,w,b,t
 set completeopt=menuone,noinsert,noselect
 set path=.,**
-set wildignore+=*/.git/*,*/.venv/*,*/venv/*,*/__pycache__/*,*/build/*,*/dist/*,*/node_modules/*,*.pyc,*.o,*.so
+set wildignore+=*/.git/*,*/.venv/*,*/venv/*,*/__pycache__/*
+set wildignore+=*/build/*,*/dist/*,*/node_modules/*
+set wildignore+=*.pyc,*.o,*.so
 set background=dark
 if exists('+termguicolors')
   let &termguicolors = get(g:, 'vimrc_lite_truecolor', 1)
@@ -75,13 +79,21 @@ endif
 
 augroup vimrc_lite
   autocmd!
+  autocmd FileType vim,vimrc setlocal expandtab tabstop=2 softtabstop=2 shiftwidth=2
+  autocmd FileType vim,vimrc setlocal textwidth=100 formatoptions-=t
   autocmd FileType python,c,cpp,cuda setlocal expandtab tabstop=4 softtabstop=4 shiftwidth=4
   autocmd FileType make setlocal noexpandtab tabstop=8 softtabstop=0 shiftwidth=8
   autocmd FileType python setlocal foldmethod=indent foldlevel=99
   autocmd FileType c,cpp,cuda setlocal foldmethod=syntax foldlevel=99
   autocmd FileType help,qf nnoremap <silent><buffer> q :close<CR>
-  autocmd BufReadPost * if line("'\"") > 0 && line("'\"") <= line('$') | execute 'normal! g`"' | endif
+  autocmd BufReadPost * call s:RestoreCursor()
 augroup END
+
+function! s:RestoreCursor() abort
+  if line("'\"") > 0 && line("'\"") <= line('$')
+    execute 'normal! g`"'
+  endif
+endfunction
 
 function! s:Warn(message) abort
   echohl WarningMsg
@@ -91,8 +103,10 @@ endfunction
 
 " 剪贴板模块先于文件树加载，提供 OSC 52 复制与粘贴回退。
 if !s:SourceModule('clipboard.vim')
-  command! VimCopyPath call <SID>Warn('missing clipboard.vim; copy the complete vim directory')
-  command! VimCopyContent call <SID>Warn('missing clipboard.vim; copy the complete vim directory')
+  command! VimCopyPath call <SID>Warn(
+        \ 'missing clipboard.vim; copy the complete vim directory')
+  command! VimCopyContent call <SID>Warn(
+        \ 'missing clipboard.vim; copy the complete vim directory')
 endif
 
 " 文件树模块。
@@ -102,7 +116,8 @@ endif
 
 " LSP 模块与其固定版本客户端一起部署，显式加载以保留插件隔离。
 if !s:SourceModule('lsp.vim')
-  command! VimLspStatus call <SID>Warn('missing lsp.vim; copy the complete vim directory')
+  command! VimLspStatus call <SID>Warn(
+        \ 'missing lsp.vim; copy the complete vim directory')
 endif
 
 " buffer 栏与 buffer 管理模块。
@@ -122,17 +137,21 @@ endfunction
 
 " 搜索模块与首页。
 if !s:SourceModule('search.vim')
-  command! VimFind call <SID>Warn('missing search.vim; copy the complete vim directory')
-  command! VimSearch call <SID>Warn('missing search.vim; copy the complete vim directory')
+  command! VimFind call <SID>Warn(
+        \ 'missing search.vim; copy the complete vim directory')
+  command! VimSearch call <SID>Warn(
+        \ 'missing search.vim; copy the complete vim directory')
 endif
 
 " 终端模块先于 Git 加载。
 if !s:SourceModule('terminal.vim')
-  command! -nargs=* VimTerminal call <SID>Warn('missing terminal.vim; copy the complete vim directory')
+  command! -nargs=* VimTerminal call <SID>Warn(
+        \ 'missing terminal.vim; copy the complete vim directory')
 endif
 
 if !s:SourceModule('git.vim')
-  command! VimGit call <SID>Warn('missing git.vim; copy the complete vim directory')
+  command! VimGit call <SID>Warn(
+        \ 'missing git.vim; copy the complete vim directory')
 endif
 
 " 配置编辑入口与独立首页。

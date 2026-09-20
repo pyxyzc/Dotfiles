@@ -147,7 +147,15 @@ call assert_equal(['nofile', 'wipe', 0, 0, 0], [&buftype, &bufhidden, &buflisted
 call assert_equal([0, 0, 0, 0], [&number, &relativenumber, &laststatus, &cursorline])
 call assert_equal(0, &showtabline)
 let content = map(filter(getline(1, '$'), '!empty(v:val)'), 'substitute(v:val, "^ *", "", "")')
-call assert_equal(['Les annees heureuses sont des annees perdues.'], content)
+call assert_equal('VIM - Vi IMproved', content[0])
+call assert_equal('Les annees heureuses sont des annees perdues.', content[1])
+call assert_match('^version \d\+\.\d\+\%([^ ]\+\)\?$', content[2])
+call assert_true(index(content, 'by Bram Moolenaar et al.') >= 0)
+call assert_true(index(content, 'Vim is open source and freely distributable') >= 0)
+call assert_true(index(content, 'Help poor children in Uganda!') >= 0)
+call assert_true(index(content, 'type  :q<Enter>               to exit') >= 0)
+call assert_true(index(content, 'type  :help<Enter>  or  <F1>  for on-line help') >= 0)
+call assert_true(index(content, 'type  :help version9<Enter>   for version info') >= 0)
 call assert_equal(0, synID(line('$'), 1, 1))
 call assert_equal(0, synID(line('$'), match(getline('$'), '\S') + 1, 1))
 for key in ['f', 'n', 'e', 'r', 't', 'c', 'q', 'j', 'k', "\<Down>", "\<Up>", "\<CR>"]
@@ -162,6 +170,7 @@ call assert_equal([1, 1, 2, 1], [&number, &relativenumber, &laststatus, &cursorl
 call assert_equal(2, &showtabline)
 call assert_equal('', maparg('q', 'n'))
 ''')
+        self.assertIn(b'VIM - Vi IMproved', output)
         self.assertIn(b'Les annees heureuses', output)
 
     def test_dashboard_startup_exclusions(self):
@@ -247,8 +256,9 @@ call assert_equal(settings, [&number, &relativenumber, &foldcolumn, &signcolumn,
 function! SloganPosition(window) abort
   let lines = getbufline(winbufnr(a:window), 1, '$')
   let position = win_screenpos(a:window)
-  return [position[0] + len(lines) - getwininfo(a:window)[0].topline,
-        \ position[1] + match(lines[-1], '\S')]
+  let slogan = match(lines, 'Les annees')
+  return [position[0] + slogan + 1 - getwininfo(a:window)[0].topline,
+        \ position[1] + match(lines[slogan], '\S')]
 endfunction
 let home = win_getid()
 let position = SloganPosition(home)
@@ -273,7 +283,10 @@ let tree_cursor = getpos('.')
 set columns=140 lines=40
 doautocmd VimResized
 let width = strdisplaywidth('Les annees heureuses sont des annees perdues.')
-call assert_equal([(&lines - &cmdheight - 1) / 2 + 1, (&columns - width) / 2 + 1], SloganPosition(home))
+let intro = getbufline(winbufnr(home), 1, '$')
+let slogan = match(intro, 'Les annees')
+let expected_row = ((&lines - &cmdheight - 1) - (len(intro) - slogan - 1)) / 2 + 1
+call assert_equal([expected_row, (&columns - width) / 2 + 1], SloganPosition(home))
 call assert_equal(tree, win_getid())
 call assert_equal(tree_cursor, getpos('.'))
 let position = SloganPosition(home)
@@ -289,14 +302,12 @@ set columns=40 lines=12
 doautocmd VimResized
 let header = search('Les annees', 'nw')
 call assert_equal('Les annees heureuses sont des annees perdues.', getline(header))
-call assert_true(abs((header - 1) - (winheight(0) - line('$'))) <= 1)
-call assert_equal(header, line('$'))
+call assert_equal(header, search('VIM - Vi IMproved', 'nw') + 1)
 set columns=100 lines=30
 doautocmd VimResized
 let header = search('Les annees', 'nw')
 call assert_equal((winwidth(0) - strdisplaywidth('Les annees heureuses sont des annees perdues.')) / 2, match(getline(header), '\S'))
-call assert_equal(header, line('$'))
-call assert_true(abs((header - 1) - (winheight(0) - line('$'))) <= 1)
+call assert_equal(header, search('VIM - Vi IMproved', 'nw') + 1)
 source ''' + str(ROOT / '.vimrc') + r'''
 source ''' + str(ROOT / '.vimrc') + r'''
 call assert_equal(1, len(filter(split(execute('autocmd vimrc_lite_dashboard VimEnter'), '\n'), 'v:val =~# "DashboardStartup"')))

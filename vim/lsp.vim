@@ -11,10 +11,22 @@ let s:ready = 0
 let s:reason = ''
 let s:plugin = fnamemodify(resolve(expand('<sfile>:p')), ':h') . '/vendor/vim-lsp'
 let s:servers = {
-      \ 'pyright': {'cmd': deepcopy(get(g:, 'vimrc_lite_lsp_pyright_cmd', ['pyright-langserver', '--stdio'])),
-      \   'filetypes': ['python'], 'markers': ['pyrightconfig.json', 'pyproject.toml', 'setup.py', 'setup.cfg', '.git'], 'root': '', 'reason': ''},
-      \ 'clangd': {'cmd': deepcopy(get(g:, 'vimrc_lite_lsp_clangd_cmd', ['clangd', '--background-index'])),
-      \   'filetypes': ['c', 'cpp'], 'markers': ['.clangd', 'compile_commands.json', 'CMakeLists.txt', 'Makefile', '.git'], 'root': '', 'reason': ''},
+      \ 'pyright': {
+      \   'cmd': deepcopy(get(g:, 'vimrc_lite_lsp_pyright_cmd',
+      \         ['pyright-langserver', '--stdio'])),
+      \   'filetypes': ['python'],
+      \   'markers': ['pyrightconfig.json', 'pyproject.toml', 'setup.py',
+      \         'setup.cfg', '.git'],
+      \   'root': '', 'reason': '',
+      \ },
+      \ 'clangd': {
+      \   'cmd': deepcopy(get(g:, 'vimrc_lite_lsp_clangd_cmd',
+      \         ['clangd', '--background-index'])),
+      \   'filetypes': ['c', 'cpp'],
+      \   'markers': ['.clangd', 'compile_commands.json', 'CMakeLists.txt',
+      \         'Makefile', '.git'],
+      \   'root': '', 'reason': '',
+      \ },
       \ }
 
 function! s:Status() abort
@@ -36,10 +48,14 @@ if !get(g:, 'vimrc_lite_lsp', 1)
 endif
 let s:missing = []
 for s:feature in ['job', 'channel', 'timers', 'lambda']
-  if !has(s:feature) | call add(s:missing, '+' . s:feature) | endif
+  if !has(s:feature)
+    call add(s:missing, '+' . s:feature)
+  endif
 endfor
 for s:func in ['json_encode', 'json_decode']
-  if !exists('*' . s:func) | call add(s:missing, s:func . '()') | endif
+  if !exists('*' . s:func)
+    call add(s:missing, s:func . '()')
+  endif
 endfor
 if !empty(s:missing)
   let s:reason = 'missing Vim features: ' . join(s:missing, ', ')
@@ -64,7 +80,8 @@ let g:lsp_inlay_hints_enabled = 0
 let g:lsp_fold_enabled = 0
 let g:lsp_completion_documentation_enabled = 0
 let g:lsp_untitled_buffer_enabled = 0
-let g:lsp_preview_float = exists('*popup_create') && has('patch-8.1.1517') && get(g:, 'lsp_preview_float', 1)
+let g:lsp_preview_float = exists('*popup_create') && has('patch-8.1.1517')
+      \ && get(g:, 'lsp_preview_float', 1)
 let g:lsp_hover_ui = g:lsp_preview_float ? 'float' : 'preview'
 let &runtimepath .= ',' . escape(s:plugin, ',')
 execute 'source ' . fnameescape(s:plugin . '/plugin/lsp.vim')
@@ -79,7 +96,9 @@ function! s:ProjectRoot(name) abort
       endif
     endfor
     let parent = fnamemodify(directory, ':h')
-    if parent ==# directory | return start | endif
+    if parent ==# directory
+      return start
+    endif
     let directory = parent
   endwhile
 endfunction
@@ -99,9 +118,13 @@ function! s:RootUri(name, info) abort
 endfunction
 
 function! s:OnBufferEnabled() abort
-  if &buftype !=# '' || empty(bufname('%')) | return | endif
+  if &buftype !=# '' || empty(bufname('%'))
+    return
+  endif
   let servers = filter(lsp#get_allowed_servers(), 'lsp#is_server_running(v:val)')
-  if empty(servers) | return | endif
+  if empty(servers)
+    return
+  endif
   setlocal omnifunc=lsp#complete
   nmap <silent><buffer> gd <plug>(lsp-definition)
   nmap <silent><buffer> gr <plug>(lsp-references)
