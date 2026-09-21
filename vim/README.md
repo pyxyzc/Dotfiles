@@ -183,13 +183,13 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 | 文件树内 `R` / `H` | 刷新列表／显示或隐藏点文件 |
 | `<leader>ff` | fd/fdfind 枚举文件，fzf 即时模糊筛选 |
 | `<leader>fp` | ripgrep 实时正则搜索，预览并跳转到匹配位置 |
-| `<leader>fo` | 从 Vim 保存的最近文件记录中输入编号选择 |
+| `<leader>fr` | 从 Vim 保存的最近文件记录中输入编号选择 |
 | `<leader>fh` | 清除本次搜索高亮 |
 | `[q` / `]q` | 上一个／下一个 quickfix 结果 |
 | `<leader>xQ` / `xL` | 开关 quickfix／location list |
 | `<leader>;` | 新标签页打开内置终端，使用 Vim 的 `shell` 设置，退出 shell 后关闭终端页 |
 | 终端内双 `Esc` | 进入终端普通模式；按 `i` 返回输入 |
-| `<leader>nh` / `q` | 查看消息历史／退出当前窗口，未保存时提示 |
+| `<leader>nh` / `q` | 查看消息历史／退出当前窗口；未保存时按 `s` 保存、`q` 放弃修改、`c` 或 `<Esc>` 取消 |
 | `<leader>gg` | 在新标签页的内置终端中打开 LazyGit，退出后自动关闭该标签页 |
 | 可视模式 `<` / `>` | 调整缩进后保留选区 |
 | 帮助或 quickfix 窗口内 `q` | 关闭辅助窗口 |
@@ -198,6 +198,9 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 操作后由 netrw 自动刷新。打开目录仍用 `<CR>`，返回上级用 `-`，`%` 新建文件、
 `D` 删除、`gx` 用系统程序打开等 netrw 原生按键保持不变；`a`、`r`、`d`、`c`、
 `x`、`p`、`R`、`H` 会覆盖 netrw 的同名默认行为。
+
+首次按 `<leader>e` 打开文件树时，树根是当前文件所在目录；无名 buffer 使用 Vim
+当前工作目录。文件树已打开时再次按 `<leader>e` 会关闭它。
 
 `Ctrl-w` 已用于关闭 buffer，原生窗口前缀被替换。窗口移动映射不会递归触发
 关闭；其他操作可用 `:split`、`:wincmd =` 等命令。关闭 buffer 时保留分屏；

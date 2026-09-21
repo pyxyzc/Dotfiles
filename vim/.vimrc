@@ -101,6 +101,39 @@ function! s:Warn(message) abort
   echohl None
 endfunction
 
+function! s:Quit() abort
+  if !&modified
+    quit
+    return
+  endif
+  echohl WarningMsg
+  echo 'Save changes before closing? [s]ave [q]uit [c]ancel'
+  echohl None
+  while 1
+    let key = getchar()
+    if type(key) == v:t_number
+      let key = nr2char(key)
+    endif
+    if key =~# '^[sS]$'
+      try
+        update
+      catch
+        call s:Warn(v:exception)
+        return
+      endtry
+      quit
+      return
+    endif
+    if key =~# '^[qQ]$'
+      quit!
+      return
+    endif
+    if key =~# '^[cC]$' || key ==# "\<Esc>" || key ==# "\<CR>"
+      return
+    endif
+  endwhile
+endfunction
+
 " 剪贴板模块先于文件树加载，提供 OSC 52 复制与粘贴回退。
 if !s:SourceModule('clipboard.vim')
   command! VimCopyPath call <SID>Warn(
@@ -186,14 +219,14 @@ nnoremap <silent> <C-Down> :resize +2<CR>
 nnoremap <silent> <C-Left> :vertical resize -2<CR>
 nnoremap <silent> <C-Right> :vertical resize +2<CR>
 nnoremap <silent> <leader>v :vsplit<CR>
-nnoremap <silent> <leader>q :confirm quit<CR>
+nnoremap <silent> <leader>q :call <SID>Quit()<CR>
 xnoremap < <gv
 xnoremap > >gv
 
 " 搜索、结果列表、消息。
 nnoremap <silent> <leader>ff :VimFind<CR>
 nnoremap <silent> <leader>fp :VimSearch<CR>
-nnoremap <leader>fo :browse oldfiles<CR>
+nnoremap <leader>fr :browse oldfiles<CR>
 nnoremap <silent> <leader>fh :nohlsearch<CR>
 nnoremap <silent> [q :cprevious<CR>
 nnoremap <silent> ]q :cnext<CR>

@@ -6,7 +6,7 @@ let g:netrw_liststyle = 3
 let g:netrw_winsize = 25
 let g:netrw_keepdir = 1
 
-nnoremap <silent> <leader>e :Lexplore<CR>
+nnoremap <silent> <leader>e :call <SID>ToggleTree()<CR>
 
 " 沿用 nvimtree/neotree 的按键习惯，为 netrw 增加文件操作：
 "   a 新建（名称以 / 结尾则建目录）、r 重命名、d 删除、R 刷新、H 显示隐藏文件
@@ -19,6 +19,37 @@ function! s:Warn(message) abort
   echohl WarningMsg
   echom 'Vim tree: ' . a:message
   echohl None
+endfunction
+
+" 当前 tab 已有 netrw 窗口时，保持 <leader>e 的关闭行为。
+function! s:TreeOpen() abort
+  for window in getwininfo()
+    if getbufvar(window.bufnr, '&filetype') ==# 'netrw'
+      return 1
+    endif
+  endfor
+  return 0
+endfunction
+
+" 有名 buffer 使用文件所在目录；无名或无效路径退回 Vim 当前目录。
+function! s:TreeDirectory() abort
+  let path = expand('%:p')
+  if path ==# ''
+    return getcwd()
+  endif
+  if isdirectory(path)
+    return path
+  endif
+  let directory = fnamemodify(path, ':h')
+  return isdirectory(directory) ? directory : getcwd()
+endfunction
+
+function! s:ToggleTree() abort
+  if s:TreeOpen()
+    Lexplore
+    return
+  endif
+  execute 'Lexplore ' . fnameescape(s:TreeDirectory())
 endfunction
 
 " 树形列表每层以 "| " 或 "│ " 缩进；统计深度，并去掉缩进、提示文本和尾部标记。

@@ -173,6 +173,19 @@ call assert_equal('', maparg('q', 'n'))
         self.assertIn(b'VIM - Vi IMproved', output)
         self.assertIn(b'Les annees heureuses', output)
 
+    def test_quit_mapping_accepts_q_after_unanswered_confirmation(self):
+        self.terminal_vim(r'''
+edit draft.txt
+call setline(1, 'unsaved')
+vsplit
+let origin = win_getid()
+call feedkeys("\<Space>q\<Space>q", 'xt')
+call assert_notequal(origin, win_getid())
+call assert_equal(1, winnr('$'))
+call assert_equal('draft.txt', bufname('%'))
+call assert_true(&modified)
+''')
+
     def test_dashboard_startup_exclusions(self):
         (self.work / 'sample.py').write_text('preserved\n')
         (self.work / 'session.vim').write_text('let g:session_loaded = 1\n')
@@ -817,6 +830,38 @@ call assert_equal(2, winnr('$'))
 call assert_equal('netrw', &filetype)
 call feedkeys(' e', 'xt')
 call assert_equal(1, winnr('$'))
+''')
+
+    def test_recent_files_mapping(self):
+        self.vim(r'''
+call assert_equal(':browse oldfiles<CR>', maparg("\<leader>fr", 'n'))
+call assert_equal('', maparg("\<leader>fo", 'n'))
+''')
+
+    def test_netrw_uses_current_file_directory(self):
+        project = self.work / 'project with spaces'
+        source = project / 'src'
+        source.mkdir(parents=True)
+        (project / 'root-only.txt').write_text('root\n')
+        (source / 'source-only.txt').write_text('source\n')
+        target = source / 'main.c'
+        target.write_text('main\n')
+        self.vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(target) + r''')
+call feedkeys(' e', 'xt')
+call assert_equal(2, winnr('$'))
+call assert_equal('netrw', &filetype)
+call assert_equal(''' + quoted(source) + r''', get(b:, 'netrw_curdir', ''))
+call assert_equal(''' + quoted(source) + r''', get(w:, 'netrw_treetop', ''))
+call assert_true(index(getline(1, '$'), '| source-only.txt') >= 0)
+call assert_equal(-1, index(getline(1, '$'), '| root-only.txt'))
+wincmd l
+call feedkeys(' e', 'xt')
+call assert_equal(1, winnr('$'))
+call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+enew
+call feedkeys(' e', 'xt')
+call assert_equal(getcwd(), get(b:, 'netrw_curdir', ''))
 ''')
 
     def test_file_tree_operations(self):
