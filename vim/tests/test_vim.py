@@ -173,6 +173,47 @@ call assert_equal('', maparg('q', 'n'))
         self.assertIn(b'VIM - Vi IMproved', output)
         self.assertIn(b'Les annees heureuses', output)
 
+    def test_fast_native_word_completion_and_enter_confirmation(self):
+        source = self.work / 'completion.txt'
+        source.write_text('alpha alphabet\n', encoding='utf-8')
+        other = self.work / 'other.txt'
+        other.write_text('alpha alphabet alpine\n', encoding='utf-8')
+        self.terminal_vim(r'''
+call assert_equal('.,w,b', &complete)
+call assert_equal('menuone,noinsert,noselect', &completeopt)
+edit ''' + str(other).replace(' ', r'\ ') + r'''
+edit ''' + str(source).replace(' ', r'\ ') + r'''
+call setline(1, '')
+let g:completion_seen = 0
+let g:completion_items = []
+let g:completion_polls = 0
+function! FinishWordCompletion(timer) abort
+  let g:completion_polls += 1
+  if pumvisible()
+    let g:completion_seen = 1
+    let g:completion_items = complete_info(['items']).items
+    call feedkeys("\<C-n>\<CR>\<Esc>", 't')
+    call timer_stop(a:timer)
+  elseif g:completion_polls > 150
+    call feedkeys("\<Esc>", 't')
+    call timer_stop(a:timer)
+  endif
+endfunction
+call feedkeys("ia", 'xt')
+call assert_false(pumvisible())
+call setline(1, '')
+call timer_start(20, function('FinishWordCompletion'), {'repeat': -1})
+call feedkeys("ial", 'xt!')
+call assert_true(g:completion_seen)
+let words = map(copy(g:completion_items), 'v:val.word')
+call assert_true(index(words, 'alpha') >= 0)
+call assert_true(index(words, 'alpine') >= 0)
+call assert_equal('alpha', getline(1))
+call assert_equal(1, line('$'))
+call feedkeys("o\<CR>", 'xt')
+call assert_equal(3, line('$'))
+''', args=[str(source)])
+
     def test_quit_mapping_accepts_q_after_unanswered_confirmation(self):
         self.terminal_vim(r'''
 edit draft.txt

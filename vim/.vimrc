@@ -57,8 +57,9 @@ set backspace=indent,eol,start
 set expandtab tabstop=4 softtabstop=4 shiftwidth=4
 set incsearch hlsearch ignorecase smartcase
 set wildmenu wildmode=longest:full,full
-set complete=.,w,b,t
+set complete=.,w,b
 set completeopt=menuone,noinsert,noselect
+inoremap <expr> <CR> pumvisible() ? "\<C-y>" : "\<CR>"
 set path=.,**
 set wildignore+=*/.git/*,*/.venv/*,*/venv/*,*/__pycache__/*
 set wildignore+=*/build/*,*/dist/*,*/node_modules/*
@@ -87,11 +88,39 @@ augroup vimrc_lite
   autocmd FileType c,cpp,cuda setlocal foldmethod=syntax foldlevel=99
   autocmd FileType help,qf nnoremap <silent><buffer> q :close<CR>
   autocmd BufReadPost * call s:RestoreCursor()
+  autocmd TextChangedI * call s:OnTextChangedI()
+  autocmd CompleteDone * call s:OnCompleteDone()
 augroup END
 
 function! s:RestoreCursor() abort
   if line("'\"") > 0 && line("'\"") <= line('$')
     execute 'normal! g`"'
+  endif
+endfunction
+
+function! s:OnTextChangedI() abort
+  if get(s:, 'skip_auto_completion', 0)
+    let s:skip_auto_completion = 0
+    return
+  endif
+  call s:AutoCompleteWords()
+endfunction
+
+function! s:AutoCompleteWords() abort
+  if mode(1) !~# '^i' || pumvisible() || &paste || &buftype !=# '' || !&modifiable
+    return
+  endif
+  let line = strpart(getline('.'), 0, col('.') - 1)
+  let word = matchstr(line, '\k\+$')
+  if strchars(word) < 2
+    return
+  endif
+  call feedkeys("\<C-n>", 'n')
+endfunction
+
+function! s:OnCompleteDone() abort
+  if !empty(v:completed_item)
+    let s:skip_auto_completion = 1
   endif
 endfunction
 

@@ -236,8 +236,9 @@ Git 仓库中时只显示提示，不修改 buffer。
 - Python/C/C++/CUDA 使用 4 空格缩进，Makefile 保留 Tab。
 - Python 按缩进折叠，C/C++/CUDA 按 Vim 语法折叠，打开文件时全部展开。
   保留 `za/zA`、`zo/zO`、`zc/zC`、`zR/zM`、`zr/zm` 等原生操作。
-- 插入模式用 `Ctrl-n/p` 补全当前及已加载 buffer 中的词和现有 tags，
-  用 `Ctrl-x Ctrl-f` 补全路径；连接 LSP 后可用 `Ctrl-x Ctrl-o` 手动语义补全。
+- 插入模式输入至少两个字符后自动弹出当前及已加载 buffer 中的词语补全，候选使用
+  Vim 原生 `.,w,b` 来源；用 `Ctrl-n/p` 浏览、回车确认，`Ctrl-x Ctrl-f` 补全路径。
+  连接 LSP 后仍可用 `Ctrl-x Ctrl-o` 手动进行语义补全。
 - 注释切换读取当前文件类型的 `commentstring`，无需插件；空行不会插入注释符号。
 - 原生 `%` 匹配括号，`i{`/`a{` 等选择括号内容；`af`/`if`、`ac`/`ic` 和
   `ab`/`ib` 在 Python、C/C++/CUDA 中按缩进或大括号选择函数、类和常见控制块。
