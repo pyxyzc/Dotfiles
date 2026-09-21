@@ -6,7 +6,7 @@ install_target="${HOME}"
 config_only=0
 staged=''
 
-# 必需文件只在此处登记；预检、占用检查与安装共用同一清单。
+# Required files are registered only here; preflight, occupancy checks and install share the list.
 config_files=(
     dashboard.vim
     lsp.vim
@@ -134,7 +134,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 安装单个文件或目录：内容一致时跳过；否则暂存、备份旧版、原子替换，失败时回滚。
+# Install one file or directory: skip when identical; otherwise stage, back up the old
+# version, replace atomically, and roll back on failure.
 install_entry() {
     local source="$1" destination="$2" backup=''
     if [[ -d "$source" ]]; then

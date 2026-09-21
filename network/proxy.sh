@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# WARNING: this script disables TLS certificate verification globally (curl insecure,
+# wget check-certificate=off, git http.sslVerify false), so HTTPS connections no longer
+# verify the server identity and become vulnerable to man-in-the-middle attacks. Use it
+# only in a self-controlled proxy/mirror environment; when it is no longer needed, remove
+# the related entries from ~/.curlrc, ~/.wgetrc and the global git config. See the network
+# security section of the repository root README.md.
 set -euo pipefail
 
 CURLRC="$HOME/.curlrc"
@@ -6,7 +12,7 @@ WGETRC="$HOME/.wgetrc"
 CONFIGDIR="$HOME/.config"
 BASHRC="$HOME/.bashrc"
 
-# Defaults (override by running: IP=... PORT=... ./setup.sh)
+# Defaults (override by running: IP=... PORT=... ./proxy.sh)
 IP="${IP:-127.0.0.1}"
 PORT="${PORT:-7890}"
 PROXY_URL="http://${IP}:${PORT}"
@@ -66,8 +72,7 @@ append_block "$WGETRC" "$WGET_START" "$WGET_END" <<EOF
 check-certificate = off
 EOF
 
-# 3) ~/.config directory
-# Ensure the config directory exists
+# 3) Ensure ~/.config exists
 mkdir -p "$CONFIGDIR"
 
 # 4) ~/.bashrc -> proxy config + aliases
@@ -115,3 +120,7 @@ echo "  - $CURLRC"
 echo "  - $WGETRC"
 echo "  - $BASHRC"
 echo "Run: source ~/.bashrc"
+echo
+echo "WARNING: TLS certificate verification has been disabled for curl, wget and git."
+echo "         HTTPS connections no longer verify the server identity; remove the"
+echo "         managed blocks and git sslVerify settings when the proxy is not needed."

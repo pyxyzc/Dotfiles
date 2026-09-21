@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# 内部接口：run / files / query / preview。由 search.vim 使用 bash 显式调用。
+# Internal interface: run / files / query / preview, invoked by search.vim via bash.
 set -uo pipefail
 umask 077
 
 search_script=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/search.sh
 
-# fzf 使用 NUL 分隔记录，前三个 Tab 字段为元数据，第四字段只用于显示。
-# 对路径中的字段分隔符编码，解码只做替换，绝不执行文件名或查询内容。
+# fzf uses NUL-separated records; the first three Tab fields are metadata and the fourth
+# is display-only. Field separators in paths are encoded, and decoding only substitutes
+# text, never executing file names or query contents.
 encode_path() {
     search_encoded=${1//%/%25}
     search_encoded=${search_encoded//$'\t'/%09}
@@ -73,7 +74,8 @@ preview() {
     if [[ -z "$encoded" ]]; then printf '%s\n' "$display"; return; fi
     decode_path "$encoded"
     [[ "$line" =~ ^[0-9]+$ ]] || return 2
-    # 保留全文供 fzf 滚动，初始滚动位置由行号决定；剔除文件内控制字符。
+    # Keep the full text for fzf scrolling; the initial scroll position comes from the
+    # line number, and control characters in the file are stripped.
     awk -v target="$line" '
         {
             gsub(/[[:cntrl:]]/, " ")
@@ -83,7 +85,7 @@ preview() {
     ' < "$search_path"
 }
 
-# 空输入的 filter 模式不打开终端；0/1 表示参数有效，2 表示不支持。
+# The empty-input filter mode does not open a terminal; 0/1 mean valid arguments, 2 means unsupported.
 fzf_supports() {
     fzf "$@" --filter='' < /dev/null > /dev/null 2>&1
     [[ $? == [01] ]]
@@ -94,21 +96,24 @@ run() {
     local -a options=(--read0 --print0 --delimiter=$'\t' --with-nth=4..
         --no-multi --no-mouse --layout=default --border=rounded --info=inline
         --color="$colors" --bind='ctrl-j:down,ctrl-k:up,esc:abort,ctrl-c:abort')
-    # 避免用户的 shell/fzf 全局选项改写结果协议或混入其他文件来源。
+    # Prevent the user's global shell/fzf options from rewriting the result protocol or
+    # mixing in other file sources.
     export SHELL="$BASH" FZF_DEFAULT_OPTS='' FZF_DEFAULT_OPTS_FILE=''
     if [[ -n "$history" ]]; then options+=(--history="$history" --history-size=100); fi
     printf -v command '%q %q' "$BASH" "$search_script"
     if [[ "$mode" == files ]]; then
         printf -v FZF_DEFAULT_COMMAND '%s files %q' "$command" "$session"
-        # 空格分隔多个词，便于用“父目录 文件名”缩小同名文件；路径中的 / 仍可直接输入。
+        # Space separates multiple terms so "parent-dir filename" narrows same-named files;
+        # a / in the path can still be typed directly.
         options+=(--prompt='Files> ' --extended)
-        # 0.33.0 起支持路径评分；旧版保留默认模糊评分。
+        # Path scoring is supported from 0.33.0; older versions keep the default fuzzy score.
         if fzf_supports --scheme=path; then options+=(--scheme=path); fi
     else
         printf -v FZF_DEFAULT_COMMAND '%s query %q %q' "$command" "$session" ''
         printf -v preview_command '%s preview {s1} {2} {4..}' "$command"
         preview_window='right,55%,+{2}/2,<40(down,50%,+{2}/2)'
-        # 0.31.0 起支持自动布局；旧版固定下方预览，保证窄屏可读。
+        # Automatic layout is supported from 0.31.0; older versions pin the preview below
+        # so it stays readable on narrow screens.
         if ! fzf_supports --preview-window="$preview_window"; then
             preview_window='down,50%,+{2}/2'
         fi

@@ -30,7 +30,7 @@ shell 的终端退出清理；`textobjects.vim` 为 Python、C/C++/CUDA 提供�
 编辑 `.vim` 文件时，配置会自动使用 2 空格缩进和 100 列文本宽度。提交前可运行：
 
 ```bash
-python3 tests/test_vim_style.py
+python3 ~/Dotfiles/vim/tests/test_vim_style.py
 ```
 
 该检查只覆盖仓库自有 Vimscript，避免改写随配置保存的第三方代码。
@@ -180,7 +180,7 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 | `Ctrl-h/j/k/l`、`Alt-h/j/k/l` | 聚焦左／下／上／右侧 Vim 窗口 |
 | `Ctrl-Up/Down` | 窗口高度减小／增大 2 行 |
 | `Ctrl-Left/Right` | 窗口宽度减小／增大 2 列 |
-| `<leader>v` / `e` | 垂直分屏／开关左侧内置文件浏览器 |
+| `<leader>v` / `<leader>e` | 垂直分屏／开关左侧内置文件浏览器 |
 | 文件树内 `a` | 新建文件；名称以 `/` 结尾则新建目录；光标在目录上时建在该目录内 |
 | 文件树内 `r` / `d` | 重命名／删除光标所在文件或目录，删除前确认 |
 | 文件树内 `c` / `x` / `p` | 复制／剪切／粘贴，粘贴到光标所在目录或当前浏览目录 |
@@ -195,7 +195,7 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 | `<leader>xQ` / `xL` | 开关 quickfix／location list |
 | `<leader>;` | 新标签页打开内置终端，使用 Vim 的 `shell` 设置，退出 shell 后关闭终端页 |
 | 终端内双 `Esc` | 进入终端普通模式；按 `i` 返回输入 |
-| `<leader>nh` / `q` | 查看消息历史／退出当前窗口；未保存时按 `s` 保存、`q` 放弃修改、`c` 或 `<Esc>` 取消 |
+| `<leader>nh` / `<leader>q` | 查看消息历史／退出当前窗口；未保存时按 `s` 保存、`q` 放弃修改、`c` 或 `<Esc>` 取消 |
 | `<leader>gg` | 在新标签页的内置终端中打开 LazyGit，退出后自动关闭该标签页 |
 | 可视模式 `<` / `>` | 调整缩进后保留选区 |
 | 帮助或 quickfix 窗口内 `q` | 关闭辅助窗口 |
@@ -399,8 +399,8 @@ fzf 0.29.x–0.30.x 不支持自动预览布局，固定在下方显示预览。
 ## 其他边界
 
 最近文件来自 viminfo，当前会话新开的文件不一定立即进入该列表。
-窗口导航限于 Vim 内部，不跨 tmux 窗格。没有 DAP、Git hunk、Flash、
-Tree-sitter、浮动 shell 或项目替换界面；普通文本替换可用 Vim 自带 `:%s`。
+窗口导航限于 Vim 内部，不跨 tmux 窗格。没有 DAP、Flash、Tree-sitter、
+浮动 shell 或项目替换界面；普通文本替换可用 Vim 自带 `:%s`。
 
 ## SSH 剪贴板
 
@@ -444,4 +444,4 @@ PTY 测量单次 Esc 的退出延迟，并验证方向键和设置恢复。真�
 需要已安装 fzf，缺少时明确跳过。软件包安装使用模拟命令，不实际安装系统软件或联网。
 本机实测 Vim 9.1；Vim 8 采用传统 Vimscript 和特性检查，但未在独立 Vim 8 上实测。
 缺少 `+terminal` 的 Vim 不注册终端快捷键；没有 `+clipboard` 也可使用内部复制和 OSC 52。
-自动 yank 同步需要 Vim 8.0.1396+ 的 `TextYankPost` 事件，过旧的版本仅保留显式复制。
+自动 yank 同步需要 Vim 8.0.1394+ 的 `TextYankPost` 事件，过旧的版本仅保留显式复制。
