@@ -13,7 +13,7 @@ buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等�
 `search.vim` 和 `search.sh` 连接 Vim 内置终端与 fd/ripgrep/fzf，均由配置显式加载。
 `lsp.vim` 显式加载 `vendor/vim-lsp/`，提供 Python、C/C++ 的基础语言服务。
 `git.vim` 提供 Git hunk 跳转和 LazyGit 入口，`terminal.vim` 统一管理 LazyGit 和普通
-shell 的终端退出清理。
+shell 的终端退出清理；`textobjects.vim` 为 Python、C/C++/CUDA 提供轻量结构文本对象。
 
 ## Vimscript 代码风格
 
@@ -56,6 +56,7 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 ~/.vim/tree.vim
 ~/.vim/buffers.vim
 ~/.vim/edit.vim
+~/.vim/textobjects.vim
 ~/.vim/git.vim
 ~/.vim/terminal.vim
 ~/.vim/search.vim
@@ -169,6 +170,9 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 | `"+p`、`"+P`、`"*p`、`"*P` | 远端会话或无系统剪贴板时退回粘贴未命名寄存器；插入模式为 `Ctrl-r +`/`*` |
 | `<leader>bD` | 清空全文；可视模式下删除选区，保留复制寄存器 |
 | `<leader>bw` | 删除行尾空白，保留视图和搜索记录，可撤销 |
+| `vaf` / `vif` | 选择当前函数整体／函数体 |
+| `vac` / `vic` | 选择当前类整体／类体 |
+| `vab` / `vib` | 选择当前条件、循环或异常控制块整体／内容 |
 | `gcc`、`gc{motion}` | 注释／取消注释当前行、动作范围或可视选区，可带计数；空行保持不变 |
 | `tn` / `tj` / `tk` / `to` | 新建／上一个／下一个／只留当前标签页 |
 | `<leader>aN` / `an` | 在新标签页打开当前 buffer／新建空标签页 |
@@ -235,7 +239,8 @@ Git 仓库中时只显示提示，不修改 buffer。
 - 插入模式用 `Ctrl-n/p` 补全当前及已加载 buffer 中的词和现有 tags，
   用 `Ctrl-x Ctrl-f` 补全路径；连接 LSP 后可用 `Ctrl-x Ctrl-o` 手动语义补全。
 - 注释切换读取当前文件类型的 `commentstring`，无需插件；空行不会插入注释符号。
-- 原生 `%` 匹配括号，`i{`/`a{` 等选择括号内容；不模拟函数、类、循环的结构文本对象。
+- 原生 `%` 匹配括号，`i{`/`a{` 等选择括号内容；`af`/`if`、`ac`/`ic` 和
+  `ab`/`ib` 在 Python、C/C++/CUDA 中按缩进或大括号选择函数、类和常见控制块。
 - 已有 tags 文件时使用 `Ctrl-]` 和 `Ctrl-t`；配置不自动生成索引。
 - 构建使用项目自己的命令或 `:make`，不默认指定 C++ 标准或自动运行代码。
 

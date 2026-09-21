@@ -14,6 +14,7 @@ config_files=(
     tree.vim
     buffers.vim
     edit.vim
+    textobjects.vim
     terminal.vim
     git.vim
     search.vim

@@ -163,6 +163,11 @@ if !s:SourceModule('edit.vim')
   call s:Warn('missing edit.vim; copy the complete vim directory')
 endif
 
+" Lightweight structural text objects for supported programming languages.
+if !s:SourceModule('textobjects.vim')
+  call s:Warn('missing textobjects.vim; copy the complete vim directory')
+endif
+
 function! s:ToggleList(location) abort
   let info = a:location ? getloclist(0, {'winid': 0}) : getqflist({'winid': 0})
   execute a:location ? (info.winid ? 'lclose' : 'lopen') : (info.winid ? 'cclose' : 'copen')

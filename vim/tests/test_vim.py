@@ -374,6 +374,80 @@ edit Makefile
 call assert_equal(['make', 8, 0], [&filetype, &tabstop, &expandtab])
 ''')
 
+    def test_structural_visual_text_objects(self):
+        (self.work / "objects.py").write_text(
+            "@decorator\n"
+            "def outer():\n"
+            "    if ready:\n"
+            "        run()\n"
+            "    else:\n"
+            "        stop()\n"
+            "class Thing:\n"
+            "    def method(self):\n"
+            "        return 1\n"
+        )
+        (self.work / "objects.cpp").write_text(
+            "class Box {\n"
+            "public:\n"
+            "  int value() const {\n"
+            "    if (ready) {\n"
+            "      return 1;\n"
+            "    }\n"
+            "    return 0;\n"
+            "  }\n"
+            "};\n"
+        )
+        (self.work / "notes.txt").write_text("plain text\n")
+        (self.work / "flat.py").write_text("answer = 1\n")
+        self.vim(r'''
+edit objects.py
+call assert_true(maparg('af', 'x', 0, 1).buffer)
+normal! 4G
+normal vaf
+call assert_equal([1, 6], [line("'<"), line("'>")])
+execute "normal! \<Esc>"
+normal! 4G
+normal vif
+call assert_equal([3, 6], [line("'<"), line("'>")])
+execute "normal! \<Esc>"
+normal! 4G
+normal vab
+call assert_equal([3, 6], [line("'<"), line("'>")])
+execute "normal! \<Esc>"
+normal! 9G
+normal vac
+call assert_equal([7, 9], [line("'<"), line("'>")])
+execute "normal! \<Esc>"
+normal! 9G
+normal vic
+call assert_equal([8, 9], [line("'<"), line("'>")])
+
+edit objects.cpp
+normal! 5G
+normal vaf
+call assert_equal([3, 8], [line("'<"), line("'>")])
+execute "normal! \<Esc>"
+normal! 5G
+normal vif
+call assert_equal([4, 7], [line("'<"), line("'>")])
+execute "normal! \<Esc>"
+normal! 5G
+normal vac
+call assert_equal([1, 9], [line("'<"), line("'>")])
+execute "normal! \<Esc>"
+normal! 5G
+normal vab
+call assert_equal([4, 6], [line("'<"), line("'>")])
+
+edit notes.txt
+call assert_equal({}, maparg('af', 'x', 0, 1))
+
+edit flat.py
+normal! 1G
+normal vaf
+call assert_true(mode() =~# '^[vV]')
+''')
+
     def test_close_preserves_windows_across_tabs(self):
         self.vim(r'''
 edit one.py
@@ -1517,7 +1591,7 @@ call assert_equal([], popup_list())
     def split_config(self):
         config = self.work / 'fallback config'
         config.mkdir()
-        for name in ('.vimrc', 'search.sh', 'dashboard.vim', 'tree.vim', 'buffers.vim', 'edit.vim'):
+        for name in ('.vimrc', 'search.sh', 'dashboard.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'textobjects.vim'):
             shutil.copyfile(ROOT / name, config / name)
         # Simulate a Vim without popup windows while exercising the actual split implementation.
         (config / 'search.vim').write_text((ROOT / 'search.vim').read_text().replace(
@@ -1814,7 +1888,7 @@ class InstallerTests(unittest.TestCase):
         colors.mkdir(parents=True)
         dashboard = self.target / '.vim' / 'dashboard.vim'
         dashboard.write_text('" old dashboard\n')
-        modules = [self.target / '.vim' / name for name in ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim')]
+        modules = [self.target / '.vim' / name for name in ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'textobjects.vim')]
         for module in modules:
             module.write_text('" old module\n')
         (colors / "unrelated.vim").write_text('" leave alone\n')
@@ -1826,7 +1900,7 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
-        for name in ('search.vim', 'search.sh', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim'):
+        for name in ('search.vim', 'search.sh', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'textobjects.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         dashboard_backups = list(dashboard.parent.glob('dashboard.vim.bak.*'))
         self.assertEqual(len(dashboard_backups), 1)
