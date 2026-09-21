@@ -100,7 +100,8 @@ run() {
     printf -v command '%q %q' "$BASH" "$search_script"
     if [[ "$mode" == files ]]; then
         printf -v FZF_DEFAULT_COMMAND '%s files %q' "$command" "$session"
-        options+=(--prompt='Files> ' --no-extended)
+        # 空格分隔多个词，便于用“父目录 文件名”缩小同名文件；路径中的 / 仍可直接输入。
+        options+=(--prompt='Files> ' --extended)
         # 0.33.0 起支持路径评分；旧版保留默认模糊评分。
         if fzf_supports --scheme=path; then options+=(--scheme=path); fi
     else

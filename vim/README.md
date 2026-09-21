@@ -12,7 +12,8 @@ buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等�
 `tree.vim` 集中管理 netrw 侧边文件树的加载、选项和快捷键；
 `search.vim` 和 `search.sh` 连接 Vim 内置终端与 fd/ripgrep/fzf，均由配置显式加载。
 `lsp.vim` 显式加载 `vendor/vim-lsp/`，提供 Python、C/C++ 的基础语言服务。
-`git.vim` 提供 LazyGit 入口，`terminal.vim` 统一管理 LazyGit 和普通 shell 的终端退出清理。
+`git.vim` 提供 Git hunk 跳转和 LazyGit 入口，`terminal.vim` 统一管理 LazyGit 和普通
+shell 的终端退出清理。
 
 ## Vimscript 代码风格
 
@@ -183,6 +184,7 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 | 文件树内 `R` / `H` | 刷新列表／显示或隐藏点文件 |
 | `<leader>ff` | fd/fdfind 枚举文件，fzf 即时模糊筛选 |
 | `<leader>fp` | ripgrep 实时正则搜索，预览并跳转到匹配位置 |
+| `]c` / `[c` | 跳转到下一个／上一个 Git hunk；支持未保存 buffer 和未跟踪文件 |
 | `<leader>fr` | 从 Vim 保存的最近文件记录中输入编号选择 |
 | `<leader>fh` | 清除本次搜索高亮 |
 | `[q` / `]q` | 上一个／下一个 quickfix 结果 |
@@ -219,6 +221,11 @@ LazyGit 内使用它自己的按键，通常按 `q` 退出；不需要任何 Vim
 若已切到其他窗口则保留当前焦点，已有文件和未保存内容不会被清理。
 也可使用 `:VimGit` 或 `:VimTerminal [command]`；后者不带参数时使用 `shell` 设置，
 带参数时直接运行指定程序，不解释 shell 管道或重定向。重载配置不会终止运行中的终端。
+
+普通文件中的 `]c` / `[c` 默认比较当前 buffer 与 Git index，只跳转未暂存修改；当前
+buffer 尚未保存时也会按内存内容计算。未跟踪且未被 ignore 的非空文件视为一个完整 hunk。
+在 Vim diff 窗口中，这两个按键保留 Vim 自带的 diff 跳转行为。没有 hunk 或当前文件不在
+Git 仓库中时只显示提示，不修改 buffer。
 
 ## Python / C++ 工作流
 
@@ -349,7 +356,8 @@ clangd 的跨文件跳转和补全可能不完整。首版不注册 CUDA 文件�
 找不到标记时使用当前工作目录。仅搜索进程切换目录，Vim 的 `:pwd` 保持不变。
 
 - `ff`：优先用 `fd`，否则使用 `fdfind`；默认排除隐藏文件，遵守 ignore 规则。
-  fzf 按文件路径进行智能大小写的模糊筛选，不启用 fzf 扩展查询语法；默认不显示预览。
+  fzf 按文件路径进行智能大小写的模糊筛选，支持用空格分隔多个查询词（例如
+  `src main.py`），也可以直接输入带 `/` 的路径；默认不显示预览。
   支持 `--scheme=path` 的版本使用路径评分，旧版使用默认模糊评分，结果排序可能不同。
 - `fp`：直接输入 **ripgrep 正则**，约 100 ms 防抖后刷新结果。小写查询忽略大小写，
   包含大写则区分大小写。包含隐藏文件、排除 `.git`，遵守 ignore 规则；搜索所有文本

@@ -1214,6 +1214,87 @@ call assert_report('The last terminal window should have exited Vim')
         self.assertTrue(leaving.exists())
 
 
+class GitHunkTests(VimSession):
+    def setUp(self):
+        super().setUp()
+        self.repo = self.work / 'git project with spaces'
+        self.target = self.repo / 'src' / 'track file.txt'
+        self.target.parent.mkdir(parents=True)
+        self.target.write_text(''.join(f'line {index}\n' for index in range(1, 9)))
+        subprocess.run(['git', 'init', '-q'], cwd=self.repo, check=True)
+        subprocess.run(['git', 'config', 'user.email', 'vim-lite@example.test'],
+                       cwd=self.repo, check=True)
+        subprocess.run(['git', 'config', 'user.name', 'Vim Lite Tests'],
+                       cwd=self.repo, check=True)
+        subprocess.run(['git', 'add', '.'], cwd=self.repo, check=True)
+        subprocess.run(['git', 'commit', '-qm', 'initial'], cwd=self.repo, check=True)
+
+    def test_hunk_navigation_uses_unsaved_buffer_and_counts(self):
+        self.vim(r'''
+execute 'cd ' . fnameescape(''' + quoted(self.repo) + r''')
+execute 'edit ' . fnameescape(''' + quoted(self.target) + r''')
+call setline(2, 'changed second')
+call setline(7, 'changed seventh')
+call cursor(1, 1)
+call feedkeys(']c', 'xt')
+call assert_equal(2, line('.'))
+call feedkeys(']c', 'xt')
+call assert_equal(7, line('.'))
+call feedkeys('[c', 'xt')
+call assert_equal(2, line('.'))
+call cursor(1, 1)
+call feedkeys('2]c', 'xt')
+call assert_equal(7, line('.'))
+''')
+
+    def test_untracked_file_is_one_hunk(self):
+        untracked = self.repo / 'new file.txt'
+        untracked.write_text('one\ntwo\nthree\n')
+        self.vim(r'''
+execute 'cd ' . fnameescape(''' + quoted(self.repo) + r''')
+execute 'edit ' . fnameescape(''' + quoted(untracked) + r''')
+call cursor(3, 1)
+call feedkeys(']c', 'xt')
+call assert_equal(1, line('.'))
+''')
+
+    def test_deletion_hunk_maps_to_the_current_buffer(self):
+        self.vim(r'''
+execute 'cd ' . fnameescape(''' + quoted(self.repo) + r''')
+execute 'edit ' . fnameescape(''' + quoted(self.target) + r''')
+call deletebufline('', 4)
+call cursor(1, 1)
+call feedkeys(']c', 'xt')
+call assert_equal(3, line('.'))
+''')
+
+    def test_ignored_file_has_no_hunk(self):
+        (self.repo / '.gitignore').write_text('ignored.txt\n')
+        ignored = self.repo / 'ignored.txt'
+        ignored.write_text('ignored\n')
+        self.vim(r'''
+execute 'cd ' . fnameescape(''' + quoted(self.repo) + r''')
+execute 'edit ' . fnameescape(''' + quoted(ignored) + r''')
+call cursor(1, 1)
+call feedkeys(']c', 'xt')
+call assert_equal(1, line('.'))
+call assert_match('no Git hunks', execute('messages'))
+''')
+
+    def test_diff_window_keeps_vim_native_navigation(self):
+        self.vim(r'''
+enew
+call setline(1, ['one', 'two', 'three'])
+diffthis
+vnew
+call setline(1, ['one', 'changed', 'three'])
+diffthis
+call cursor(1, 1)
+call feedkeys(']c', 'xt')
+call assert_equal(2, line('.'))
+''')
+
+
 class SearchTests(VimSession):
     def setUp(self):
         super().setUp()
@@ -1682,13 +1763,13 @@ call assert_true(filereadable($XDG_STATE_HOME . '/vim-lite/search/grep.history')
     @unittest.skipUnless(shutil.which('fzf'), 'Real fzf UI requires manually installed fzf')
     def test_real_fzf_file_fuzzy_matching_and_cancel(self):
         self.require_backends()
-        target = self.project / 'long file name.py'
+        target = self.project / 'src' / 'long file name.py'
         target.write_text('preview_only_text\n')
         self.terminal_vim(r'''
 execute 'cd ' . fnameescape(''' + quoted(self.project) + r''')
 VimFind
 ''' + self.wait_fzf('Files>') + r'''
-call term_sendkeys(terminal, 'lfnp')
+call term_sendkeys(terminal, 'src long file')
 for attempt in range(200)
   call term_wait(terminal, 10)
   if TerminalScreen(terminal) =~# '1/1' | break | endif
