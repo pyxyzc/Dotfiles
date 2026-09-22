@@ -10,7 +10,7 @@ buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等�
 `dashboard.vim` 管理首页，
 `clipboard.vim` 管理 OSC 52 远程剪贴板与复制粘贴回退，
 `tree.vim` 集中管理 netrw 侧边文件树的加载、选项和快捷键；
-`search.vim` 和 `search.sh` 连接 Vim 内置终端与 fd/ripgrep/fzf，均由配置显式加载。
+`search.vim`、`search.sh` 和 `search.awk` 连接 Vim 内置终端与 fd/ripgrep/fzf。
 `lsp.vim` 显式加载 `vendor/vim-lsp/`，提供 Python、C/C++ 的基础语言服务。
 `git.vim` 提供 Git hunk 跳转和 LazyGit 入口，`terminal.vim` 统一管理 LazyGit 和普通
 shell 的终端退出清理；`textobjects.vim` 为 Python、C/C++/CUDA 提供轻量结构文本对象。
@@ -61,6 +61,7 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 ~/.vim/terminal.vim
 ~/.vim/search.vim
 ~/.vim/search.sh
+~/.vim/search.awk
 ~/.vim/lsp.vim
 ~/.vim/vendor/vim-lsp/
 ~/.vim/colors/tokyonight-night.vim
@@ -73,13 +74,15 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 缺失 Vim 且机器断网时，需要先用系统的离线软件包安装 Vim，或使用 `--config-only`。
 有 Vim 但版本过旧、缺少必要功能时，也会尝试系统软件安装，并再次检查。
 
-文件查找需要 `fd`（或 `fdfind`）和 `fzf`；文本搜索需要 `rg` 和 `fzf`。
+文件查找需要 `fd`（或 `fdfind`）和 `fzf`；文本搜索需要 `rg` 和 `fzf`；
+流式结果处理需要 GNU awk（`gawk`），预览使用 head/tail/od。
+选择 gawk 是为了让 NUL 分隔的稀疏结果立即送达；mawk 的输入缓冲可能等到扫描结束。
 fzf 以 **0.29.0 及以上版本**为兼容基线；Vim 需要 `+terminal` 和 `+timers`。
 安装脚本只提示缺失的搜索工具，不会安装或下载它们；`--config-only` 不检查依赖。
 请自行安装，例如 Debian/Ubuntu：
 
 ```bash
-sudo apt install fd-find ripgrep fzf
+sudo apt install fd-find ripgrep fzf gawk
 ```
 
 其他发行版安装对应的 fd、ripgrep、fzf 软件包，并确认命令位于 `PATH`。
@@ -89,7 +92,9 @@ sudo apt install fd-find ripgrep fzf
 不会改写它指向的文件。内容相同的普通文件跳过，不重复备份。其他主题和旧插件
 文件保留在原处；此配置清空 `packpath` 并关闭 `plugin` 脚本的自动加载，
 所以已有的插件包不会自动加载。运行时仅加入 Vim 自带目录、本地主题所在目录和
-随配置保存的 vim-lsp。插件目录整体暂存、备份和替换，升级不会残留旧文件；
+随配置保存的 vim-lsp；新版 Vim 的内置 netrw 若以可选包提供，也会显式加入。
+加载 netrw 时临时将 `packpath` 限定为 `$VIMRUNTIME`，完成后恢复，兼容新旧布局。
+插件目录整体暂存、备份和替换，升级不会残留旧文件；
 目录内容相同则跳过。回退时恢复对应配置文件和整个插件目录的备份，
 不要将旧、新插件目录合并。安装不修改 Neovim、shell 或 tmux 配置。
 
@@ -234,8 +239,9 @@ Git 仓库中时只显示提示，不修改 buffer。
 ## Python / C++ 工作流
 
 - Python/C/C++/CUDA 使用 4 空格缩进，Makefile 保留 Tab。
-- Python 按缩进折叠，C/C++/CUDA 按 Vim 语法折叠，打开文件时全部展开。
-  保留 `za/zA`、`zo/zO`、`zc/zC`、`zR/zM`、`zr/zm` 等原生操作。
+- Python/C/C++/CUDA 默认手动折叠，避免打开或跳转时计算全文折叠。
+  可用 `zf` 创建折叠；需要自动折叠时，在当前窗口执行 `:setlocal foldmethod=indent`
+  （Python）或 `:setlocal foldmethod=syntax`（C/C++/CUDA）。
 - 插入模式输入至少两个字符后自动弹出当前及已加载 buffer 中的词语补全，候选使用
   Vim 原生 `.,w,b` 来源；用 `Ctrl-n/p` 浏览、回车确认，`Ctrl-x Ctrl-f` 补全路径。
   连接 LSP 后仍可用 `Ctrl-x Ctrl-o` 手动进行语义补全。
@@ -244,6 +250,10 @@ Git 仓库中时只显示提示，不修改 buffer。
   `ab`/`ib` 在 Python、C/C++/CUDA 中按缩进或大括号选择函数、类和常见控制块。
 - 已有 tags 文件时使用 `Ctrl-]` 和 `Ctrl-t`；配置不自动生成索引。
 - 构建使用项目自己的命令或 `:make`，不默认指定 C++ 标准或自动运行代码。
+
+首次读取大小 ≥ 1 MiB 的文件时，自动使用纯文本轻量模式，关闭语法高亮和自动折叠，
+不向 LSP 发送文件全文；仍可正常编辑、保存和定位。普通文件保留高亮、缩进及 LSP。
+可在加载配置前设置 `g:vimrc_lite_large_file_bytes` 调整字节阈值，`0` 表示关闭此策略。
 
 ## 极简 LSP
 
@@ -365,7 +375,7 @@ clangd 的跨文件跳转和补全可能不完整。首版不注册 CUDA 文件�
   fzf 按文件路径进行智能大小写的模糊筛选，支持用空格分隔多个查询词（例如
   `src main.py`），也可以直接输入带 `/` 的路径；默认不显示预览。
   支持 `--scheme=path` 的版本使用路径评分，旧版使用默认模糊评分，结果排序可能不同。
-- `fp`：直接输入 **ripgrep 正则**，约 100 ms 防抖后刷新结果。小写查询忽略大小写，
+- `fp`：直接输入 **ripgrep 正则**，约 20 ms 防抖后刷新结果。小写查询忽略大小写，
   包含大写则区分大小写。包含隐藏文件、排除 `.git`，遵守 ignore 规则；搜索所有文本
   文件，不再限于 Python/C++，也不再询问 glob。空查询不扫描文件。
 - `fr`：从 Vim 的 viminfo 最近文件记录中按新近顺序列出文件，支持模糊筛选和内容预览；
@@ -375,8 +385,12 @@ clangd 的跨文件跳转和补全可能不完整。首版不注册 CUDA 文件�
 
 fzf 在居中终端弹窗中运行，宽约 90%、高约 80%，沿用 TokyoNight 配色与透明设置。
 不支持终端弹窗的 Vim 使用底部分屏；缺少必要功能或程序时提示，不使用旧同步搜索。
-`fp` 宽屏右侧显示带行号的上下文，`fr` 预览最近文件内容；窄屏自动改为上下布局，
-命中行带标记和颜色。
+`fp` 预览从命中行开始的后文，`fr` 预览文件开头；宽屏在右侧、窄屏在下方显示。
+预览输入最多 64 KiB、显示最多 200 行，每行最多 500 字节（不切断 UTF-8 字符）；
+超过限制时显示截断提示。命中行带标记和颜色，可在片段内翻页，回车查看完整内容。
+文本搜索携带行首字节偏移，预览深处的匹配无需从文件开头扫描。
+UTF-16 文件显示命中摘要，并在系统提供 iconv 时解码受限的文件开头，注明预览范围；
+跳转仍使用搜索返回的行列。
 fzf 0.29.x–0.30.x 不支持自动预览布局，固定在下方显示预览。
 
 | 搜索界面按键 | 功能 |
@@ -399,6 +413,14 @@ fzf 0.29.x–0.30.x 不支持自动预览布局，固定在下方显示预览。
 历史目录不可写时仍可搜索，但不保存历史。搜索界面隔离 `FZF_DEFAULT_OPTS`、
 `FZF_DEFAULT_COMMAND` 和 ripgrep 用户配置文件，以保持按键、数据格式和搜索规则一致；
 不修改当前 shell 的环境设置。
+
+候选文件和匹配结果由 awk 流式转换并及时刷新，不经过逐条 Bash 循环；
+fzf 能力检测在同一 Vim 会话中复用，替换 fzf 可执行文件后重新检测。
+可用 `python3 vim/tests/search_latency.py --rounds 30`（在 Dotfiles 根目录运行）
+复测真实按键到弹窗、结果、预览和恢复编辑的耗时。基准默认创建 1 万个临时文件，
+保留已安装的 LSP，分别报告首次、热启动中位数与 P95；`--no-lsp` 可隔离语言服务器开销。
+`--size 2097152` 可验证 2 MiB 大文件的轻量模式，基准结束后自动清理临时文件。
+本机的前后对照、P95 和尚未达到的指标见 [PERFORMANCE.md](PERFORMANCE.md)。
 
 ## 其他边界
 
