@@ -949,7 +949,8 @@ call assert_equal(1, winnr('$'))
 
     def test_recent_files_mapping(self):
         self.vim(r'''
-call assert_equal(':browse oldfiles<CR>', maparg("\<leader>fr", 'n'))
+call assert_equal(':VimRecent<CR>', maparg("\<leader>fr", 'n'))
+call assert_true(exists(':VimRecent'))
 call assert_equal('', maparg("\<leader>fo", 'n'))
 ''')
 
@@ -1526,6 +1527,21 @@ call assert_equal([], popup_list())
         self.assertIn('>   150 context 150', preview)
         self.assertIn('   200 context 200', preview)
 
+    def test_recent_backend_preserves_order_and_decodes_paths(self):
+        paths = [
+            str(self.project / 'src' / 'new file.py'),
+            str(self.project / "中文 : ' | %09\t\n.cpp"),
+        ]
+        encoded = [
+            path.replace('%', '%25').replace('\t', '%09').replace('\n', '%0A')
+            for path in paths
+        ]
+        (self.session / 'recent').write_text('\n'.join(encoded) + '\n')
+        records = self.records(self.helper('recent', self.session))
+        self.assertEqual([record[1:3] for record in records], [['1', '1'], ['1', '1']])
+        display_paths = [paths[0], paths[1].replace('\t', '?').replace('\n', '?')]
+        self.assertEqual([record[3] for record in records], display_paths)
+
     def test_project_roots_and_current_directory_are_independent(self):
         nested = self.project / 'src' / 'nested'
         nested.mkdir()
@@ -1568,6 +1584,19 @@ call assert_equal(['keep this'], getbufline(original, 1, '$'))
 call assert_true(getbufvar(original, '&modified'))
 ''')
         self.assertFalse((self.project / 'injected').exists())
+
+    def test_recent_selection_opens_file_from_viminfo(self):
+        self.fake_fzf()
+        target = self.project / 'src' / 'recent file.py'
+        target.write_text('recent\n')
+        self.env['SEARCH_TEST_PICK'] = str(target)
+        self.terminal_vim(r'''
+let v:oldfiles = [''' + quoted(target) + r''']
+VimRecent
+''' + self.wait_search() + r'''
+call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+call assert_equal([1, 1], [line('.'), col('.')])
+''')
 
     def test_dashboard_file_selection_and_cancel(self):
         self.fake_fzf()

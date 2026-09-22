@@ -260,7 +260,7 @@ xnoremap > >gv
 " 搜索、结果列表、消息。
 nnoremap <silent> <leader>ff :VimFind<CR>
 nnoremap <silent> <leader>fp :VimSearch<CR>
-nnoremap <leader>fr :browse oldfiles<CR>
+nnoremap <silent> <leader>fr :VimRecent<CR>
 nnoremap <silent> <leader>fh :nohlsearch<CR>
 nnoremap <silent> [q :cprevious<CR>
 nnoremap <silent> ]q :cnext<CR>

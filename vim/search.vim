@@ -60,6 +60,28 @@ function! s:History(mode) abort
   endtry
 endfunction
 
+function! s:EncodePath(path) abort
+  let encoded = substitute(a:path, '%', '%25', 'g')
+  let encoded = substitute(encoded, "\t", '%09', 'g')
+  let encoded = substitute(encoded, "\n", '%0A', 'g')
+  let encoded = substitute(encoded, "\r", '%0D', 'g')
+  return substitute(encoded, "\e", '%1B', 'g')
+endfunction
+
+function! s:WriteRecent(state) abort
+  let paths = []
+  for path in get(v:, 'oldfiles', [])
+    if empty(path) || index(paths, path) >= 0
+      continue
+    endif
+    call add(paths, s:EncodePath(path))
+  endfor
+  if empty(paths)
+    throw 'no recent files in viminfo'
+  endif
+  call writefile(paths, a:state.directory . '/recent', 'b')
+endfunction
+
 function! s:Colors() abort
   let transparent = get(g:, 'vimrc_lite_transparent', 1)
   if exists('+termguicolors') && &termguicolors
@@ -139,7 +161,7 @@ function! s:Finish(state, status, timer) abort
     call s:Warn('original window closed; selection was not opened')
     return
   endif
-  let path = a:state.root . '/' . path
+  let path = a:state.mode ==# 'recent' ? fnamemodify(path, ':p') : a:state.root . '/' . path
   if !filereadable(path)
     call s:Warn('selected file is no longer readable')
     return
@@ -227,6 +249,9 @@ function! s:Open(mode) abort
     let &ttimeoutlen = min([30, state.ttimeoutlen < 0 ? &timeoutlen : state.ttimeoutlen])
     call mkdir(state.directory, '', 0700)
     let [width, height] = s:Geometry()
+    if a:mode ==# 'recent'
+      call s:WriteRecent(state)
+    endif
     " 由 Finish 统一关闭，避免自动关闭提前删除终端、打断 close_cb。
     let options = {'hidden': 1, 'cwd': state.root,
           \ 'term_kill': 'term', 'norestore': 1, 'term_rows': height, 'term_cols': width,
@@ -251,6 +276,7 @@ endfunction
 
 command! VimFind call <SID>Open('files')
 command! VimSearch call <SID>Open('grep')
+command! VimRecent call <SID>Open('recent')
 augroup vimrc_lite_search
   autocmd!
   autocmd VimResized * call s:Resize()

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Internal interface: run / files / query / preview, invoked by search.vim via bash.
+# Internal interface: run / files / query / preview / recent, invoked by search.vim via bash.
 set -uo pipefail
 umask 077
 
@@ -74,6 +74,10 @@ preview() {
     if [[ -z "$encoded" ]]; then printf '%s\n' "$display"; return; fi
     decode_path "$encoded"
     [[ "$line" =~ ^[0-9]+$ ]] || return 2
+    if [[ ! -r "$search_path" ]]; then
+        printf '%s\n' "$display"
+        return 0
+    fi
     # Keep the full text for fzf scrolling; the initial scroll position comes from the
     # line number, and control characters in the file are stripped.
     awk -v target="$line" '
@@ -83,6 +87,15 @@ preview() {
             else printf " %6d %s\n", NR, $0
         }
     ' < "$search_path"
+}
+
+recent() {
+    local session=$1 encoded display
+    while IFS= read -r encoded || [[ -n "$encoded" ]]; do
+        decode_path "$encoded"
+        display=${search_path//[[:cntrl:]]/?}
+        printf '%s\t1\t1\t%s\0' "$encoded" "$display"
+    done < "$session/recent"
 }
 
 # The empty-input filter mode does not open a terminal; 0/1 mean valid arguments, 2 means unsupported.
@@ -108,7 +121,7 @@ run() {
         options+=(--prompt='Files> ' --extended)
         # Path scoring is supported from 0.33.0; older versions keep the default fuzzy score.
         if fzf_supports --scheme=path; then options+=(--scheme=path); fi
-    else
+    elif [[ "$mode" == grep ]]; then
         printf -v FZF_DEFAULT_COMMAND '%s query %q %q' "$command" "$session" ''
         printf -v preview_command '%s preview {s1} {2} {4..}' "$command"
         preview_window='right,55%,+{2}/2,<40(down,50%,+{2}/2)'
@@ -119,6 +132,17 @@ run() {
         fi
         options+=(--prompt='Live grep> ' --disabled --no-sort
             --bind="change:reload:$command query $(printf '%q' "$session") {q}"
+            --preview="$preview_command" --preview-window="$preview_window"
+            --bind='ctrl-u:preview-half-page-up,ctrl-d:preview-half-page-down')
+    else
+        printf -v FZF_DEFAULT_COMMAND '%s recent %q' "$command" "$session"
+        printf -v preview_command '%s preview {s1} {2} {4..}' "$command"
+        preview_window='right,55%,+{2}/2,<40(down,50%,+{2}/2)'
+        if ! fzf_supports --preview-window="$preview_window"; then
+            preview_window='down,50%,+{2}/2'
+        fi
+        options+=(--prompt='Recent> ' --no-sort
+            --header='Recent files  •  Enter open  •  Esc cancel'
             --preview="$preview_command" --preview-window="$preview_window"
             --bind='ctrl-u:preview-half-page-up,ctrl-d:preview-half-page-down')
     fi
@@ -152,5 +176,6 @@ case "${1:-}" in
     files) shift; files "$@" ;;
     query) shift; query "$@" ;;
     preview) shift; preview "$@" ;;
-    *) printf 'Internal Vim search helper: run/files/query/preview\n' >&2; exit 2 ;;
+    recent) shift; recent "$@" ;;
+    *) printf 'Internal Vim search helper: run/files/query/preview/recent\n' >&2; exit 2 ;;
 esac
