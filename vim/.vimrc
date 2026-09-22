@@ -78,6 +78,17 @@ else
   echohl None
 endif
 
+" 当前行使用下划线提示，不铺整行背景色。
+set cursorlineopt=both
+
+" 在当前行文字下方绘制横线，并保持背景透明。
+highlight CursorLine gui=underline guibg=NONE
+highlight CursorLine cterm=underline ctermbg=NONE
+
+" 使用柔和的蓝色强调当前行号。
+highlight CursorLineNr gui=bold guifg=#7aa2f7 guibg=NONE
+highlight CursorLineNr cterm=bold ctermfg=111 ctermbg=NONE
+
 augroup vimrc_lite
   autocmd!
   autocmd FileType vim,vimrc setlocal expandtab tabstop=2 softtabstop=2 shiftwidth=2
