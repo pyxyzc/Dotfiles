@@ -1,5 +1,18 @@
 " 使用 Vim 自带 netrw 管理侧边文件树；关闭插件自动加载时也显式启用。
-runtime plugin/netrwPlugin.vim
+if !empty(globpath($VIMRUNTIME, 'pack/*/opt/netrw', 1, 1))
+  " 新版 netrw 改为可选包；只临时开放 Vim 自带目录，保持用户插件隔离。
+  " 重载 vimrc 会重建 runtimepath，因此每次都用 packadd 补回 netrw 路径。
+  let s:packpath = &packpath
+  try
+    let &packpath = escape($VIMRUNTIME, ',')
+    packadd netrw
+  finally
+    let &packpath = s:packpath
+    unlet s:packpath
+  endtry
+else
+  runtime plugin/netrwPlugin.vim
+endif
 
 let g:netrw_banner = 0
 let g:netrw_liststyle = 3

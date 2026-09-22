@@ -42,12 +42,28 @@ let s:theme = s:FindModule('colors/tokyonight-night.vim')
 if !empty(s:theme)
   let &runtimepath .= ',' . escape(fnamemodify(s:theme, ':h:h'), ',')
 endif
+" 必须先于内置 filetypedetect/LSP 注册；重载时保留原来的事件执行顺序。
+function! s:LargeFile() abort
+  let limit = get(g:, 'vimrc_lite_large_file_bytes', 1024 * 1024)
+  if limit > 0 && getfsize(expand('<afile>:p')) >= limit
+    let b:vimrc_lite_large_file = 1
+    setfiletype text
+    setlocal syntax=OFF foldmethod=manual
+  endif
+endfunction
+if !exists('#vimrc_lite_large_file#BufReadPost')
+  augroup vimrc_lite_large_file
+    autocmd BufReadPost * call s:LargeFile()
+  augroup END
+endif
 filetype plugin indent on
 syntax enable
 runtime plugin/matchparen.vim
 
 set encoding=utf-8
 set hidden autoread
+" 不创建或使用交换文件，打开文件时也不提示已有交换文件冲突。
+set noswapfile
 set number relativenumber cursorline
 set laststatus=2 showmode showcmd
 set statusline=%n:%f\ %m%r%h%=%y\ %l:%c\ %p%%
@@ -95,8 +111,7 @@ augroup vimrc_lite
   autocmd FileType vim,vimrc setlocal textwidth=100 formatoptions-=t
   autocmd FileType python,c,cpp,cuda setlocal expandtab tabstop=4 softtabstop=4 shiftwidth=4
   autocmd FileType make setlocal noexpandtab tabstop=8 softtabstop=0 shiftwidth=8
-  autocmd FileType python setlocal foldmethod=indent foldlevel=99
-  autocmd FileType c,cpp,cuda setlocal foldmethod=syntax foldlevel=99
+  autocmd FileType python,c,cpp,cuda setlocal foldmethod=manual
   autocmd FileType help,qf nnoremap <silent><buffer> q :close<CR>
   autocmd BufReadPost * call s:RestoreCursor()
   autocmd TextChangedI * call s:OnTextChangedI()

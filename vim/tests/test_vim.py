@@ -380,10 +380,16 @@ call assert_equal(2, &showtabline)
 call assert_equal('tokyonight-night', g:colors_name)
 call assert_equal('', &packpath)
 call assert_equal($VIMRUNTIME, split(&runtimepath, ',')[0])
-call assert_equal(3, len(split(&runtimepath, ',')))
+let netrw_packages = globpath($VIMRUNTIME, 'pack/*/opt/netrw', 1, 1)
+call assert_equal(3 + len(netrw_packages), len(split(&runtimepath, ',')))
 call assert_false(&loadplugins)
 call assert_equal(2, exists(':Lexplore'))
-call assert_notmatch('/pack/\|/nvim/', execute('scriptnames'))
+call assert_notmatch('/nvim/', execute('scriptnames'))
+for script in split(execute('scriptnames'), '\n')
+  if script =~# '/pack/'
+    call assert_match('/pack/[^/]*/opt/netrw/', script)
+  endif
+endfor
 call assert_equal('#c0caf5', synIDattr(hlID('Normal'), 'fg', 'gui'))
 call assert_equal('', synIDattr(hlID('Normal'), 'bg', 'gui'))
 call assert_match('^\d\+$', synIDattr(hlID('Normal'), 'fg', 'cterm'))
@@ -404,13 +410,11 @@ call assert_match('^\d\+$', synIDattr(hlID('Normal'), 'bg', 'cterm'))
         (self.work / "Makefile").write_text("all:\n\techo done\n")
         self.vim(r'''
 edit sample.py
-call assert_equal(['python', 4, 1, 'indent'], [&filetype, &shiftwidth, &expandtab, &foldmethod])
-call assert_true(foldlevel(2) > 0)
+call assert_equal(['python', 4, 1, 'manual'], [&filetype, &shiftwidth, &expandtab, &foldmethod])
 call assert_equal(-1, foldclosed(2))
 edit sample.cpp
 syntax sync fromstart
-call assert_equal(['cpp', 4, 1, 'syntax'], [&filetype, &shiftwidth, &expandtab, &foldmethod])
-call assert_true(foldlevel(2) > 0)
+call assert_equal(['cpp', 4, 1, 'manual'], [&filetype, &shiftwidth, &expandtab, &foldmethod])
 edit Makefile
 call assert_equal(['make', 8, 0], [&filetype, &tabstop, &expandtab])
 ''')
@@ -947,6 +951,53 @@ call feedkeys(' e', 'xt')
 call assert_equal(1, winnr('$'))
 ''')
 
+    def test_netrw_optional_package_and_reload(self):
+        subprocess.run(
+            [VIM, '-Nu', 'NONE', '-i', 'NONE', '-n', '-es', '-c',
+             'call writefile([$VIMRUNTIME], ' + quoted(self.work / 'runtime-path') + ')',
+             '-c', 'qa!'], capture_output=True, text=True, check=True,
+        )
+        runtime = Path((self.work / 'runtime-path').read_text().strip())
+        fixture = self.work / 'runtime with spaces'
+        package = fixture / 'pack' / 'dist' / 'opt' / 'netrw'
+        package.mkdir(parents=True)
+        installed = list(runtime.glob('pack/*/opt/netrw'))
+        # Repackage the installed netrw to exercise real directory browsing and autoload.
+        for entry in runtime.iterdir():
+            if entry.name == 'pack':
+                continue
+            if entry.name not in ('plugin', 'autoload', 'syntax', 'ftplugin'):
+                (fixture / entry.name).symlink_to(entry, target_is_directory=entry.is_dir())
+                continue
+            (fixture / entry.name).mkdir()
+            (package / entry.name).mkdir()
+            for child in entry.iterdir():
+                if installed and child.name.startswith('netrw'):
+                    continue
+                target = package if child.name.startswith('netrw') else fixture
+                (target / entry.name / child.name).symlink_to(
+                    child, target_is_directory=child.is_dir())
+        if installed:
+            shutil.copytree(installed[0], package, dirs_exist_ok=True)
+        (fixture / 'plugin' / 'netrwPlugin.vim').write_text(
+            'if &cp || exists("g:loaded_netrw") || exists("g:loaded_netrwPlugin")\n'
+            '  finish\nendif\npackadd netrw\n')
+        unrelated = fixture / 'pack' / 'dist' / 'start' / 'unrelated' / 'plugin'
+        unrelated.mkdir(parents=True)
+        (unrelated / 'probe.vim').write_text('let g:unrelated_plugin_loaded = 1\n')
+        self.vim(r'''
+call assert_equal('', &packpath)
+call assert_equal(2, exists(':Lexplore'))
+source ''' + str(ROOT / '.vimrc') + r'''
+call assert_equal('', &packpath)
+call assert_true(index(split(&runtimepath, ','), ''' + quoted(package) + r''') >= 0)
+call assert_false(exists('g:unrelated_plugin_loaded'))
+call feedkeys(' e', 'xt')
+call assert_equal('netrw', &filetype)
+call feedkeys(' e', 'xt')
+call assert_equal(1, winnr('$'))
+''', before=['let $VIMRUNTIME = ' + quoted(fixture)])
+
     def test_recent_files_mapping(self):
         self.vim(r'''
 call assert_equal(':VimRecent<CR>', maparg("\<leader>fr", 'n'))
@@ -1414,6 +1465,8 @@ call assert_equal(2, line('.'))
 class SearchTests(VimSession):
     def setUp(self):
         super().setUp()
+        if not shutil.which('gawk'):
+            self.skipTest('Streaming search requires GNU awk (gawk)')
         self.project = self.work / 'project with spaces'
         self.project.mkdir()
         (self.project / '.git').mkdir()
@@ -1431,7 +1484,7 @@ class SearchTests(VimSession):
 
     @staticmethod
     def records(output):
-        return [record.decode().split('\t', 3) for record in output.split(b'\0') if record]
+        return [record.decode().split('\t', 4) for record in output.split(b'\0') if record]
 
     def require_backends(self):
         if not shutil.which('rg') or not (shutil.which('fd') or shutil.which('fdfind')):
@@ -1492,7 +1545,7 @@ call assert_equal([], popup_list())
             (self.project / name).write_text('first\nneedle123\nNeedle456\n')
         (self.project / '.gitignore').write_text('ignored.txt\n')
         files = self.records(self.helper('files', self.session))
-        self.assertEqual({item[3] for item in files}, {'notes.txt', 'src/main.cpp'})
+        self.assertEqual({item[4] for item in files}, {'notes.txt', 'src/main.cpp'})
         matches = self.records(self.helper('query', self.session, r'needle\d+'))
         self.assertEqual(len(matches), 6)
         self.assertEqual({item[1] for item in matches}, {'2', '3'})
@@ -1505,7 +1558,7 @@ call assert_equal([], popup_list())
         self.assertEqual(self.helper('query', self.session, 'not-present'), b'')
         errors = self.records(self.helper('query', self.session, '['))
         self.assertEqual(errors[0][:3], ['', '0', '0'])
-        self.assertIn('error', errors[0][3])
+        self.assertIn('error', errors[0][4])
         self.assertEqual(list(self.session.glob('rg.*')), [])
 
     def test_backend_special_paths_preview_and_safe_queries(self):
@@ -1514,18 +1567,35 @@ call assert_equal([], popup_list())
         (self.project / name).write_text('before\nxx safe-value\n\x1b]51;bad\x07\n')
         matches = self.records(self.helper('query', self.session, 'safe-value'))
         self.assertEqual(len(matches), 1)
-        encoded, line, column, display = matches[0]
+        encoded, line, column, offset, display = matches[0]
         self.assertEqual([line, column], ['2', '4'])
-        preview = self.helper('preview', encoded, line, display).decode()
+        self.assertEqual(offset, '7')
+        preview = self.helper('preview', encoded, line, offset, display).decode()
         self.assertIn('>     2 xx safe-value', preview)
         self.assertNotIn('\x1b]51;', preview)
         self.helper('query', self.session, "$(touch injected)|'|`touch injected`")
         self.assertFalse((self.project / 'injected').exists())
         self.assertIn('%2509%09%0A', encoded)
         (self.project / name).write_text(''.join(f'context {index}\n' for index in range(1, 201)))
-        preview = self.helper('preview', encoded, '150', display).decode()
+        offset = sum(len(f'context {index}\n') for index in range(1, 150))
+        preview = self.helper('preview', encoded, '150', offset, display).decode()
         self.assertIn('>   150 context 150', preview)
         self.assertIn('   200 context 200', preview)
+
+    def test_large_file_threshold_and_window_options_do_not_leak(self):
+        small = self.project / 'small.py'
+        small.write_text('#' * 63)
+        large = self.project / 'large.py'
+        large.write_text('#' * 64)
+        self.vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(small) + r''')
+call assert_equal('python', &filetype)
+execute 'edit ' . fnameescape(''' + quoted(large) + r''')
+call assert_equal(['text', 'OFF', 'manual'], [&filetype, &syntax, &foldmethod])
+execute 'edit ' . fnameescape(''' + quoted(small) + r''')
+call assert_equal(['python', 'python', 'manual'], [&filetype, &syntax, &foldmethod])
+call assert_false(get(b:, 'vimrc_lite_large_file', 0))
+''', before=['let g:vimrc_lite_large_file_bytes = 64'])
 
     def test_recent_backend_preserves_order_and_decodes_paths(self):
         paths = [
@@ -1540,7 +1610,117 @@ call assert_equal([], popup_list())
         records = self.records(self.helper('recent', self.session))
         self.assertEqual([record[1:3] for record in records], [['1', '1'], ['1', '1']])
         display_paths = [paths[0], paths[1].replace('\t', '?').replace('\n', '?')]
-        self.assertEqual([record[3] for record in records], display_paths)
+        self.assertEqual([record[4] for record in records], display_paths)
+
+    def test_preview_bounds_and_deep_byte_offset(self):
+        target = self.project / 'deep.txt'
+        offset = 256 * 1024 * 1024
+        with target.open('wb') as stream:
+            stream.seek(offset)
+            stream.write(b'deep match\n' + b'context\n' * 500)
+        preview = self.helper('preview', str(target), 9000000, offset, 'deep match').decode()
+        self.assertIn('>9000000 deep match', preview)
+        self.assertEqual(len(preview.splitlines()), 201)
+        self.assertIn('Preview limited', preview)
+        target.write_text('中' * 1000000)
+        preview = self.helper('preview', str(target), 1, 0, 'long line').decode()
+        self.assertLess(len(preview), 800)
+        self.assertIn('Preview limited', preview)
+        target.write_bytes(b'a' * 65400 + b'\n' + ('中' * 100).encode())
+        self.helper('preview', str(target), 1, 0, 'split character').decode()
+
+    def test_preview_transcoded_files_and_utf8_bom(self):
+        self.require_backends()
+        target = self.project / 'encoded.txt'
+        text = 'first\nxx needle\nafter\n'
+        for encoding in ('utf-8-sig', 'utf-16', 'utf-16-be'):
+            with self.subTest(encoding=encoding):
+                data = text.encode(encoding)
+                if encoding == 'utf-16-be':
+                    data = b'\xfe\xff' + data
+                target.write_bytes(data)
+                record = self.records(self.helper('query', self.session, 'needle'))[0]
+                path, line, column, offset, display = record
+                preview = self.helper('preview', path, line, offset, display).decode()
+                self.assertIn('xx needle', preview)
+                if encoding == 'utf-8-sig':
+                    self.assertTrue(preview.startswith('\x1b[1;36m>     2 xx needle'))
+                else:
+                    self.assertIn('Transcoded file', preview)
+
+    def test_streaming_first_record_does_not_wait_for_source_exit(self):
+        self.require_backends()
+        finder = self.work / 'bin'
+        finder.mkdir()
+        source = finder / 'fd'
+        source.write_text('#!/bin/sh\nprintf "first.txt\\0"\nsleep 1\n')
+        source.chmod(0o755)
+        env = dict(self.env, PATH=str(finder) + os.pathsep + self.env['PATH'])
+        process = subprocess.Popen([BASH, str(ROOT / 'search.sh'), 'files', str(self.session)],
+                                   env=env, stdout=subprocess.PIPE, start_new_session=True)
+        try:
+            self.assertTrue(select.select([process.stdout], [], [], .5)[0])
+            self.assertIn(b'first.txt', os.read(process.stdout.fileno(), 1024))
+            self.assertIsNone(process.poll())
+            process.wait(timeout=2)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+            process.stdout.close()
+
+    def test_awk_implementations_preserve_the_record_protocol(self):
+        path = b"./name %09\t\n' :file.cpp"
+        raw = path + b'\0' + b'2:4:7:xx needle:with:colons\n'
+        expected = b"name %2509%09%0A' :file.cpp\t2\t4\t7\tname %09??' :file.cpp:2:4:xx needle:with:colons\0"
+        for executable in ('awk', 'mawk', 'gawk'):
+            if not shutil.which(executable):
+                continue
+            with self.subTest(executable=executable):
+                actual = subprocess.check_output(
+                    [executable, '-v', 'mode=query', '-f', str(ROOT / 'search.awk')],
+                    input=raw, env=dict(self.env, LC_ALL='C'))
+                self.assertEqual(actual, expected)
+
+    @unittest.skipUnless(shutil.which('fzf'), 'Requires real fzf process cancellation')
+    def test_cancel_and_reload_kill_the_previous_query(self):
+        binary = self.work / 'bin'
+        binary.mkdir()
+        pid_log = self.work / 'rg-pids'
+        fake = binary / 'rg'
+        fake.write_text(f'#!{sys.executable}\n' +
+                        'import os, time\n' +
+                        f'with open({str(pid_log)!r}, "a") as log:\n' +
+                        '    log.write(str(os.getpid()) + "\\n")\n' +
+                        'os.write(1, b"target.py\\x001:1:0:needle\\n")\n' +
+                        'time.sleep(30)\n')
+        fake.chmod(0o755)
+        self.env['PATH'] = str(binary) + os.pathsep + self.env['PATH']
+        (self.project / 'target.py').write_text('needle\n')
+        self.terminal_vim(r'''
+execute 'cd ' . fnameescape(''' + quoted(self.project) + r''')
+VimSearch
+''' + self.wait_fzf('Live grep>') + r'''
+call term_sendkeys(terminal, 'needle')
+for attempt in range(200)
+  call term_wait(terminal, 10)
+  if filereadable(''' + quoted(pid_log) + r''') | break | endif
+endfor
+call assert_true(filereadable(''' + quoted(pid_log) + r'''))
+let query_count = len(readfile(''' + quoted(pid_log) + r'''))
+call term_sendkeys(terminal, '2')
+for attempt in range(200)
+  call term_wait(terminal, 10)
+  if len(readfile(''' + quoted(pid_log) + r''')) > query_count | break | endif
+endfor
+call assert_true(len(readfile(''' + quoted(pid_log) + r''')) > query_count)
+call term_sendkeys(terminal, "\<C-c>")
+''' + self.wait_search())
+        for pid in pid_log.read_text().splitlines():
+            stat = Path('/proc') / pid / 'stat'
+            if stat.exists():
+                self.assertEqual(stat.read_text().split(') ', 1)[1][0], 'Z',
+                                 f'query process {pid} survived cancellation')
 
     def test_project_roots_and_current_directory_are_independent(self):
         nested = self.project / 'src' / 'nested'
@@ -1651,7 +1831,7 @@ call assert_equal(original_options, [&timeout, &timeoutlen, &ttimeout, &ttimeout
 let $PATH = '/nonexistent-vim-search-test'
 let original = bufnr('%')
 VimFind
-call assert_match('missing bash, fzf, fd/fdfind', execute('messages'))
+call assert_match('missing bash, fzf, gawk, fd/fdfind', execute('messages'))
 VimSearch
 call assert_match('rg (ripgrep)', execute('messages'))
 call assert_equal(original, bufnr('%'))
@@ -1661,7 +1841,8 @@ call assert_equal([], popup_list())
     def split_config(self):
         config = self.work / 'fallback config'
         config.mkdir()
-        for name in ('.vimrc', 'search.sh', 'dashboard.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'textobjects.vim'):
+        for name in ('.vimrc', 'search.sh', 'search.awk', 'dashboard.vim', 'tree.vim',
+                     'buffers.vim', 'edit.vim', 'textobjects.vim'):
             shutil.copyfile(ROOT / name, config / name)
         # Simulate a Vim without popup windows while exercising the actual split implementation.
         (config / 'search.vim').write_text((ROOT / 'search.vim').read_text().replace(
@@ -1694,6 +1875,23 @@ VimFind
 ''' + self.wait_search() + r'''
 call assert_equal(origin, win_getid())
 call assert_equal(windows, map(getwininfo(), 'v:val.winid'))
+''', config=config)
+
+    def test_exit_does_not_wait_for_a_delayed_close_callback(self):
+        self.fake_fzf()
+        target = self.project / 'target.py'
+        target.write_text('target\n')
+        config = self.split_config()
+        search = config.parent / 'search.vim'
+        search.write_text(search.read_text().replace(
+            "'close_cb': function('s:Closed', [state])", "'close_cb': {channel -> 0}"))
+        self.terminal_vim(r'''
+execute 'cd ' . fnameescape(''' + quoted(self.project) + r''')
+let started = reltime()
+VimFind
+''' + self.wait_search() + r'''
+call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+call assert_true(reltimefloat(reltime(started)) < 0.5)
 ''', config=config)
 
     def test_query_error_keeps_original_buffer_and_cleans_session(self):
@@ -1851,6 +2049,18 @@ call timer_start(5, 'KeyboardObserve', {'repeat': -1})
                     elapsed, _ = self.keyboard_search(command, editing, reopen=5)
                     self.assertLess(elapsed, 0.2, f'Esc cancellation took {elapsed * 1000:.0f} ms')
 
+    @unittest.skipUnless(shutil.which('fzf'), 'Real keyboard selection requires fzf')
+    def test_real_keyboard_open_edit_and_reopen(self):
+        import contextlib
+        import io
+        from search_latency import benchmark
+
+        self.require_backends()
+        with contextlib.redirect_stdout(io.StringIO()):
+            samples = benchmark(ROOT / '.vimrc', rounds=2, files=20, lsp=False)
+        for mode in ('ff', 'fp', 'fr'):
+            self.assertEqual(len(samples[mode]['open_edit']), 3)
+
     @unittest.skipUnless(shutil.which('fzf'), 'Real keyboard latency test requires fzf')
     def test_real_keyboard_escape_in_split(self):
         self.require_backends()
@@ -1890,12 +2100,12 @@ sleep 200m
 call term_sendkeys(terminal, repeat("\x7f", strlen('no_such_match')) . 'unique_needle')
 for attempt in range(200)
   call term_wait(terminal, 10)
-  if TerminalScreen(terminal) =~# 'before' && TerminalScreen(terminal) =~# '1/1'
+  if TerminalScreen(terminal) =~# 'xx unique_needle' && TerminalScreen(terminal) =~# '1/1'
     break
   endif
 endfor
 call assert_match('1/1', TerminalScreen(terminal))
-call assert_match('before', TerminalScreen(terminal))
+call assert_match('xx unique_needle', TerminalScreen(terminal))
 call term_sendkeys(terminal, "\<C-u>\<C-d>")
 call term_sendkeys(terminal, "\<CR>")
 ''' + self.wait_search() + r'''
@@ -1970,7 +2180,7 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
-        for name in ('search.vim', 'search.sh', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'textobjects.vim'):
+        for name in ('search.vim', 'search.sh', 'search.awk', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'textobjects.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         dashboard_backups = list(dashboard.parent.glob('dashboard.vim.bak.*'))
         self.assertEqual(len(dashboard_backups), 1)

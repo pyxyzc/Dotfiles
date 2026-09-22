@@ -19,6 +19,7 @@ config_files=(
     git.vim
     search.vim
     search.sh
+    search.awk
 )
 color_files=(
     colors/tokyonight-night.vim
@@ -44,7 +45,7 @@ usage() {
 
 只为系统软件安装调用 sudo；请以目标用户身份运行整个脚本。
 支持 apt-get、dnf、yum、apk、pacman、zypper，不下载任何 Vim 插件。
-搜索需要 fd/fdfind、ripgrep 和 fzf 0.29.0+；缺少时只提示，不自动安装。
+搜索需要 fd/fdfind、ripgrep、gawk 和 fzf 0.29.0+；缺少时只提示，不自动安装。
 LSP 使用本目录保存的 vim-lsp；Pyright/clangd 由用户自行安装，缺失时只提示。
 EOF
 }
@@ -110,9 +111,10 @@ if (( ! config_only )); then
     command -v fd >/dev/null 2>&1 || command -v fdfind >/dev/null 2>&1 || missing_search+=(fd/fdfind)
     command -v rg >/dev/null 2>&1 || missing_search+=(ripgrep)
     command -v fzf >/dev/null 2>&1 || missing_search+=(fzf)
+    command -v gawk >/dev/null 2>&1 || missing_search+=(gawk)
     if (( ${#missing_search[@]} )); then
         printf '搜索依赖缺失：%s；请手动安装，不影响配置复制。\n' "${missing_search[*]}"
-        printf 'Debian/Ubuntu 示例：sudo apt install fd-find ripgrep fzf\n'
+        printf 'Debian/Ubuntu 示例：sudo apt install fd-find ripgrep fzf gawk\n'
     fi
     missing_lsp=()
     command -v pyright-langserver >/dev/null 2>&1 || missing_lsp+=(pyright-langserver)

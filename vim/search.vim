@@ -1,6 +1,8 @@
 " fd/rg 提供数据，fzf 运行于 Vim 自带终端；不加载第三方插件。
 let s:helper = fnamemodify(resolve(expand('<sfile>:p')), ':h') . '/search.sh'
 let s:active = {}
+let s:capabilities = get(s:, 'capabilities', {})
+let s:finders = get(s:, 'finders', {})
 
 function! s:Warn(message) abort
   echohl WarningMsg
@@ -70,16 +72,19 @@ endfunction
 
 function! s:WriteRecent(state) abort
   let paths = []
+  let seen = {}
   for path in get(v:, 'oldfiles', [])
-    if empty(path) || index(paths, path) >= 0
+    if empty(path) || has_key(seen, path)
       continue
     endif
+    let seen[path] = 1
     call add(paths, s:EncodePath(path))
   endfor
   if empty(paths)
     throw 'no recent files in viminfo'
   endif
-  call writefile(paths, a:state.directory . '/recent', 'b')
+  " 会话临时文件只用于进程间传递，不需要同步刷盘。
+  call writefile(paths, a:state.directory . '/recent', 'bS')
 endfunction
 
 function! s:Colors() abort
@@ -96,21 +101,39 @@ endfunction
 
 " 依赖检查：返回缺失工具列表；bash 与 fzf 为两种模式共用的底线。
 function! s:MissingTools(mode) abort
-  let missing = filter(['bash', 'fzf'], '!executable(v:val)')
-  if a:mode ==# 'files' && !executable('fd') && !executable('fdfind')
-    call add(missing, 'fd/fdfind')
-  elseif a:mode ==# 'grep' && !executable('rg')
+  " 只查外部程序；缓存已找到的 fd/fdfind，避免每次遍历 PATH 查找缺失的 fd。
+  let missing = filter(['bash', 'fzf', 'gawk'], 'empty(exepath(v:val))')
+  if a:mode ==# 'files'
+    let key = string([$PATH, getcwd()])
+    let finder = get(s:finders, key, '')
+    if empty(finder) || empty(exepath(finder))
+      let finder = exepath('fd')
+      let s:finders[key] = empty(finder) ? exepath('fdfind') : finder
+    endif
+    if empty(s:finders[key])
+      call add(missing, 'fd/fdfind')
+    endif
+  elseif a:mode ==# 'grep' && empty(exepath('rg'))
     call add(missing, 'rg (ripgrep)')
   endif
   return missing
 endfunction
 
 " done 标志也让退出回调在取消、重载或下一次搜索后安全失效。
-function! s:Cleanup(state) abort
+function! s:Cleanup(state, ...) abort
   if empty(a:state) || get(a:state, 'done', 0)
     return
   endif
   let a:state.done = 1
+  if has_key(a:state, 'exit_poll')
+    call timer_stop(a:state.exit_poll)
+  endif
+  if has_key(a:state, 'capability_key') && filereadable(a:state.directory . '/capabilities')
+    let capabilities = get(readfile(a:state.directory . '/capabilities'), 0, '')
+    if capabilities =~# '^baseline\%(,path\)\?\%(,layout\)\?$'
+      let s:capabilities[a:state.capability_key] = capabilities
+    endif
+  endif
   if has_key(a:state, 'job') && job_status(a:state.job) ==# 'run'
     call job_stop(a:state.job, 'term')
   endif
@@ -126,7 +149,7 @@ function! s:Cleanup(state) abort
     silent! execute a:state.layout
     call win_gotoid(a:state.origin)
   endif
-  if exists('#User#VimrcLiteSearchClosed')
+  if !get(a:000, 0, 0) && exists('#User#VimrcLiteSearchClosed')
     doautocmd <nomodeline> User VimrcLiteSearchClosed
   endif
   call delete(a:state.directory, 'rf')
@@ -150,7 +173,7 @@ function! s:Finish(state, status, timer) abort
     let error = filereadable(a:state.directory . '/error')
           \ ? join(readfile(a:state.directory . '/error'), ' ') : 'search process failed'
   endif
-  call s:Cleanup(a:state)
+  call s:Cleanup(a:state, !empty(path))
   if !empty(error)
     call s:Warn(error)
   endif
@@ -173,22 +196,63 @@ function! s:Finish(state, status, timer) abort
   catch
     call s:Warn(v:exception)
   endtry
+  if exists('#User#VimrcLiteSearchClosed')
+    doautocmd <nomodeline> User VimrcLiteSearchClosed
+  endif
+endfunction
+
+function! s:ScheduleFinish(state) abort
+  if get(a:state, 'closed', 0) && has_key(a:state, 'status')
+        \ && !get(a:state, 'done', 0) && !has_key(a:state, 'finish_timer')
+    let a:state.finish_timer = timer_start(0, function('s:Finish', [a:state, a:state.status]))
+  endif
+endfunction
+
+function! s:PollExit(state, timer) abort
+  if get(a:state, 'done', 0) || has_key(a:state, 'finish_timer')
+    call timer_stop(a:timer)
+    return
+  endif
+  if !has_key(a:state, 'status')
+    call job_status(a:state.job)
+  endif
+  " close_cb 可能延迟数秒；只在缓冲数据已耗尽、通道实际关闭时补齐状态。
+  if has_key(a:state, 'status') && ch_status(job_getchannel(a:state.job)) ==# 'closed'
+    let a:state.closed = 1
+  endif
+  call s:ScheduleFinish(a:state)
 endfunction
 
 function! s:Exited(state, job, status) abort
+  if get(a:state, 'done', 0)
+    return
+  endif
+  let a:state.job = a:job
   let a:state.status = a:status
-  if get(a:state, 'closed', 0)
-    call timer_start(0, function('s:Finish', [a:state, a:status]))
+  if ch_status(job_getchannel(a:job)) ==# 'closed'
+    let a:state.closed = 1
+  endif
+  call s:ScheduleFinish(a:state)
+  if !get(a:state, 'done', 0) && !has_key(a:state, 'finish_timer')
+        \ && !has_key(a:state, 'exit_poll')
+    let a:state.exit_poll = timer_start(2, function('s:PollExit', [a:state]), {'repeat': -1})
   endif
 endfunction
 
 function! s:Closed(state, channel) abort
+  if get(a:state, 'done', 0)
+    return
+  endif
   let a:state.closed = 1
   " 进程退出不代表终端通道已关闭；提前 wipe 会让旧输入循环吃掉下一次 leader。
-  " 两个事件都收到后再延迟清理，让 Vim 先结束终端输入；兼容回调的两种顺序。
-  if has_key(a:state, 'status')
-    call timer_start(0, function('s:Finish', [a:state, a:state.status]))
+  " 确认退出与通道关闭后再延迟清理，让 Vim 先结束终端输入；兼容两种回调顺序。
+  if !has_key(a:state, 'status') && has_key(a:state, 'job')
+    call job_status(a:state.job)
+    if !has_key(a:state, 'status') && !has_key(a:state, 'exit_poll')
+      let a:state.exit_poll = timer_start(2, function('s:PollExit', [a:state]), {'repeat': -1})
+    endif
   endif
+  call s:ScheduleFinish(a:state)
 endfunction
 
 " 弹窗可用时居中显示搜索终端，否则退回底部 split。
@@ -226,12 +290,12 @@ function! s:Open(mode) abort
   let missing = s:MissingTools(a:mode)
   if !empty(missing)
     let message = 'missing ' . join(missing, ', ')
-          \ . '; install manually (Debian/Ubuntu: sudo apt install fd-find ripgrep fzf)'
+          \ . '; install manually (Debian/Ubuntu: sudo apt install fd-find ripgrep fzf gawk)'
     call s:Warn(message)
     return
   endif
-  if !filereadable(s:helper)
-    call s:Warn('missing search.sh; copy the complete vim directory')
+  if !filereadable(s:helper) || !filereadable(fnamemodify(s:helper, ':h') . '/search.awk')
+    call s:Warn('missing search.sh/search.awk; copy the complete vim directory')
     return
   endif
   if &columns < 30 || &lines < 8
@@ -240,8 +304,10 @@ function! s:Open(mode) abort
   endif
   call s:Cleanup(s:active)
   let state = {'directory': tempname(), 'origin': win_getid(), 'layout': winrestcmd(),
-        \ 'root': s:ProjectRoot(), 'mode': a:mode, 'popup': 0, 'split': 0, 'buf': 0, 'done': 0,
+        \ 'root': a:mode ==# 'recent' ? getcwd() : s:ProjectRoot(),
+        \ 'mode': a:mode, 'popup': 0, 'split': 0, 'buf': 0, 'done': 0,
         \ 'ttimeout': &ttimeout, 'ttimeoutlen': &ttimeoutlen}
+  let state.capability_key = exepath('fzf') . ':' . getftime(exepath('fzf'))
   let s:active = state
   try
     " 只在搜索期间缩短终端按键序列的等待，不改变普通映射的 timeoutlen。
@@ -260,7 +326,9 @@ function! s:Open(mode) abort
       let options.term_api = ''
     endif
     let state.buf = term_start([exepath('bash'), s:helper, 'run', a:mode,
-          \ state.directory, s:History(a:mode), s:Colors()], options)
+          \ state.directory, s:History(a:mode), s:Colors(),
+          \ get(s:capabilities, state.capability_key, ''),
+          \ get(s:finders, string([$PATH, getcwd()]), '')], options)
     if !state.buf
       throw 'could not start the search terminal'
     endif
