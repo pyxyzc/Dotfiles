@@ -94,7 +94,7 @@ hi Identifier guibg=NONE guifg=#bb9af7 ctermfg=141 ctermbg=NONE
 hi IlluminatedWordRead guibg=#3b4261 ctermbg=239
 hi IlluminatedWordText guibg=#3b4261 ctermbg=239
 hi IlluminatedWordWrite guibg=#3b4261 ctermbg=239
-hi IncSearch guibg=#ff9e64 guifg=#15161e ctermfg=234 ctermbg=215
+hi IncSearch gui=bold guibg=#ff9e64 guifg=#15161e ctermfg=234 ctermbg=215 cterm=bold
 hi Italic gui=italic guibg=NONE guifg=#c0caf5 ctermfg=153 ctermbg=NONE cterm=italic
 hi Keyword gui=italic guibg=NONE guifg=#7dcfff ctermfg=117 ctermbg=NONE cterm=italic
 hi LineNr guibg=NONE guifg=#3b4261 ctermfg=239 ctermbg=NONE
@@ -213,7 +213,7 @@ hi PmenuThumb guibg=#3b4261 ctermbg=239
 hi PreProc guibg=NONE guifg=#7dcfff ctermfg=117 ctermbg=NONE
 hi Question guibg=NONE guifg=#7aa2f7 ctermfg=111 ctermbg=NONE
 hi QuickFixLine gui=bold guibg=#283457 ctermbg=237 cterm=bold
-hi Search guibg=#3d59a1 guifg=#c0caf5 ctermfg=153 ctermbg=61
+hi Search gui=bold guibg=#e0af68 guifg=#1a1b26 ctermfg=234 ctermbg=179 cterm=bold
 hi SignColumn guibg=#1a1b26 guifg=#3b4261 ctermfg=239 ctermbg=234
 hi SignColumnSB guibg=#16161e guifg=#3b4261 ctermfg=239 ctermbg=234
 hi Sneak guibg=#bb9af7 guifg=#292e42 ctermfg=236 ctermbg=141
@@ -279,7 +279,7 @@ hi illuminatedWord guibg=#3b4261 ctermbg=239
 hi lCursor guibg=#c0caf5 guifg=#1a1b26 ctermfg=234 ctermbg=153
 hi qfFileName guibg=NONE guifg=#7aa2f7 ctermfg=111 ctermbg=NONE
 hi qfLineNr guibg=NONE guifg=#737aa2 ctermfg=67 ctermbg=NONE
-hi! link CurSearch IncSearch
+hi CurSearch gui=bold,underline guibg=#f7768e guifg=#1a1b26 ctermfg=234 ctermbg=210 cterm=bold,underline
 hi! link Delimiter Special
 hi! link FzfLuaCursor IncSearch
 hi! link FzfLuaFilePart FzfLuaFzfNormal
