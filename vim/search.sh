@@ -41,7 +41,6 @@ files() {
 query() {
     local session=$1 pattern=$2 diagnostic status
     [[ -n "$pattern" ]] || return 0
-    sleep 0.02
     diagnostic=$(mktemp "$session/rg.XXXXXX") || return 2
     search_diagnostic=$diagnostic
     trap 'rm -f -- "$search_diagnostic"' EXIT
@@ -174,7 +173,14 @@ run() {
             --bind='ctrl-u:preview-half-page-up,ctrl-d:preview-half-page-down')
     fi
     export FZF_DEFAULT_COMMAND
-    fzf "${options[@]}" > "$session/selection"
+    if [[ "$mode" == grep ]]; then
+        # rg already performs matching. A single Go scheduler coalesces bursts of
+        # typed keys before reload, avoiding repeated cancel/restart poll delays.
+        # Empty stdin also avoids starting a shell for the initial empty query.
+        GOMAXPROCS=1 fzf "${options[@]}" < /dev/null > "$session/selection"
+    else
+        fzf "${options[@]}" > "$session/selection"
+    fi
     status=$?
     if (( status != 0 )); then
         if (( status != 1 && status != 130 )); then

@@ -142,6 +142,8 @@ function! s:Cleanup(state, ...) abort
   endif
   if get(a:state, 'buf', 0) && bufexists(a:state.buf)
     execute 'silent! bwipeout! ' . a:state.buf
+    " 让旧终端输入循环返回，下一次 leader 才能按普通模式映射解码。
+    call feedkeys("\<Ignore>", 'in')
   endif
   let &ttimeout = a:state.ttimeout
   let &ttimeoutlen = a:state.ttimeoutlen
@@ -214,7 +216,9 @@ function! s:PollExit(state, timer) abort
     return
   endif
   if !has_key(a:state, 'status')
-    call job_status(a:state.job)
+    if job_status(a:state.job) ==# 'dead' && !has_key(a:state, 'status')
+      let a:state.status = get(job_info(a:state.job), 'exitval', -1)
+    endif
   endif
   " close_cb 可能延迟数秒；只在缓冲数据已耗尽、通道实际关闭时补齐状态。
   if has_key(a:state, 'status') && ch_status(job_getchannel(a:state.job)) ==# 'closed'
@@ -255,6 +259,14 @@ function! s:Closed(state, channel) abort
   call s:ScheduleFinish(a:state)
 endfunction
 
+function! s:CancelKey() abort
+  if !empty(s:active) && !get(s:active, 'done', 0)
+    " 直接送到子终端，避免 Ctrl-c 作为 Vim 输入时中断回调或清空待处理按键。
+    call term_sendkeys(s:active.buf, "\<C-c>")
+  endif
+  return "\<Ignore>"
+endfunction
+
 " 弹窗可用时居中显示搜索终端，否则退回底部 split。
 function! s:Show(state, width, height) abort
   if exists('*popup_create')
@@ -270,15 +282,15 @@ function! s:Show(state, width, height) abort
       let a:state.popup = 0
     endtry
   endif
-  " Vim 确认单次 Esc 后发送无歧义的 Ctrl-c，避免 fzf 再等 Alt/方向键序列。
   if a:state.popup
-    call win_execute(a:state.popup, 'tnoremap <silent><nowait><buffer> <Esc> <C-c>')
+    call win_execute(a:state.popup,
+          \ 'tnoremap <silent><nowait><buffer><expr> <Esc> <SID>CancelKey()')
   else
     execute 'botright ' . a:height . 'new'
     let a:state.split = 1
     execute 'buffer ' . a:state.buf
     startinsert
-    tnoremap <silent><nowait><buffer> <Esc> <C-c>
+    tnoremap <silent><nowait><buffer><expr> <Esc> <SID>CancelKey()
   endif
 endfunction
 
@@ -333,6 +345,8 @@ function! s:Open(mode) abort
       throw 'could not start the search terminal'
     endif
     let state.job = term_getjob(state.buf)
+    " 退出回调本身也可能延迟；从创建时检查，避免回车后偶发等待数秒。
+    let state.exit_poll = timer_start(5, function('s:PollExit', [state]), {'repeat': -1})
     call setbufvar(state.buf, '&buflisted', 0)
     call s:Show(state, width, height)
   catch

@@ -1877,14 +1877,15 @@ call assert_equal(origin, win_getid())
 call assert_equal(windows, map(getwininfo(), 'v:val.winid'))
 ''', config=config)
 
-    def test_exit_does_not_wait_for_a_delayed_close_callback(self):
+    def test_exit_does_not_wait_for_delayed_job_callbacks(self):
         self.fake_fzf()
         target = self.project / 'target.py'
         target.write_text('target\n')
         config = self.split_config()
         search = config.parent / 'search.vim'
         search.write_text(search.read_text().replace(
-            "'close_cb': function('s:Closed', [state])", "'close_cb': {channel -> 0}"))
+            "'close_cb': function('s:Closed', [state])", "'close_cb': {channel -> 0}").replace(
+            "'exit_cb': function('s:Exited', [state])", "'exit_cb': {job, status -> 0}"))
         self.terminal_vim(r'''
 execute 'cd ' . fnameescape(''' + quoted(self.project) + r''')
 let started = reltime()
@@ -1933,8 +1934,8 @@ function! KeyboardObserve(timer) abort
   endif
   if bufexists(g:keyboard_terminal)
     let screen = join(map(range(1, term_getsize(g:keyboard_terminal)[0]), 'term_getline(g:keyboard_terminal, v:val)'), "\n")
-    if screen =~# '\(Files\|Live grep\)>'
-      call writefile([], ''' + quoted(ready) + r''')
+    if screen =~# '\(Files\|Live grep\)>' && !filereadable(''' + quoted(ready) + r''')
+      call writefile([], ''' + quoted(ready) + r''', 'bS')
     endif
   elseif !isdirectory(g:keyboard_directory)
     let result = {'same_buffer': bufnr('%') == g:keyboard_origin,
@@ -1942,7 +1943,7 @@ function! KeyboardObserve(timer) abort
           \ 'original_options': g:keyboard_options,
           \ 'restored_options': [&timeout, &timeoutlen, &ttimeout, &ttimeoutlen],
           \ 'filetype': &filetype, 'modified': &modified, 'line': getline(1)}
-    call writefile([json_encode(result)], ''' + quoted(str(closed) + '.tmp') + r''')
+    call writefile([json_encode(result)], ''' + quoted(str(closed) + '.tmp') + r''', 'bS')
     call rename(''' + quoted(str(closed) + '.tmp') + ', ' + quoted(closed) + r''')
     let g:keyboard_terminal = 0
   endif
@@ -1974,7 +1975,8 @@ call timer_start(5, 'KeyboardObserve', {'repeat': -1})
             deadline = time.monotonic() + timeout
             while not path.exists() and time.monotonic() < deadline and process.poll() is None:
                 pump(0.005)
-            self.assertTrue(path.exists(), repr(bytes(output[-2000:])))
+            screen_output = bytes(output).replace(b'\x1b[?25l', b'').replace(b'\x1b[?25h', b'')
+            self.assertTrue(path.exists(), repr(screen_output[-3000:]))
 
         try:
             wait_file(startup)

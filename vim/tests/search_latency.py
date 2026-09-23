@@ -28,7 +28,8 @@ def quote(value):
 
 
 def benchmark(config, rounds=30, files=10000, suffix='.cpp', size=0, split=False,
-              lsp=True, modes=('ff', 'fp', 'fr'), profile=None):
+              lsp=True, modes=('ff', 'fp', 'fr'), profile=None, query_cycles=3,
+              key_delay_ms=0):
     with tempfile.TemporaryDirectory(prefix='vim-search-latency-') as directory:
         work = Path(directory)
         project = work / 'project'
@@ -142,8 +143,24 @@ call timer_start(2, function('Probe'), {'repeat': -1})
         def send(keys):
             os.write(master, keys)
 
+        def type_query(query, erase=0):
+            if not key_delay_ms:
+                start = time.perf_counter()
+                send(b'\x7f' * erase + query.encode())
+                return start
+            send(b'\x7f' * erase)
+            for index, character in enumerate(query):
+                start = time.perf_counter()
+                send(character.encode())
+                if index + 1 < len(query):
+                    deadline = start + key_delay_ms / 1000
+                    while time.perf_counter() < deadline:
+                        pump()
+            # Human typing time is excluded; measure from the final keystroke.
+            return start
+
         samples = {mode: {key: [] for key in
-                         ('startup', 'results', 'preview', 'preview_switch', 'open',
+                         ('startup', 'results', 'preview', 'reload', 'reload_preview', 'preview_switch', 'open',
                           'edit_key', 'open_edit')}
                    for mode in ('ff', 'fp', 'fr')}
         try:
@@ -171,15 +188,30 @@ call timer_start(2, function('Probe'), {'repeat': -1})
                         samples[mode]['preview_switch'].append((time.perf_counter() - start) * 1000)
                         send(b'\x0a')
                         wait(lambda s: 'int benchmark_unique' in s.get('screen', ''))
-                    query_start = time.perf_counter()
                     query = 'benchmark_unique' if mode == 'fp' else 'unique_target'
-                    send(query.encode())
+                    query_start = type_query(query)
                     wait(lambda s: bool(re.search(r'\b1/\d+\b', s.get('screen', '')))
+                         and prompt + ' ' + query in s.get('screen', '')
                          and ('unique_target' in s.get('screen', '') or mode == 'fp'))
                     samples[mode]['results'].append((time.perf_counter() - query_start) * 1000)
                     if mode != 'ff':
                         wait(lambda s: 'int benchmark_unique' in s.get('screen', ''))
                         samples[mode]['preview'].append((time.perf_counter() - query_start) * 1000)
+                    if mode == 'fp':
+                        # Reuse the same fzf process: reload throttling can grow
+                        # over time even when the first query is fast.
+                        for _ in range(query_cycles):
+                            for word in ('second', 'unique'):
+                                replacement = 'benchmark_' + word
+                                start = type_query(replacement, erase=len(query))
+                                wait(lambda s: 'unique_' + ('target' if word == 'unique' else 'second')
+                                     in s.get('screen', '')
+                                     and 'Live grep> ' + replacement in s.get('screen', '')
+                                     and bool(re.search(r'\b1/1\b', s.get('screen', ''))))
+                                samples[mode]['reload'].append((time.perf_counter() - start) * 1000)
+                                wait(lambda s: 'int benchmark_' + word in s.get('screen', ''))
+                                samples[mode]['reload_preview'].append((time.perf_counter() - start) * 1000)
+                                query = replacement
                     start = time.perf_counter()
                     send(b'\r')
                     wait(lambda s: not s.get('terminal') and s.get('path') == str(target),
@@ -195,7 +227,7 @@ call timer_start(2, function('Probe'), {'repeat': -1})
                 print(mode, json.dumps({key: {
                     'first_ms': round(values[0], 2),
                     'median_ms': round(statistics.median(values[1:]), 2),
-                    'p95_ms': round(sorted(values[1:])[math.ceil(rounds * .95) - 1], 2),
+                    'p95_ms': round(sorted(values[1:])[math.ceil(len(values[1:]) * .95) - 1], 2),
                     'max_ms': round(max(values), 2),
                 } for key, values in samples[mode].items() if values}), flush=True)
             send(b':qa!\r')
@@ -220,13 +252,32 @@ if __name__ == '__main__':
     parser.add_argument('--no-lsp', action='store_true')
     parser.add_argument('--mode', action='append', choices=['ff', 'fp', 'fr'])
     parser.add_argument('--profile', type=Path)
+    parser.add_argument('--query-cycles', type=int, default=3,
+                        help='alternate live queries within each picker to catch reload throttling')
+    parser.add_argument('--max-ms', type=float,
+                        help='fail if any measured latency, including first use, reaches this limit')
+    parser.add_argument('--key-delay-ms', type=float, default=0,
+                        help='type query characters separately; latency starts at the last key')
     args = parser.parse_args()
-    if args.rounds < 1 or args.files < 0 or args.size < 0:
-        parser.error('rounds must be positive; files and size must be nonnegative')
+    if args.rounds < 1 or args.files < 0 or args.size < 0 or args.query_cycles < 0:
+        parser.error('rounds must be positive; files, size and query cycles must be nonnegative')
+    if args.max_ms is not None and args.max_ms <= 0:
+        parser.error('max-ms must be positive')
+    if args.key_delay_ms < 0:
+        parser.error('key-delay-ms must be nonnegative')
     for executable in ('vim', 'fzf', 'gawk', 'rg'):
         if not shutil.which(executable):
             parser.error('missing executable: ' + executable)
     if not (shutil.which('fd') or shutil.which('fdfind')):
         parser.error('missing executable: fd/fdfind')
-    benchmark(args.config.resolve(), args.rounds, args.files, size=args.size,
-              lsp=not args.no_lsp, modes=args.mode or ('ff', 'fp', 'fr'), profile=args.profile)
+    samples = benchmark(args.config.resolve(), args.rounds, args.files, size=args.size,
+                        lsp=not args.no_lsp, modes=args.mode or ('ff', 'fp', 'fr'),
+                        profile=args.profile, query_cycles=args.query_cycles,
+                        key_delay_ms=args.key_delay_ms)
+    if args.max_ms is not None:
+        failures = [f'{mode}.{metric}: {max(values):.2f} ms'
+                    for mode, metrics in samples.items() for metric, values in metrics.items()
+                    if values and max(values) >= args.max_ms]
+        if failures:
+            raise SystemExit('FAIL (limit ' + str(args.max_ms) + ' ms): ' + '; '.join(failures))
+        print(f'PASS: every measured latency < {args.max_ms:g} ms', flush=True)
