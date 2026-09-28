@@ -40,7 +40,7 @@ usage() {
     cat <<'EOF'
 用法：vim-install.sh [--config-only] [--target-dir DIR]
 
-默认：检查 Vim，缺失或功能不足时通过系统包管理器安装；备份并复制配置、主题和固定版本 LSP 客户端。
+默认：检查 Vim，缺失或功能不足时通过系统包管理器安装；复制配置、主题和固定版本 LSP 客户端。
   --config-only     仅复制配置、主题和 LSP 客户端，不检查依赖，不使用网络
   --target-dir DIR  配置目标用户目录，默认当前用户的 $HOME
   -h, --help        显示帮助
@@ -138,10 +138,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Install one file or directory: skip when identical; otherwise stage, back up the old
-# version, replace atomically, and roll back on failure.
+# Install one file or directory: skip when identical; otherwise stage and replace it.
 install_entry() {
-    local source="$1" destination="$2" backup=''
+    local source="$1" destination="$2"
     if [[ -d "$source" ]]; then
         if [[ -d "$destination" && ! -L "$destination" ]] \
             && [[ -z "$(find "$destination" -type l -print -quit)" ]] \
@@ -162,12 +161,9 @@ install_entry() {
         chmod 644 "$staged"
     fi
     if [[ -e "$destination" || -L "$destination" ]]; then
-        backup="${destination}.bak.$(date +%Y%m%d-%H%M%S).$$"
-        mv -- "$destination" "$backup"
-        printf '已备份：%s\n' "$backup"
+        rm -rf -- "$destination"
     fi
     if ! mv -- "$staged" "$destination"; then
-        [[ -z "$backup" ]] || mv -- "$backup" "$destination"
         die "无法安装：$destination"
     fi
     staged=''

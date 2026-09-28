@@ -51,6 +51,9 @@ bash ~/Dotfiles/vim/vim-install.sh
 
 # 完全离线：复制配置、主题和内置的 LSP 客户端，不检查或安装依赖。
 bash ~/Dotfiles/vim/vim-install.sh --config-only
+
+# 删除当前用户目录中的 Vim 配置和本配置的 vim-lite 状态。
+bash ~/Dotfiles/vim/vim-clean.sh
 ```
 
 默认安装到当前用户目录：
@@ -96,15 +99,17 @@ sudo apt install fd-find ripgrep fzf gawk
 其他发行版安装对应的 fd、ripgrep、fzf 软件包，并确认命令位于 `PATH`。
 不需要建立 `fd` 到 `fdfind` 的链接，也不需要安装 fzf.vim、bat 或 Python。
 
-已有同名文件先改名为 `原文件.bak.时间戳.进程号`；符号链接会备份链接本身，
-不会改写它指向的文件。内容相同的普通文件跳过，不重复备份。其他主题和旧插件
+已有同名文件会直接替换，不保留备份；内容相同的普通文件跳过。插件目录整体暂存后
+替换，升级不会残留旧文件。符号链接本身会被替换，不会改写它指向的文件。其他主题和旧插件
 文件保留在原处；此配置清空 `packpath` 并关闭 `plugin` 脚本的自动加载，
 所以已有的插件包不会自动加载。运行时仅加入 Vim 自带目录、本地主题所在目录和
 随配置保存的 vim-lsp；新版 Vim 的内置 netrw 若以可选包提供，也会显式加入。
 加载 netrw 时临时将 `packpath` 限定为 `$VIMRUNTIME`，完成后恢复，兼容新旧布局。
-插件目录整体暂存、备份和替换，升级不会残留旧文件；
-目录内容相同则跳过。回退时恢复对应配置文件和整个插件目录的备份，
-不要将旧、新插件目录合并。安装不修改 Neovim、shell 或 tmux 配置。
+目录内容相同则跳过。安装不修改 Neovim、shell 或 tmux 配置。
+
+`vim-clean.sh` 默认清理当前 `$HOME` 下的 `.vim`、`.vimrc`、`.gvimrc`、Vim 信息文件，
+以及 `vim-lite` 状态目录。它会先显示清理目标并询问确认；可用 `--yes` 跳过确认，
+用 `--target-dir DIR` 指定目标目录。不会卸载系统 Vim。
 
 ```bash
 # 安装到指定用户目录，也便于试装。

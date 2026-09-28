@@ -2558,7 +2558,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         return result
 
-    def test_offline_install_backup_and_idempotence(self):
+    def test_offline_install_replaces_without_backups_and_is_idempotent(self):
         self.target.mkdir()
         external = self.work / "old vimrc"
         external.write_text('" original\n')
@@ -2573,21 +2573,15 @@ class InstallerTests(unittest.TestCase):
         (colors / "unrelated.vim").write_text('" leave alone\n')
         self.install("--config-only")
         self.assertEqual(external.read_text(), '" original\n')
-        backups = list(self.target.glob(".vimrc.bak.*"))
-        self.assertEqual(len(backups), 1)
-        self.assertTrue(backups[0].is_symlink())
+        self.assertEqual(list(self.target.glob(".vimrc.bak.*")), [])
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
         for name in ('search.vim', 'search.sh', 'search.awk', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
-        dashboard_backups = list(dashboard.parent.glob('dashboard.vim.bak.*'))
-        self.assertEqual(len(dashboard_backups), 1)
-        self.assertEqual(dashboard_backups[0].read_text(), '" old dashboard\n')
-        module_backups = {module: list(module.parent.glob(module.name + '.bak.*')) for module in modules}
-        for backups_for_module in module_backups.values():
-            self.assertEqual(len(backups_for_module), 1)
-            self.assertEqual(backups_for_module[0].read_text(), '" old module\n')
+        self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), [])
+        for module in modules:
+            self.assertEqual(list(module.parent.glob(module.name + '.bak.*')), [])
         for source in (ROOT / "colors").iterdir():
             self.assertEqual((colors / source.name).read_bytes(), source.read_bytes())
         plugin = self.target / '.vim' / 'vendor' / 'vim-lsp'
@@ -2610,15 +2604,15 @@ class InstallerTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.install("--config-only")
-        self.assertEqual(list(self.target.glob(".vimrc.bak.*")), backups)
-        self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), dashboard_backups)
-        for module, backups_for_module in module_backups.items():
-            self.assertEqual(list(module.parent.glob(module.name + '.bak.*')), backups_for_module)
+        self.assertEqual(list(self.target.glob(".vimrc.bak.*")), [])
+        self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), [])
+        for module in modules:
+            self.assertEqual(list(module.parent.glob(module.name + '.bak.*')), [])
         self.assertEqual((colors / "unrelated.vim").read_text(), '" leave alone\n')
         self.assertFalse(list(self.target.rglob("*.tmp.*")))
         self.assertFalse(list(plugin.parent.glob('vim-lsp.bak.*')))
 
-    def test_plugin_upgrade_removes_stale_files_and_backs_up_symlink(self):
+    def test_plugin_upgrade_removes_stale_files_without_backups(self):
         self.install('--config-only')
         plugin = self.target / '.vim' / 'vendor' / 'vim-lsp'
         (plugin / 'stale.vim').write_text('old plugin file\n')
@@ -2628,18 +2622,14 @@ class InstallerTests(unittest.TestCase):
         (unrelated / 'keep.vim').write_text('preserved\n')
         self.install('--config-only')
         self.assertFalse((plugin / 'stale.vim').exists())
-        backups = list(plugin.parent.glob('vim-lsp.bak.*'))
-        self.assertEqual(len(backups), 1)
-        self.assertEqual((backups[0] / 'stale.vim').read_text(), 'old plugin file\n')
+        self.assertEqual(list(plugin.parent.glob('vim-lsp.bak.*')), [])
         self.assertEqual((unrelated / 'keep.vim').read_text(), 'preserved\n')
         external = self.work / 'external-plugin'
         plugin.rename(external)
         plugin.symlink_to(external, target_is_directory=True)
         self.install('--config-only')
         self.assertFalse(plugin.is_symlink())
-        link_backups = [path for path in plugin.parent.glob('vim-lsp.bak.*') if path.is_symlink()]
-        self.assertEqual(len(link_backups), 1)
-        self.assertEqual(link_backups[0].resolve(), external)
+        self.assertEqual(list(plugin.parent.glob('vim-lsp.bak.*')), [])
         self.assertTrue((external / 'plugin' / 'lsp.vim').is_file())
         self.assertFalse(list(plugin.parent.glob('*.tmp.*')))
 
