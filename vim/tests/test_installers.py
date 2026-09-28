@@ -34,6 +34,9 @@ class InstallerCase(unittest.TestCase):
         self.bin.mkdir()
         self.env = os.environ.copy()
         self.env["PATH"] = f"{self.bin}{os.pathsep}{self.env['PATH']}"
+        # Even an older installer that ignores --target-dir must stay isolated.
+        self.env["HOME"] = str(self.work / "home")
+        Path(self.env["HOME"]).mkdir()
 
     def run_script(self, script, *args, expected=0):
         result = subprocess.run(

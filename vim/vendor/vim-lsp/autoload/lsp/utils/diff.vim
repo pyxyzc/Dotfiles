@@ -72,15 +72,22 @@ function! lsp#utils#diff#compute_native(old, new) abort
 endfunction
 
 function! lsp#utils#diff#compute(old, new) abort
+  if a:old ==# a:new
+    return {'range': {'start': {'line': 0, 'character': 0},
+        \ 'end': {'line': 0, 'character': 0}}, 'rangeLength': 0, 'text': ''}
+  endif
   let [l:start_line, l:start_char] = s:FirstDifference(a:old, a:new)
   let [l:end_line, l:end_char] =
       \ s:LastDifference(a:old[l:start_line :], a:new[l:start_line :], l:start_char)
 
   let l:text = s:ExtractText(a:new, l:start_line, l:start_char, l:end_line, l:end_char)
-  let l:length = s:Length(a:old, l:start_line, l:start_char, l:end_line, l:end_char)
+  let l:length = lsp#utils#utf16#length(s:ExtractText(a:old, l:start_line, l:start_char, l:end_line, l:end_char))
 
   let l:adj_end_line = len(a:old) + l:end_line
   let l:adj_end_char = l:end_line == 0 ? 0 : strchars(a:old[l:end_line]) + l:end_char + 1
+  " The diff algorithm uses code points internally; only protocol offsets use UTF-16.
+  let l:start_char = lsp#utils#utf16#length(strcharpart(get(a:old, l:start_line, ''), 0, l:start_char))
+  let l:adj_end_char = lsp#utils#utf16#length(strcharpart(get(a:old, l:adj_end_line, ''), 0, l:adj_end_char))
 
   let l:result = { 'range': {'start': {'line': l:start_line, 'character': l:start_char},
       \ 'end': {'line': l:adj_end_line, 'character': l:adj_end_char}},
@@ -101,22 +108,33 @@ function! s:FirstDifference(old, new) abort
     let l:i = luaeval('vimlsp_first_difference('
         \.l:eval.'("a:old"),'.l:eval.'("a:new"),'.s:lua_array_start_index.','.l:line_count.')')
   else
-	for l:i in range(l:line_count)
-	  if a:old[l:i] !=# a:new[l:i] | break | endif
-	endfor
+    " Compare unchanged line blocks natively, then inspect only the boundary block.
+    let l:i = 0
+    while l:i + 256 <= l:line_count && a:old[l:i : l:i + 255] ==# a:new[l:i : l:i + 255]
+      let l:i += 256
+    endwhile
+    while l:i < l:line_count && a:old[l:i] ==# a:new[l:i]
+      let l:i += 1
+    endwhile
   endif
   if l:i >= l:line_count
     return [l:line_count - 1, strchars(a:old[l:line_count - 1])]
   endif
   let l:old_line = a:old[l:i]
   let l:new_line = a:new[l:i]
-  let l:length = min([strchars(l:old_line), strchars(l:new_line)])
-  let l:j = 0
-  while l:j < l:length
-    if strgetchar(l:old_line, l:j) != strgetchar(l:new_line, l:j) | break | endif
-    let l:j += 1
+  " Binary-search whole code-point prefixes in native string operations.
+  " Repeated strgetchar(line, j) rescans from byte zero and becomes quadratic.
+  let l:high = min([strchars(l:old_line), strchars(l:new_line)])
+  let l:low = 0
+  while l:low < l:high
+    let l:middle = (l:low + l:high + 1) / 2
+    if strcharpart(l:old_line, 0, l:middle) ==# strcharpart(l:new_line, 0, l:middle)
+      let l:low = l:middle
+    else
+      let l:high = l:middle - 1
+    endif
   endwhile
-  return [l:i, l:j]
+  return [l:i, l:low]
 endfunction
 
 function! s:LastDifference(old, new, start_char) abort
@@ -127,9 +145,15 @@ function! s:LastDifference(old, new, start_char) abort
     let l:i = luaeval('vimlsp_last_difference('
         \.l:eval.'("a:old"),'.l:eval.'("a:new"),'.s:lua_array_start_index.','.l:line_count.')')
   else
-	for l:i in range(-1, -1 * l:line_count, -1)
-	  if a:old[l:i] !=# a:new[l:i] | break | endif
-	endfor
+    let l:shared = 0
+    while l:shared + 256 <= l:line_count &&
+        \ a:old[-l:shared - 256 : -l:shared - 1] ==# a:new[-l:shared - 256 : -l:shared - 1]
+      let l:shared += 256
+    endwhile
+    while l:shared < l:line_count && a:old[-l:shared - 1] ==# a:new[-l:shared - 1]
+      let l:shared += 1
+    endwhile
+    let l:i = -min([l:shared + 1, l:line_count])
   endif
   if l:i <= -1 * l:line_count
     let l:i = -1 * l:line_count
@@ -141,16 +165,18 @@ function! s:LastDifference(old, new, start_char) abort
   endif
   let l:old_line_length = strchars(l:old_line)
   let l:new_line_length = strchars(l:new_line)
-  let l:length = min([l:old_line_length, l:new_line_length])
-  let l:j = -1
-  while l:j >= -1 * l:length
-    if  strgetchar(l:old_line, l:old_line_length + l:j) !=
-        \ strgetchar(l:new_line, l:new_line_length + l:j)
-      break
+  let l:high = min([l:old_line_length, l:new_line_length])
+  let l:low = 0
+  while l:low < l:high
+    let l:middle = (l:low + l:high + 1) / 2
+    if strcharpart(l:old_line, l:old_line_length - l:middle) ==#
+        \ strcharpart(l:new_line, l:new_line_length - l:middle)
+      let l:low = l:middle
+    else
+      let l:high = l:middle - 1
     endif
-    let l:j -= 1
   endwhile
-  return [l:i, l:j]
+  return [l:i, -l:low - 1]
 endfunction
 
 function! s:ExtractText(lines, start_line, start_char, end_line, end_char) abort
@@ -169,25 +195,5 @@ function! s:ExtractText(lines, start_line, start_char, end_line, end_char) abort
     let l:length = strchars(l:line) + a:end_char + 1
     let l:result .= strcharpart(l:line, 0, l:length)
   endif
-  return l:result
-endfunction
-
-function! s:Length(lines, start_line, start_char, end_line, end_char) abort
-  let l:adj_end_line = len(a:lines) + a:end_line
-  if l:adj_end_line >= len(a:lines)
-    let l:adj_end_char = a:end_char - 1
-  else
-    let l:adj_end_char = strchars(a:lines[l:adj_end_line]) + a:end_char
-  endif
-  if a:start_line == l:adj_end_line
-    return l:adj_end_char - a:start_char + 1
-  endif
-  let l:result = strchars(a:lines[a:start_line]) - a:start_char + 1
-  let l:line = a:start_line + 1
-  while l:line < l:adj_end_line
-    let l:result += strchars(a:lines[l:line]) + 1
-    let l:line += 1
-  endwhile
-  let l:result += l:adj_end_char + 1
   return l:result
 endfunction

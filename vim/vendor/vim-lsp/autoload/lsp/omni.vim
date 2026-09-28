@@ -40,6 +40,7 @@ let s:completion_status_pending = 'pending'
 let s:is_user_data_support = has('patch-8.0.1493')
 let s:managed_user_data_key_base = 0
 let s:managed_user_data_map = {}
+let s:legacy_completion_items = {}
 
 " }}}
 
@@ -155,7 +156,20 @@ function! s:display_completions(timer, info) abort
     let s:completion['status'] = ''
 
     if mode() is# 'i' && !empty(s:completion['matches'])
-        call complete(s:completion['startcol'], s:completion['matches'])
+        let l:matches = s:completion['matches']
+        if !s:is_user_data_support
+            " Old Vim drops user_data. A visible, unique source badge survives
+            " CompleteDone and distinguishes identical words with different edits.
+            let s:legacy_completion_items = {}
+            let l:matches = map(copy(l:matches), 'copy(v:val)')
+            for l:item in l:matches
+                let l:item['menu'] = '[LSP ' . l:server_name . ':'
+                    \ . matchstr(get(l:item, 'user_data', ''), '\d\+') . ']'
+                let s:legacy_completion_items[l:item['menu']] = copy(l:item)
+                call remove(l:item, 'user_data')
+            endfor
+        endif
+        call complete(s:completion['startcol'], l:matches)
     endif
 endfunction
 
@@ -289,8 +303,8 @@ function! lsp#omni#get_vim_completion_items(options) abort
     let l:kind_text_mappings = s:get_kind_text_mappings(l:server)
     let l:complete_position = a:options['position']
     let l:current_line = getline('.')
-    let l:default_startcol = s:get_startcol(strcharpart(l:current_line, 0, l:complete_position['character']), [l:server_name])
-    let l:default_start_character = strchars(strpart(l:current_line, 0, l:default_startcol - 1))
+    let l:default_startcol = s:get_startcol(lsp#utils#utf16#strpart(l:current_line, 0, l:complete_position['character']), [l:server_name])
+    let l:default_start_character = lsp#utils#utf16#length(strpart(l:current_line, 0, l:default_startcol - 1))
     let l:refresh_pattern = s:get_refresh_pattern([l:server_name])
 
     let l:result = a:options['response']['result']
@@ -347,14 +361,12 @@ function! lsp#omni#get_vim_completion_items(options) abort
             let l:vim_complete_item['abbr'] = l:completion_item['label']
         endif
 
-        if s:is_user_data_support
-            let l:vim_complete_item['user_data'] = s:create_user_data(
-                \ l:completion_item,
-                \ l:server_name,
-                \ l:complete_position,
-                \ l:start_characters[-1],
-                \ l:complete_word)
-        endif
+        let l:vim_complete_item['user_data'] = s:create_user_data(
+            \ l:completion_item,
+            \ l:server_name,
+            \ l:complete_position,
+            \ l:start_characters[-1],
+            \ l:complete_word)
 
         let l:vim_complete_items += [l:vim_complete_item]
     endfor
@@ -365,7 +377,7 @@ function! lsp#omni#get_vim_completion_items(options) abort
             let l:item_start_character = l:start_characters[l:i]
             if l:start_character < l:item_start_character
                 let l:item = l:vim_complete_items[l:i]
-                let l:item['word'] = strcharpart(l:current_line, l:start_character, l:item_start_character - l:start_character) . l:item['word']
+                let l:item['word'] = lsp#utils#utf16#strpart(l:current_line, l:start_character, l:item_start_character - l:start_character) . l:item['word']
             endif
         endfor
     endif
@@ -382,6 +394,7 @@ endfunction
 function! lsp#omni#_clear_managed_user_data_map() abort
     let s:managed_user_data_key_base = 0
     let s:managed_user_data_map = {}
+    let s:legacy_completion_items = {}
 endfunction
 
 "
@@ -402,8 +415,17 @@ endfunction
 
 function! lsp#omni#get_managed_user_data_from_completed_item(completed_item) abort
     " the item has no user_data.
-    if !has_key(a:completed_item, 'user_data')
-        return {}
+    if !has_key(a:completed_item, 'user_data') || empty(a:completed_item['user_data'])
+        let l:item = get(s:legacy_completion_items, get(a:completed_item, 'menu', ''), {})
+        if s:is_user_data_support || empty(l:item)
+            return {}
+        endif
+        for l:field in ['word', 'abbr', 'kind', 'info']
+            if get(l:item, l:field, '') !=# get(a:completed_item, l:field, '')
+                return {}
+            endif
+        endfor
+        return get(s:managed_user_data_map, l:item['user_data'], {})
     endif
 
     let l:user_data_string = get(a:completed_item, 'user_data', '')

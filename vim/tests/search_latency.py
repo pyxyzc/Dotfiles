@@ -19,6 +19,8 @@ import tempfile
 import termios
 import time
 
+from test_vim import VIM
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -83,7 +85,7 @@ call timer_start(2, function('Probe'), {'repeat': -1})
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
         env = dict(os.environ, TERM='xterm-256color', XDG_STATE_HOME=str(work / 'history'))
-        command = ['vim', '-Nu', str(config), '-i', 'NONE', '-n',
+        command = [VIM, '-Nu', str(config), '-i', 'NONE', '-n',
                    '--cmd', 'let g:vimrc_lite_clipboard_yank = 0',
                    '--cmd', 'let g:vimrc_lite_osc52 = 0',
                    '--cmd', f'autocmd VimEnter * call writefile([], {quote(startup)})']

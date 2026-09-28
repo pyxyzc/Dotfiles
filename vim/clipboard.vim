@@ -23,11 +23,16 @@ function! s:Osc52(text) abort
   if !executable('base64')
     throw 'base64 is unavailable; content remains in the Vim register'
   endif
-  let encoded = system('base64', a:text)
+  " 原生按行接收后拼接，避免在数 MB 的编码字符串上逐个正则删除换行。
+  let encoded = join(systemlist('base64', a:text), '')
   if v:shell_error
     throw 'base64 failed; content remains in the Vim register'
   endif
-  return "\e]52;c;" . substitute(encoded, '[\r\n]', '', 'g') . "\x07"
+  " 兼容输出 CRLF 的编码器；正常 LF 输出不再经过全串正则替换。
+  if stridx(encoded, "\r") >= 0
+    let encoded = substitute(encoded, '\r', '', 'g')
+  endif
+  return "\e]52;c;" . encoded . "\x07"
 endfunction
 
 " 把编码后的 OSC 52 序列写入终端；失败时抛出，由调用方决定如何提示。
@@ -107,7 +112,7 @@ command! VimCopyPath call <SID>CopyPath()
 command! VimCopyContent call <SID>CopyContent()
 
 " 文件树等模块的同步入口（解析后的函数名）；模块缺失时调用方自行退回原生行为。
-let g:vimrc_lite_clipboard_sync = expand('<SID>') . 'Sync'
+let g:vimrc_lite_clipboard_sync = matchstr(string(function('s:Sync')), '<SNR>\d\+_Sync')
 
 if exists('##TextYankPost')
   augroup vimrc_lite_clipboard

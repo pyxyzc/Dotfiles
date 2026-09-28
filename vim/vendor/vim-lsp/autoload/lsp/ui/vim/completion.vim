@@ -150,7 +150,7 @@ function! s:on_complete_done_after() abort
       let l:lines = lsp#utils#_split_by_eol(l:text)
       let l:start = l:range.start
       let l:start.line += len(l:lines) - 1
-      let l:start.character += strchars(l:lines[-1])
+      let l:start.character = (len(l:lines) > 1 ? 0 : l:start.character) + lsp#utils#utf16#length(l:lines[-1])
       call cursor(lsp#utils#position#lsp_to_vim('%', l:start))
     endif
   endif
@@ -170,11 +170,11 @@ function! s:is_expandable(done_line, done_position, complete_position, completio
     endif
 
     " compute if textEdit will change text.
-    let l:completed_before = strcharpart(a:done_line, 0, a:complete_position['character'])
-    let l:completed_after = strcharpart(a:done_line, a:done_position['character'], strchars(a:done_line) - a:done_position['character'])
+    let l:completed_before = lsp#utils#utf16#strpart(a:done_line, 0, a:complete_position['character'])
+    let l:completed_after = lsp#utils#utf16#strpart(a:done_line, a:done_position['character'])
     let l:completed_line = l:completed_before . l:completed_after
-    let l:text_edit_before = strcharpart(l:completed_line, 0, l:range['start']['character'])
-    let l:text_edit_after = strcharpart(l:completed_line, l:range['end']['character'], strchars(l:completed_line) - l:range['end']['character'])
+    let l:text_edit_before = lsp#utils#utf16#strpart(l:completed_line, 0, l:range['start']['character'])
+    let l:text_edit_after = lsp#utils#utf16#strpart(l:completed_line, l:range['end']['character'])
     return a:done_line !=# l:text_edit_before . s:trim_unmeaning_tabstop(a:completion_item['textEdit']['newText']) . l:text_edit_after
   endif
   return s:get_completion_text(a:completion_item) !=# s:trim_unmeaning_tabstop(a:complete_word)
@@ -240,8 +240,8 @@ endfunction
 " LSP server knows only `complete_position` so we should remove inserted text until complete_position.
 "
 function! s:clear_auto_inserted_text(done_line, done_position, complete_position) abort
-  let l:before = strcharpart(a:done_line, 0, a:complete_position['character'])
-  let l:after = strcharpart(a:done_line, a:done_position['character'], (strchars(a:done_line) - a:done_position['character']))
+  let l:before = lsp#utils#utf16#strpart(a:done_line, 0, a:complete_position['character'])
+  let l:after = lsp#utils#utf16#strpart(a:done_line, a:done_position['character'])
   call setline(a:done_position['line'] + 1, l:before . l:after)
   call cursor([a:done_position['line'] + 1, strlen(l:before) + 1])
 endfunction
@@ -259,9 +259,8 @@ function! s:simple_expand_text(text) abort
   " e.g. `|getbufline(${1:expr}, ${2:lnum})${0}` to getbufline(|,)
   let l:text = substitute(a:text, '\$\%({[0-9]\+\%(:\(\\.\|[^}]\+\)*\)}\|[0-9]\+\)', '\=substitute(submatch(1), "\\", "", "g")', 'g')
   let l:offset = match(a:text, '\$\%({[0-9]\+\%(:\(\\.\|[^}]\+\)*\)}\|[0-9]\+\)')
-  if l:offset == -1
-    let l:offset = strchars(l:text)
-  endif
+  let l:prefix = l:offset == -1 ? l:text : strpart(a:text, 0, l:offset)
+  let l:prefix_lines = lsp#utils#_split_by_eol(l:prefix)
 
   call lsp#utils#text_edit#apply_text_edits(lsp#utils#get_buffer_uri(bufnr('%')), [{
         \   'range': {
@@ -272,8 +271,8 @@ function! s:simple_expand_text(text) abort
         \ }])
 
   let l:pos = lsp#utils#position#lsp_to_vim('%', {
-        \   'line': l:pos['line'],
-        \   'character': l:pos['character'] + l:offset
+        \   'line': l:pos['line'] + len(l:prefix_lines) - 1,
+        \   'character': (len(l:prefix_lines) > 1 ? 0 : l:pos['character']) + lsp#utils#utf16#length(l:prefix_lines[-1])
         \ })
   call cursor(l:pos)
 endfunction
@@ -296,4 +295,3 @@ endfunction
 function! s:SID() abort
   return matchstr(expand('<sfile>'), '<SNR>\zs\d\+\ze_SID$')
 endfunction
-

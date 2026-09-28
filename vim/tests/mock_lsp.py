@@ -96,7 +96,24 @@ def main():
             elif method == 'textDocument/hover':
                 result = {'contents': {'kind': 'plaintext', 'value': 'target: int'}}
             elif method == 'textDocument/completion':
-                result = [{'label': 'target', 'kind': 6, 'insertText': 'target'}]
+                text = documents.get(params['textDocument']['uri'], '')
+                if 'completion-snippet' in text:
+                    result = [{'label': 'target', 'kind': 3, 'insertTextFormat': 2,
+                               'insertText': 'target(${1:中🙂})$0'}]
+                elif 'completion-edit' in text:
+                    end = params['position']
+                    result = [{'label': 'target', 'kind': 6,
+                               'textEdit': {'range': {'start': {**end, 'character': end['character'] - 3},
+                                                      'end': end}, 'newText': 'target🙂'},
+                               'additionalTextEdits': [{'range': {'start': {'line': 0, 'character': 0},
+                                                                  'end': {'line': 0, 'character': 0}},
+                                                        'newText': '# 𝄞\n'}]}]
+                    if 'completion-edit-duplicates' in text:
+                        result = [{**result[0], 'additionalTextEdits': [
+                            {**result[0]['additionalTextEdits'][0], 'newText': f'# {label}\n'}]}
+                            for label in ['FIRST 𝄞', 'SECOND 🙂']]
+                else:
+                    result = [{'label': 'target', 'kind': 6, 'insertText': 'target'}]
             elif method == 'exit':
                 return
             if 'id' in message:

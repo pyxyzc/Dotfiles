@@ -128,6 +128,9 @@ function! s:Cleanup(state, ...) abort
   if has_key(a:state, 'exit_poll')
     call timer_stop(a:state.exit_poll)
   endif
+  if has_key(a:state, 'cancel_timer')
+    call timer_stop(a:state.cancel_timer)
+  endif
   if has_key(a:state, 'capability_key') && filereadable(a:state.directory . '/capabilities')
     let capabilities = get(readfile(a:state.directory . '/capabilities'), 0, '')
     if capabilities =~# '^baseline\%(,path\)\?\%(,layout\)\?$'
@@ -162,6 +165,11 @@ endfunction
 
 function! s:Finish(state, status, timer) abort
   if get(a:state, 'done', 0)
+    return
+  endif
+  " 取消后即使进程恰好以成功状态退出，也不能再打开已生成的选择结果。
+  if get(a:state, 'cancelled', 0)
+    call s:Cleanup(a:state)
     return
   endif
   let path = ''
@@ -259,12 +267,26 @@ function! s:Closed(state, channel) abort
   call s:ScheduleFinish(a:state)
 endfunction
 
+function! s:CancelStalled(state, timer) abort
+  if !get(a:state, 'done', 0) && job_status(a:state.job) ==# 'run'
+    " 能力探测或卡住的子进程可能不处理终端 Ctrl-C；仅终止本次搜索作业组。
+    " 后续仍等退出和通道关闭，由既有 Finish 流程恢复编辑，不提前删除终端。
+    call job_stop(a:state.job, 'term')
+  endif
+endfunction
+
 function! s:CancelKey() abort
   if !empty(s:active) && !get(s:active, 'done', 0)
+    let s:active.cancelled = 1
     " 直接送到子终端，避免 Ctrl-c 作为 Vim 输入时中断回调或清空待处理按键。
     call term_sendkeys(s:active.buf, "\<C-c>")
+    if !has_key(s:active, 'cancel_timer')
+      let s:active.cancel_timer = timer_start(100, function('s:CancelStalled', [s:active]))
+    endif
   endif
-  return "\<Ignore>"
+  " 先让 Vim 退出终端输入循环；否则旧版可能把下一次 leader 按终端规则解码。
+  " 作业退出和通道排空仍由 Finish 确认，不提前删除终端，也不增加固定等待。
+  return "\<C-\>\<C-n>"
 endfunction
 
 " 弹窗可用时居中显示搜索终端，否则退回底部 split。
@@ -332,8 +354,14 @@ function! s:Open(mode) abort
     endif
     " 由 Finish 统一关闭，避免自动关闭提前删除终端、打断 close_cb。
     let options = {'hidden': 1, 'cwd': state.root,
-          \ 'term_kill': 'term', 'norestore': 1, 'term_rows': height, 'term_cols': width,
+          \ 'term_rows': height, 'term_cols': width,
           \ 'exit_cb': function('s:Exited', [state]), 'close_cb': function('s:Closed', [state])}
+    if exists('*term_setkill')
+      let options.term_kill = 'term'
+    endif
+    if exists('*term_setrestore')
+      let options.norestore = 1
+    endif
     if exists('*term_setapi')
       let options.term_api = ''
     endif

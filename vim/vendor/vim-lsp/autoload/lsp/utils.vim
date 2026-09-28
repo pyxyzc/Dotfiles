@@ -328,17 +328,7 @@ endfunction
 " This function requires a buffer specifier (expr, see :help bufname()),
 " a line number (lnum, 1-based), and a byte-index (char, 1-based).
 function! lsp#utils#to_char(expr, lnum, col) abort
-    let l:lines = getbufline(a:expr, a:lnum)
-    if l:lines == []
-        if type(a:expr) != v:t_string || !filereadable(a:expr)
-            " invalid a:expr
-            return a:col - 1
-        endif
-        " a:expr is a file that is not yet loaded as a buffer
-        let l:lines = readfile(a:expr, '', a:lnum)
-    endif
-    let l:linestr = l:lines[-1]
-    return strchars(strpart(l:linestr, 0, a:col - 1))
+    return lsp#utils#position#vim_to_lsp(a:expr, [a:lnum, a:col]).character
 endfunction
 
 function! s:get_base64_alphabet() abort

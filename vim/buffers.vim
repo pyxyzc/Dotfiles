@@ -44,11 +44,17 @@ function! s:BufferLabel(name, width) abort
   if strdisplaywidth(a:name) <= a:width
     return a:name
   endif
-  let name = a:name
-  while !empty(name) && strdisplaywidth(name) > a:width - 1
-    let name = strcharpart(name, 0, strchars(name) - 1)
+  let first = 0
+  let last = strchars(a:name)
+  while first < last
+    let middle = (first + last + 1) / 2
+    if strdisplaywidth(strcharpart(a:name, 0, middle)) <= a:width - 1
+      let first = middle
+    else
+      let last = middle - 1
+    endif
   endwhile
-  return name . '~'
+  return strcharpart(a:name, 0, first) . '~'
 endfunction
 
 " 单个标签的宽度上限，防止长文件名挤掉其它标签。
@@ -57,25 +63,32 @@ let s:label_max_width = 32
 let s:overflow_reserve = 4
 
 " 从焦点向两侧扩展连续区间，直到预算装不下相邻标签；隐藏项不参与重新编号。
-function! s:VisibleRange(widths, focus, budget) abort
+function! s:VisibleRange(buffers, names, focus, budget) abort
   let first = a:focus
   let last = a:focus
-  let used = a:widths[a:focus]
+  let labels = {a:focus: s:Label(a:buffers, a:names, a:focus, a:budget)}
+  let used = strdisplaywidth(labels[a:focus])
   while 1
     let expanded = 0
-    if last + 1 < len(a:widths)
-      let markers = (first > 0 ? 2 : 0) + (last + 2 < len(a:widths) ? 2 : 0)
-      if used + a:widths[last + 1] + markers <= a:budget
+    if last + 1 < len(a:buffers)
+      let label = s:Label(a:buffers, a:names, last + 1, a:budget)
+      let width = strdisplaywidth(label)
+      let markers = (first > 0 ? 2 : 0) + (last + 2 < len(a:buffers) ? 2 : 0)
+      if used + width + markers <= a:budget
         let last += 1
-        let used += a:widths[last]
+        let used += width
+        let labels[last] = label
         let expanded = 1
       endif
     endif
     if first > 0
-      let markers = (first > 1 ? 2 : 0) + (last + 1 < len(a:widths) ? 2 : 0)
-      if used + a:widths[first - 1] + markers <= a:budget
+      let label = s:Label(a:buffers, a:names, first - 1, a:budget)
+      let width = strdisplaywidth(label)
+      let markers = (first > 1 ? 2 : 0) + (last + 1 < len(a:buffers) ? 2 : 0)
+      if used + width + markers <= a:budget
         let first -= 1
-        let used += a:widths[first]
+        let used += width
+        let labels[first] = label
         let expanded = 1
       endif
     endif
@@ -83,15 +96,37 @@ function! s:VisibleRange(widths, focus, budget) abort
       break
     endif
   endwhile
-  return [first, last]
+  return [first, last, labels]
 endfunction
 
+" 只为当前可见区间及相邻候选项生成标签；隐藏项无需查询选项或截断路径。
+function! s:Label(buffers, names, index, budget) abort
+  let buffer = a:buffers[a:index]
+  let prefix = printf(' %d:', a:index + 1)
+  let flags = (buffer.changed ? ' +' : '')
+        \ . (getbufvar(buffer.bufnr, '&readonly') ? ' [RO]' : '') . ' '
+  if getbufvar(buffer.bufnr, '&buftype') ==# 'terminal'
+    let flags = ' [term]' . flags
+  endif
+  let reserve = len(a:buffers) > 1 ? s:overflow_reserve : 0
+  let available = a:budget - reserve - strdisplaywidth(prefix . flags)
+  let width = max([1, min([s:label_max_width, available])])
+  return prefix . s:BufferLabel(a:names[a:index], width) . flags
+endfunction
+
+let s:name_key = []
+let s:names = []
 function! s:BufferLine() abort
   let buffers = s:ListedBuffers()
   if empty(buffers)
     return '%#TabLineFill#'
   endif
-  let names = s:BufferNames(buffers)
+  " 对比真实名称列表，兼容 :file、:badd、重载及 noautocmd 修改。
+  let key = map(copy(buffers), 'v:val.name')
+  if key !=# s:name_key
+    let s:name_key = key
+    let s:names = s:BufferNames(buffers)
+  endif
   let numbers = map(copy(buffers), 'v:val.bufnr')
   let current = index(numbers, bufnr('%'))
   let focus = current >= 0 ? current : max([0, index(numbers, bufnr('#'))])
@@ -101,24 +136,7 @@ function! s:BufferLine() abort
     let tabs = ''
   endif
   let budget = &columns - strdisplaywidth(tabs)
-  let reserve = len(buffers) > 1 ? s:overflow_reserve : 0
-  let labels = []
-  let widths = []
-  for index in range(len(buffers))
-    let buffer = buffers[index]
-    let prefix = printf(' %d:', index + 1)
-    let flags = (buffer.changed ? ' +' : '')
-          \ . (getbufvar(buffer.bufnr, '&readonly') ? ' [RO]' : '') . ' '
-    if getbufvar(buffer.bufnr, '&buftype') ==# 'terminal'
-      let flags = ' [term]' . flags
-    endif
-    let available = budget - reserve - strdisplaywidth(prefix . flags)
-    let width = max([1, min([s:label_max_width, available])])
-    let label = prefix . s:BufferLabel(names[index], width) . flags
-    call add(labels, label)
-    call add(widths, strdisplaywidth(label))
-  endfor
-  let [first, last] = s:VisibleRange(widths, focus, budget)
+  let [first, last, labels] = s:VisibleRange(buffers, s:names, focus, budget)
   let line = '%#TabLineFill#' . (first > 0 ? '< ' : '')
   for index in range(first, last)
     let line .= index == current ? '%#TabLineSel#' : '%#VimrcBufferLine#'
@@ -135,14 +153,20 @@ set showtabline=2
 if has('gui_running')
   set guioptions-=e
 endif
-let &tabline = '%!' . expand('<SID>') . 'BufferLine()'
+let &tabline = '%!' . matchstr(string(function('s:BufferLine')), '<SNR>\d\+_BufferLine') . '()'
+let s:redrawtabline = exists(':redrawtabline') == 2 ? 'redrawtabline' : 'redraw'
 augroup vimrc_lite_buffers
   autocmd!
   autocmd ColorScheme * call <SID>BufferLineColors()
-  autocmd BufAdd,BufDelete,BufEnter,BufFilePost,BufWritePost * redrawtabline
-  autocmd TextChanged,TextChangedI,VimResized * redrawtabline
+  execute 'autocmd BufAdd,BufDelete,BufEnter,BufFilePost,BufWritePost * ' . s:redrawtabline
+  execute 'autocmd VimResized * ' . s:redrawtabline
+  if exists('##BufModifiedSet')
+    execute 'autocmd BufModifiedSet * ' . s:redrawtabline
+  else
+    execute 'autocmd TextChanged,TextChangedI * ' . s:redrawtabline
+  endif
   if exists('##OptionSet')
-    autocmd OptionSet readonly,buflisted redrawtabline
+    execute 'autocmd OptionSet readonly,buflisted ' . s:redrawtabline
   endif
 augroup END
 

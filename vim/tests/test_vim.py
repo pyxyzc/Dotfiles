@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import signal
 import shutil
 import subprocess
 import struct
@@ -19,12 +20,22 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VIM = shutil.which("vim")
+VIM = shutil.which(os.environ.get('VIM_TEST_BINARY', 'vim'))
+if VIM is None:
+    raise RuntimeError('Vim test executable not found; check VIM_TEST_BINARY or PATH')
 BASH = shutil.which("bash")
 
 
 def quoted(value):
     return "'" + str(value).replace("'", "''").replace('\n', "' . \"\\n\" . '") + "'"
+
+
+SCRIPT_PREFIX = r'''
+function! ScriptPrefix(suffix) abort
+  let scripts = filter(split(execute('scriptnames'), "\n"), 'v:val =~# a:suffix')
+  return '<SNR>' . matchstr(scripts[0], '^\s*\zs\d\+\ze:') . '_'
+endfunction
+'''
 
 
 class VimSession(unittest.TestCase):
@@ -44,7 +55,7 @@ class VimSession(unittest.TestCase):
             "function! Call(name, args) abort\n"
             "  return call(function(s:prefix . a:name), a:args)\n"
             "endfunction\n"
-            "try\n" + body + "\n"
+            + SCRIPT_PREFIX + "try\n" + body + "\n"
             "catch\n"
             "  call add(v:errors, v:exception . ' at ' . v:throwpoint)\n"
             "endtry\n"
@@ -64,7 +75,7 @@ class VimSession(unittest.TestCase):
             stdin=subprocess.DEVNULL, capture_output=True, text=True,
             timeout=20, start_new_session=True, env=self.env,
         )
-        errors = report.read_text() if report.exists() else ""
+        errors = report.read_text(errors='replace') if report.exists() else ""
         self.assertEqual(result.returncode, 0, errors + result.stdout + result.stderr)
         self.assertEqual(errors, "")
         return result
@@ -81,7 +92,7 @@ class VimSession(unittest.TestCase):
             'function! TerminalScreen(buf) abort\n'
             '  return join(map(range(1, term_getsize(a:buf)[0]), '
             "'term_getline(a:buf, v:val)'), \"\\n\")\n"
-            'endfunction\ntry\n' + body + '\ncatch\n'
+            'endfunction\n' + SCRIPT_PREFIX + 'try\n' + body + '\ncatch\n'
             "call add(v:errors, v:exception . ' at ' . v:throwpoint)\nendtry\n"
             f'call writefile(v:errors, {quoted(report)})\n'
             'if !empty(v:errors) | cquit | endif\nqa!\n', encoding='utf-8',
@@ -110,7 +121,7 @@ class VimSession(unittest.TestCase):
             preexec_fn=acquire_tty if controlling_tty else None,
         )
         os.close(slave)
-        output = b''
+        output = bytearray()
         sent = False
         deadline = time.monotonic() + 10
         try:
@@ -120,13 +131,13 @@ class VimSession(unittest.TestCase):
             while time.monotonic() < deadline:
                 if select.select([master], [], [], 0.05)[0]:
                     try:
-                        output += os.read(master, 65536)
+                        output.extend(os.read(master, 65536))
                     except OSError:
                         break
                 if not sent and ready.exists():
                     os.write(master, f':source {script}\r'.encode())
                     sent = True
-                if process.poll() is not None:
+                if process.poll() is not None and not select.select([master], [], [], 0)[0]:
                     break
             self.assertTrue(sent, repr(output[-2000:]))
             self.assertEqual(process.wait(timeout=2), 0,
@@ -137,7 +148,7 @@ class VimSession(unittest.TestCase):
                 process.wait()
             os.close(master)
         self.assertEqual(report.read_text(), '')
-        return output
+        return bytes(output)
 
 class VimTests(VimSession):
     def test_dashboard_terminal_startup_and_new_file(self):
@@ -155,7 +166,7 @@ call assert_true(index(content, 'Vim is open source and freely distributable') >
 call assert_true(index(content, 'Help poor children in Uganda!') >= 0)
 call assert_true(index(content, 'type  :q<Enter>               to exit') >= 0)
 call assert_true(index(content, 'type  :help<Enter>  or  <F1>  for on-line help') >= 0)
-call assert_true(index(content, 'type  :help version9<Enter>   for version info') >= 0)
+call assert_true(index(content, 'type  :help version' . (v:version / 100) . '<Enter>   for version info') >= 0)
 call assert_equal(0, synID(line('$'), 1, 1))
 call assert_equal(0, synID(line('$'), match(getline('$'), '\S') + 1, 1))
 for key in ['f', 'n', 'e', 'r', 't', 'c', 'q', 'j', 'k', "\<Down>", "\<Up>", "\<CR>"]
@@ -226,6 +237,25 @@ call assert_equal(1, winnr('$'))
 call assert_equal('draft.txt', bufname('%'))
 call assert_true(&modified)
 ''')
+
+    def test_large_file_keeps_manual_but_skips_automatic_word_completion(self):
+        source = self.work / 'large-completion.txt'
+        source.write_text('alpha alphabet\n' * 80000)
+        self.terminal_vim(r'''
+call assert_equal(1, b:vimrc_lite_large_file)
+let g:saw_menu = 0
+function! StopCompletion(timer) abort
+  let g:saw_menu = pumvisible()
+  call feedkeys("\<C-e>\<Esc>", 't')
+endfunction
+call timer_start(60, function('StopCompletion'))
+call feedkeys('Goal', 'xt!')
+call assert_false(g:saw_menu)
+call assert_equal('al', getline('$'))
+call timer_start(60, function('StopCompletion'))
+call feedkeys("A\<C-n>", 'xt!')
+call assert_true(g:saw_menu)
+''', args=[str(source)])
 
     def test_dashboard_startup_exclusions(self):
         (self.work / 'sample.py').write_text('preserved\n')
@@ -323,15 +353,15 @@ call assert_equal(position, SloganPosition(home))
 for width in [12, 22, 18]
   call feedkeys(':vertical resize ' . width . "\<CR>", 'xt')
   " Vim normally delivers this event after returning from the sourced script.
-  doautocmd WinResized
+  execute 'doautocmd ' . (exists('##WinResized') ? 'WinResized' : 'VimResized')
   call assert_equal(tree, win_getid())
   call assert_equal(position, SloganPosition(home))
 endfor
 call feedkeys(":vertical resize 70\<CR>", 'xt')
-doautocmd WinResized
+execute 'doautocmd ' . (exists('##WinResized') ? 'WinResized' : 'VimResized')
 call assert_equal(win_screenpos(home)[1], SloganPosition(home)[1])
 call feedkeys(":vertical resize 20\<CR>", 'xt')
-doautocmd WinResized
+execute 'doautocmd ' . (exists('##WinResized') ? 'WinResized' : 'VimResized')
 call assert_equal(position, SloganPosition(home))
 let tree_cursor = getpos('.')
 set columns=140 lines=40
@@ -339,7 +369,8 @@ doautocmd VimResized
 let width = strdisplaywidth('Les annees heureuses sont des annees perdues.')
 let intro = getbufline(winbufnr(home), 1, '$')
 let slogan = match(intro, 'Les annees')
-let expected_row = ((&lines - &cmdheight - 1) - (len(intro) - slogan - 1)) / 2 + 1
+let intro_height = len(intro) - match(intro, 'VIM - Vi IMproved')
+let expected_row = ((&lines - &cmdheight - 1) - intro_height + 1) / 2 + 2
 call assert_equal([expected_row, (&columns - width) / 2 + 1], SloganPosition(home))
 call assert_equal(tree, win_getid())
 call assert_equal(tree_cursor, getpos('.'))
@@ -491,6 +522,62 @@ edit flat.py
 normal! 1G
 normal vaf
 call assert_true(mode() =~# '^[vV]')
+''')
+
+    def test_structural_objects_ignore_braces_and_preserve_view(self):
+        (self.work / 'nested.cpp').write_text(
+            'class Box {\npublic:\n  int value() const {\n    if (ready) {\n'
+            '      const char *s = "} {";\n      // }\n      /* {\n         } */\n'
+            '      return 1;\n    }\n    return 0;\n  }\n};\n'
+            'int sibling() {\n  return 2;\n}\n')
+        self.vim(r'''
+edit nested.cpp
+let object = matchstr(maparg('af', 'x'), '<SNR>\d\+_')
+function! Object(kind, lnum) abort
+  return call(function(g:object . 'CObject'), [a:kind, a:lnum])
+endfunction
+call cursor(9, 8)
+normal! zz
+let view = winsaveview()
+let @/ = 'untouched search'
+for lnum in [3, 9, 12]
+  call assert_equal([3, 12, 4, 11], Object('function', lnum))
+endfor
+call assert_equal([4, 10, 5, 9], Object('block', 9))
+call assert_equal([1, 13, 2, 12], Object('class', 13))
+call assert_equal([14, 16, 15, 15], Object('function', 15))
+call assert_equal([], Object('class', 15))
+call assert_equal(view, winsaveview())
+call assert_equal('untouched search', @/)
+call append(16, ['int added() {', '  return 3;', '}'])
+call assert_equal([17, 19, 18, 18], Object('function', 18))
+''')
+
+    def test_python_objects_decorators_nested_and_chains(self):
+        (self.work / 'nested.py').write_text(
+            '@first\n@second\ndef outer():\n    if ready:\n'
+            '        def inner():\n            return 1\n    elif other:\n'
+            '        pass\n    else:\n        pass\n\nclass Box:\n'
+            '    @decorate\n    def method(self):\n        return 2\n')
+        self.vim(r'''
+edit nested.py
+let object = matchstr(maparg('af', 'x'), '<SNR>\d\+_')
+" 对每个光标位置比对原有的最小包含区间语义，含装饰器和分支链。
+for kind in ['function', 'class', 'block']
+  for lnum in range(1, line('$'))
+    let expected = []
+    for header in range(1, line('$'))
+      let candidate = call(function(object . 'PythonCandidate'), [header, kind])
+      if !empty(candidate) && candidate[0] <= lnum && lnum <= candidate[1]
+        if empty(expected) || candidate[1] - candidate[0] < expected[1] - expected[0]
+          let expected = candidate
+        endif
+      endif
+    endfor
+    call assert_equal(expected, call(function(object . 'PythonObject'), [kind, lnum]),
+          \ kind . ':' . lnum)
+  endfor
+endfor
 ''')
 
     def test_close_preserves_windows_across_tabs(self):
@@ -703,6 +790,26 @@ colorscheme tokyonight-night
 call assert_equal(synIDtrans(hlID('StatusLine')), synIDtrans(hlID('VimrcBufferLine')))
 ''', args=['-c', 'let g:skip_home = 1'])
 
+    def test_buffer_bar_cache_observes_silent_changes_and_long_unicode(self):
+        self.vim(r'''
+set columns=200
+edit first/main.py
+badd second/main.py
+call assert_match('first/main.py', Call('BufferLine', []))
+noautocmd file renamed.py
+call assert_match('1:renamed.py', Call('BufferLine', []))
+call assert_match('2:main.py', Call('BufferLine', []))
+noautocmd setlocal readonly
+call setline(1, 'modified')
+call assert_match('renamed.py + \[RO\]', Call('BufferLine', []))
+noautocmd setlocal nomodified noreadonly
+call assert_notmatch('renamed.py +', Call('BufferLine', []))
+call assert_notmatch('\[RO\]', Call('BufferLine', []))
+let label = Call('BufferLabel', [repeat('汉a', 10000), 20])
+call assert_inrange(18, 20, strdisplaywidth(label))
+call assert_equal('~', strcharpart(label, strchars(label) - 1))
+''')
+
     def test_buffer_bar_reload_and_empty_list(self):
         self.vim(r'''
 setlocal nobuflisted
@@ -710,7 +817,8 @@ call assert_equal('%#TabLineFill#', Call('BufferLine', []))
 source ''' + str(ROOT / '.vimrc') + r'''
 source ''' + str(ROOT / '.vimrc') + r'''
 call assert_equal(2, &showtabline)
-call assert_equal(1, len(filter(split(execute('autocmd vimrc_lite_buffers BufEnter'), '\n'), 'v:val =~# "redrawtabline"')))
+let redraw_command = exists(':redrawtabline') == 2 ? 'redrawtabline' : 'redraw'
+call assert_equal(1, len(filter(split(execute('autocmd vimrc_lite_buffers BufEnter'), '\n'), 'v:val =~# redraw_command')))
 call assert_match('BufferLine()', &tabline)
 ''')
 
@@ -809,6 +917,69 @@ call assert_equal(['a', 'b', 'c'], getline(1, '$'))
 call setline(1, ['a', 'b', 'c'])
 call feedkeys('gg2gcc', 'xt')
 call assert_equal(['# a', '# b', 'c'], getline(1, '$'))
+''')
+
+    def test_comment_tokens_unicode_nul_and_editor_state(self):
+        self.vim(r'''
+let s:prefix = matchstr(maparg('gc', 'n'), '<SNR>\d\+_')
+edit comments.txt
+setlocal filetype=text
+let original = ['中文 😀', "\tvalue with \"quotes\"  ", "left\nright", '', '   ']
+for tokens in [['# ', ''], ['//', ''], ['/*', '*/'], ['<!-- ', ' -->'],
+      \ ['[&~\', '\~&]'], ['(* ', ' *)'], ['REM ', ''], ['%', '']]
+  let &l:commentstring = tokens[0] . '%s' . tokens[1]
+  %delete _
+  call setline(1, original)
+  let expected = []
+  let start = tokens[0] . (tokens[0] =~# '\s$' ? '' : ' ')
+  let finish = empty(tokens[1]) ? '' : (tokens[1] =~# '^\s' ? '' : ' ') . tokens[1]
+  for line in original
+    let indent = matchstr(line, '^\s*')
+    let body = strpart(line, len(indent))
+    call add(expected, empty(body) ? line : indent . start . body . finish)
+  endfor
+  let &undolevels = &undolevels
+  let @/ = 'previous search'
+  let @" = 'previous yank'
+  call cursor(2, 4)
+  normal! zz
+  let view = winsaveview()
+  call Call('ToggleComments', [1, line('$')])
+  call assert_equal(expected, getline(1, '$'), string(tokens))
+  call assert_equal(view, winsaveview())
+  call assert_equal('previous search', @/)
+  call assert_equal('previous yank', @")
+  undo
+  call assert_equal(original, getline(1, '$'))
+  redo
+  let &undolevels = &undolevels
+  call Call('ToggleComments', [1, line('$')])
+  call assert_equal(original, getline(1, '$'), string(tokens))
+  undo
+  call assert_equal(expected, getline(1, '$'))
+endfor
+let &l:commentstring = '# %s'
+%delete _
+call setline(1, ['#include <header>', '# already commented', ''])
+call Call('ToggleComments', [1, 3])
+call assert_equal(['# #include <header>', '# # already commented', ''], getline(1, '$'))
+call Call('ToggleComments', [1, 3])
+call assert_equal(['#include <header>', '# already commented', ''], getline(1, '$'))
+" Uppercase comment tokens must not match lowercase content under ignorecase.
+let &l:commentstring = 'REM %s'
+call setline(1, ['rem text', 'REM text', ''])
+set ignorecase
+call Call('ToggleComments', [1, 3])
+call assert_equal(['REM rem text', 'REM REM text', ''], getline(1, '$'))
+call Call('ToggleComments', [1, 3])
+call assert_equal(['rem text', 'REM text', ''], getline(1, '$'))
+" Commenting must not overwrite the last :substitute pattern or replacement.
+%delete _
+call setline(1, ['old', 'old'])
+1s/old/new/
+call Call('ToggleComments', [1, 1])
+2&
+call assert_equal(['REM new', 'new'], getline(1, '$'))
 ''')
 
     def test_copy_and_osc52_fallbacks(self):
@@ -1031,6 +1202,53 @@ call feedkeys(' e', 'xt')
 call assert_equal(getcwd(), get(b:, 'netrw_curdir', ''))
 ''')
 
+    def test_file_tree_tracks_current_tab_and_uses_state_directory(self):
+        first = self.work / 'one'
+        second = self.work / 'two'
+        first.mkdir()
+        second.mkdir()
+        (first / 'first.txt').write_text('first\n')
+        (second / 'second.txt').write_text('second\n')
+        self.vim(r'''
+edit one/first.txt
+call feedkeys(' e', 'xt')
+let tree = matchstr(maparg(' e', 'n'), '<SNR>\d\+_')
+call assert_true(call(function(tree . 'TreeOpen'), []))
+tabnew two/second.txt
+call assert_false(call(function(tree . 'TreeOpen'), []))
+call feedkeys(' e', 'xt')
+call assert_equal(''' + quoted(second) + r''', b:netrw_curdir)
+call assert_equal($XDG_STATE_HOME . '/vim-lite/netrw', g:netrw_home)
+call assert_true(isdirectory(g:netrw_home))
+call feedkeys(' e', 'xt')
+call assert_equal(1, winnr('$'))
+tabprevious
+call assert_true(call(function(tree . 'TreeOpen'), []))
+''')
+
+    def test_file_tree_failed_rename_and_move_preserve_source(self):
+        (self.work / 'keep.txt').write_text('keep\n')
+        (self.work / 'destination').mkdir()
+        self.vim(r'''
+call feedkeys(' e', 'xt')
+call search('keep.txt', 'w')
+call feedkeys("r\<C-u>missing-directory/renamed.txt\<CR>", 'xt')
+call assert_match('rename failed:', execute('messages'))
+call assert_true(filereadable('keep.txt'))
+call search('keep.txt', 'w')
+call feedkeys('x', 'xt')
+call delete('keep.txt')
+call search('destination/', 'w')
+call feedkeys('p', 'xt')
+call assert_match('move failed:', execute('messages'))
+" 移动失败保留剪切引用，源文件恢复后可再次粘贴。
+call writefile(['restored'], 'keep.txt', 'S')
+call search('destination/', 'w')
+call feedkeys('p', 'xt')
+call assert_equal(['restored'], readfile('destination/keep.txt'))
+call assert_false(filereadable('keep.txt'))
+''')
+
     def test_file_tree_operations(self):
         (self.work / 'keep.txt').write_text('keep\n')
         (self.work / 'cut.txt').write_text('cut\n')
@@ -1057,6 +1275,15 @@ call search('keep.txt', 'w')
 call feedkeys('c', 'xt')
 call search('newdir/', 'w')
 call feedkeys('p', 'xt')
+let started = reltime()
+while execute('VimTreeCopyStatus') !~# 'no copies running'
+  if reltimefloat(reltime(started)) > 3
+    call assert_report('copy did not finish')
+    break
+  endif
+  sleep 10m
+endwhile
+call assert_equal(['keep'], readfile('newdir/keep.txt'))
 call search('cut.txt', 'w')
 call feedkeys('x', 'xt')
 call search('newdir/', 'w')
@@ -1414,6 +1641,33 @@ call feedkeys('2]c', 'xt')
 call assert_equal(7, line('.'))
 ''')
 
+    def test_hunk_cache_tracks_index_edits_undo_and_rename(self):
+        self.vim(r'''
+execute 'cd ' . fnameescape(''' + quoted(self.repo) + r''')
+execute 'edit ' . fnameescape(''' + quoted(self.target) + r''')
+let git = matchstr(maparg(']c', 'n'), '<SNR>\d\+_')
+function! Hunks() abort
+  return call(function(g:git . 'Hunks'), [])
+endfunction
+call setline(2, 'changed second')
+call assert_equal([{'start': 2, 'end': 2}], Hunks())
+call assert_equal([{'start': 2, 'end': 2}], Hunks())
+write
+call system('git add -- ' . shellescape(expand('%:p')))
+call assert_equal(0, v:shell_error)
+call assert_equal([], Hunks())
+let &undolevels = &undolevels
+call setline(7, 'changed seventh')
+call assert_equal([{'start': 7, 'end': 7}], Hunks())
+undo
+call assert_equal([], Hunks())
+call system('git reset -q HEAD -- ' . shellescape(expand('%:p')))
+call assert_equal(0, v:shell_error)
+call assert_equal([{'start': 2, 'end': 2}], Hunks())
+file renamed.txt
+call assert_equal([{'start': 1, 'end': 8}], Hunks())
+''')
+
     def test_untracked_file_is_one_hunk(self):
         untracked = self.repo / 'new file.txt'
         untracked.write_text('one\ntwo\nthree\n')
@@ -1534,7 +1788,8 @@ for attempt in range(400)
   sleep 10m
   if !bufexists(terminal) && !isdirectory(temporary) | break | endif
 endfor
-call assert_false(bufexists(terminal))
+call assert_false(bufexists(terminal), 'search job: ' . string(job_info(search_job))
+      \ . '; channel: ' . string(ch_info(job_getchannel(search_job))))
 call assert_false(isdirectory(temporary))
 call assert_equal([], popup_list())
 '''
@@ -1826,6 +2081,91 @@ call assert_equal('vimdashboard', &filetype)
 call assert_equal(original_options, [&timeout, &timeoutlen, &ttimeout, &ttimeoutlen])
 ''')
 
+    def test_cancel_during_slow_capability_probe(self):
+        self.require_backends()
+        tools = self.work / 'slow-probe-tools'
+        tools.mkdir()
+        probe = self.work / 'probe-started'
+        fake = tools / 'fzf'
+        fake.write_text(f'#!{sys.executable}\n' +
+                        'import os, signal, sys, time\n' +
+                        'signal.signal(signal.SIGINT, signal.SIG_IGN)\n' +
+                        f'with open({str(probe)!r}, "w") as marker: marker.write(str(os.getpid()))\n' +
+                        'time.sleep(2)\n' +
+                        'sys.exit(1 if "--filter=" in sys.argv else 130)\n')
+        fake.chmod(0o755)
+        self.env['PATH'] = str(tools) + os.pathsep + self.env['PATH']
+        self.terminal_vim(r'''
+let search = matchstr(execute('command VimFind'), '<SNR>\d\+_')
+VimFind
+let terminal = winbufnr(popup_list()[0])
+let job = term_getjob(terminal)
+for attempt in range(200)
+  if filereadable(''' + quoted(probe) + r''') | break | endif
+  sleep 5m
+endfor
+call assert_true(filereadable(''' + quoted(probe) + r'''))
+let started = reltime()
+call call(function(search . 'CancelKey'), [])
+''' + self.wait_search() + r'''
+call assert_true(reltimefloat(reltime(started)) < 0.5, 'cancellation waited for the probe')
+call assert_notequal('run', job_status(job))
+''')
+        stat = Path('/proc') / probe.read_text() / 'stat'
+        if stat.exists():
+            self.assertEqual('Z', stat.read_text().split(') ', 1)[1][0],
+                             'capability probe survived cancellation')
+
+    def test_cancel_wins_over_late_success_and_does_not_stop_next_search(self):
+        self.require_backends()
+        tools = self.work / 'late-success-tools'
+        tools.mkdir()
+        ready = self.work / 'late-success-ready'
+        release = self.work / 'late-success-release'
+        target = self.project / 'selected.txt'
+        target.write_text('must not open after cancellation\n')
+        fake = tools / 'fzf'
+        fake.write_text(f'#!{sys.executable}\n' +
+                        'import os, signal, sys, time\n' +
+                        'if "--filter=" in sys.argv: sys.exit(1)\n' +
+                        'signal.signal(signal.SIGINT, signal.SIG_IGN)\n' +
+                        f'open({str(ready)!r}, "w").close()\n' +
+                        f'while not os.path.exists({str(release)!r}): time.sleep(.002)\n' +
+                        'os.write(1, b"selected.txt\\t1\\t1\\t0\\tselected.txt\\0")\n')
+        fake.chmod(0o755)
+        self.env['PATH'] = str(tools) + os.pathsep + self.env['PATH']
+        self.terminal_vim(r'''
+execute 'cd ' . fnameescape(''' + quoted(self.project) + r''')
+enew
+call setline(1, 'unsaved original')
+let original = bufnr('%')
+let search = matchstr(execute('command VimFind'), '<SNR>\d\+_')
+VimFind
+for attempt in range(200)
+  if filereadable(''' + quoted(ready) + r''') | break | endif
+  sleep 5m
+endfor
+call assert_true(filereadable(''' + quoted(ready) + r'''))
+call call(function(search . 'CancelKey'), [])
+call writefile([], ''' + quoted(release) + r''', 'S')
+''' + self.wait_search() + r'''
+call assert_equal(0, job_info(search_job).exitval)
+call assert_equal(original, bufnr('%'))
+call assert_equal('unsaved original', getline(1))
+call assert_true(&modified)
+call delete(''' + quoted(ready) + r''')
+call delete(''' + quoted(release) + r''')
+VimFind
+let next_terminal = winbufnr(popup_list()[0])
+let next_job = term_getjob(next_terminal)
+sleep 200m
+call assert_equal('run', job_status(next_job), 'previous cancellation stopped the next search')
+call assert_true(bufexists(next_terminal))
+call call(function(search . 'CancelKey'), [])
+''' + self.wait_search() + r'''
+call assert_equal(original, bufnr('%'))
+''')
+
     def test_missing_dependencies_only_warn(self):
         self.vim(r'''
 let $PATH = '/nonexistent-vim-search-test'
@@ -1842,7 +2182,7 @@ call assert_equal([], popup_list())
         config = self.work / 'fallback config'
         config.mkdir()
         for name in ('.vimrc', 'search.sh', 'search.awk', 'dashboard.vim', 'tree.vim',
-                     'buffers.vim', 'edit.vim', 'textobjects.vim'):
+                     'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim'):
             shutil.copyfile(ROOT / name, config / name)
         # Simulate a Vim without popup windows while exercising the actual split implementation.
         (config / 'search.vim').write_text((ROOT / 'search.vim').read_text().replace(
@@ -1908,13 +2248,14 @@ call assert_match('regex parse error', execute('messages'))
 ''')
 
     def keyboard_search(self, command, editing=False, exercise_arrows=False, config=None,
-                        reopen=0):
+                        reopen=0, resize=False):
         """Send actual PTY bytes through Vim's key decoder and mappings, not term_sendkeys()."""
         startup = self.work / 'keyboard-startup'
         ready = self.work / 'keyboard-ready'
         closed = self.work / 'keyboard-closed'
+        diagnostic = self.work / 'keyboard-diagnostic.json'
         script = self.work / 'keyboard-check.vim'
-        for path in (startup, ready, closed):
+        for path in (startup, ready, closed, diagnostic):
             path.unlink(missing_ok=True)
         script.write_text(r'''
 set nomore
@@ -1949,6 +2290,24 @@ function! KeyboardObserve(timer) abort
   endif
 endfunction
 call timer_start(5, 'KeyboardObserve', {'repeat': -1})
+if !empty($VIM_TEST_SEARCH_TRACE)
+  function! KeyboardDiagnostic(timer) abort
+    let snapshot = {'mode': mode(1), 'buffer': bufnr('%'), 'window': win_getid(),
+          \ 'observed_terminal': g:keyboard_terminal, 'popups': popup_list(),
+          \ 'messages': execute('messages'), 'terminals': []}
+    for terminal in term_list()
+      let job = term_getjob(terminal)
+      let info = job_info(job)
+      call add(snapshot.terminals, {'buffer': terminal, 'status': term_getstatus(terminal),
+            \ 'job': {'status': job_status(job), 'pid': get(info, 'process', 0),
+            \         'exitval': get(info, 'exitval', 0), 'cmd': get(info, 'cmd', [])},
+            \ 'channel': ch_status(job_getchannel(job)),
+            \ 'screen': map(range(1, term_getsize(terminal)[0]), 'term_getline(terminal, v:val)')})
+    endfor
+    call writefile([json_encode(snapshot)], ''' + quoted(diagnostic) + r''', 'bS')
+  endfunction
+  call timer_start(50, 'KeyboardDiagnostic', {'repeat': -1})
+endif
 ''')
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
@@ -1976,7 +2335,9 @@ call timer_start(5, 'KeyboardObserve', {'repeat': -1})
             while not path.exists() and time.monotonic() < deadline and process.poll() is None:
                 pump(0.005)
             screen_output = bytes(output).replace(b'\x1b[?25l', b'').replace(b'\x1b[?25h', b'')
-            self.assertTrue(path.exists(), repr(screen_output[-3000:]))
+            detail = diagnostic.read_text(errors='replace') if diagnostic.exists() else ''
+            self.assertTrue(path.exists(), f'timed out waiting for {path.name}; {detail}\n'
+                            + repr(screen_output[-3000:]))
 
         try:
             wait_file(startup)
@@ -2001,6 +2362,10 @@ call timer_start(5, 'KeyboardObserve', {'repeat': -1})
                         os.write(master, bytes([key]))
                         pump(0.04)
                     wait_file(ready)
+                if resize:
+                    rows, columns = (18, 60) if attempt % 2 == 0 else (30, 100)
+                    fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', rows, columns, 0, 0))
+                    os.kill(process.pid, signal.SIGWINCH)
                 started = time.monotonic()
                 os.write(master, b'\x1b')
                 wait_file(closed)
@@ -2048,7 +2413,7 @@ call timer_start(5, 'KeyboardObserve', {'repeat': -1})
         for command in ('VimFind', 'VimSearch'):
             for editing in (False, True):
                 with self.subTest(command=command, editing=editing):
-                    elapsed, _ = self.keyboard_search(command, editing, reopen=5)
+                    elapsed, _ = self.keyboard_search(command, editing, reopen=8)
                     self.assertLess(elapsed, 0.2, f'Esc cancellation took {elapsed * 1000:.0f} ms')
 
     @unittest.skipUnless(shutil.which('fzf'), 'Real keyboard selection requires fzf')
@@ -2063,6 +2428,24 @@ call timer_start(5, 'KeyboardObserve', {'repeat': -1})
         for mode in ('ff', 'fp', 'fr'):
             self.assertEqual(len(samples[mode]['open_edit']), 3)
 
+    def test_real_keyboard_escape_when_child_ignores_interrupt(self):
+        self.require_backends()
+        directory = self.work / 'ignore-interrupt-tools'
+        directory.mkdir()
+        fake = directory / 'fzf'
+        fake.write_text(f'#!{sys.executable}\n' +
+                        'import signal, sys, time\n' +
+                        'if "--filter=" in sys.argv: sys.exit(1)\n' +
+                        'signal.signal(signal.SIGINT, signal.SIG_IGN)\n' +
+                        'print("Files> ", file=sys.stderr, flush=True)\n' +
+                        'time.sleep(30)\n')
+        fake.chmod(0o755)
+        self.env['PATH'] = str(directory) + os.pathsep + self.env['PATH']
+        elapsed, result = self.keyboard_search('VimFind', editing=True, reopen=2)
+        self.assertLess(elapsed, 0.5, 'Esc waited for the unresponsive child')
+        self.assertEqual('keep unsaved text', result['line'])
+        self.assertTrue(result['modified'])
+
     @unittest.skipUnless(shutil.which('fzf'), 'Real keyboard latency test requires fzf')
     def test_real_keyboard_escape_in_split(self):
         self.require_backends()
@@ -2076,6 +2459,20 @@ call timer_start(5, 'KeyboardObserve', {'repeat': -1})
         self.assertEqual(result['original_options'], result['restored_options'])
         self.assertEqual(result['line'], 'keep unsaved text')
         self.assertTrue(result['modified'])
+
+    @unittest.skipUnless(shutil.which('fzf'), 'Real keyboard resize test requires fzf')
+    def test_real_keyboard_escape_during_resize(self):
+        self.require_backends()
+        (self.project / 'sample.py').write_text('needle\n')
+        split_config = self.split_config()
+        for command in ('VimFind', 'VimSearch'):
+            for config in (None, split_config):
+                with self.subTest(command=command, split=config is not None):
+                    elapsed, result = self.keyboard_search(
+                        command, editing=True, config=config, reopen=9, resize=True)
+                    self.assertLess(elapsed, 0.2, f'Resize + Esc took {elapsed * 1000:.0f} ms')
+                    self.assertEqual('keep unsaved text', result['line'])
+                    self.assertTrue(result['modified'])
 
     @staticmethod
     def wait_fzf(prompt):
@@ -2170,7 +2567,7 @@ class InstallerTests(unittest.TestCase):
         colors.mkdir(parents=True)
         dashboard = self.target / '.vim' / 'dashboard.vim'
         dashboard.write_text('" old dashboard\n')
-        modules = [self.target / '.vim' / name for name in ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'textobjects.vim')]
+        modules = [self.target / '.vim' / name for name in ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim')]
         for module in modules:
             module.write_text('" old module\n')
         (colors / "unrelated.vim").write_text('" leave alone\n')
@@ -2182,7 +2579,7 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
-        for name in ('search.vim', 'search.sh', 'search.awk', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'textobjects.vim'):
+        for name in ('search.vim', 'search.sh', 'search.awk', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         dashboard_backups = list(dashboard.parent.glob('dashboard.vim.bak.*'))
         self.assertEqual(len(dashboard_backups), 1)

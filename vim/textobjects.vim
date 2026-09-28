@@ -123,46 +123,78 @@ function! s:PythonCandidate(header, kind) abort
 endfunction
 
 function! s:PythonObject(kind, cursor) abort
-  let best = []
-  for line in range(1, line('$'))
-    let candidate = s:PythonCandidate(line, a:kind)
-    if empty(candidate) || a:cursor < candidate[0] || a:cursor > candidate[1]
-      continue
+  " 从光标附近向上找包含它的最近定义；不遍历后面的所有函数。
+  let header = a:cursor
+  while header < line('$') && s:Trimmed(header) =~# '^@\S'
+    let header += 1
+  endwhile
+  let lines = reverse(getline(1, header))
+  let pattern = a:kind ==# 'function' ? '^\s*\%(async\s\+\)\?def\>'
+        \ : a:kind ==# 'class' ? '^\s*class\>'
+        \ : '^\s*\%(if\|elif\|else\|for\|while\|try\|except\|finally\|with\)\>'
+  let offset = match(lines, pattern)
+  while offset >= 0
+    let start = header - offset
+    if a:kind ==# 'block'
+      let start = s:PythonBlockStart(start)
     endif
-    if empty(best) || candidate[1] - candidate[0] < best[1] - best[0]
-      let best = candidate
+    let candidate = s:PythonCandidate(start, a:kind)
+    if !empty(candidate) && candidate[0] <= a:cursor && a:cursor <= candidate[1]
+      return candidate
     endif
-  endfor
-  return best
+    let offset = match(lines, pattern, header - start + 1)
+  endwhile
+  return []
 endfunction
 
 function! s:IsCodeChar(lnum, column) abort
-  let id = synIDtrans(synID(a:lnum, a:column + 1, 1))
-  let group = synIDattr(id, 'name')
+  let id = synID(a:lnum, a:column + 1, 1)
+  let group = synIDattr(id, 'name') . ' ' . synIDattr(synIDtrans(id), 'name')
   return group !~# '\%(Comment\|String\|Character\)'
 endfunction
 
-function! s:CBracePairs() abort
+let s:code_skip = '!' . matchstr(string(function('s:IsCodeChar')), '<SNR>\d\+_IsCodeChar')
+      \ . '(line("."), col(".") - 1)'
+
+function! s:CBracePairs(cursor, kind) abort
   let pairs = []
-  let stack = []
-  for line in range(1, line('$'))
-    let text = getline(line)
-    if empty(text)
-      continue
+  let view = winsaveview()
+  let skip = s:code_skip
+  try
+    " 同行的块也允许选择；随后只沿包含光标的祖先括号向外查找。
+    let text = getline(a:cursor)
+    let column = match(text, '{')
+    while column >= 0
+      if s:IsCodeChar(a:cursor, column)
+        call cursor(a:cursor, column + 1)
+        let closing = searchpairpos('{', '', '}', 'nW', skip)
+        if closing[0]
+          call add(pairs, [a:cursor, column, closing[0], closing[1] - 1])
+        endif
+      endif
+      let column = match(text, '{', column + 1)
+    endwhile
+    if !empty(filter(copy(pairs), 's:CBlockKind(s:CHeader(v:val)[1]) ==# a:kind'))
+      return pairs
     endif
-    for column in range(0, strlen(text) - 1)
-      let character = strpart(text, column, 1)
-      if !s:IsCodeChar(line, column)
-        continue
+    call cursor(a:cursor, 1)
+    while 1
+      let opening = searchpairpos('{', '', '}', 'bW', skip)
+      if !opening[0]
+        break
       endif
-      if character ==# '{'
-        call add(stack, [line, column])
-      elseif character ==# '}' && !empty(stack)
-        let opening = remove(stack, -1)
-        call add(pairs, [opening[0], opening[1], line, column])
+      let closing = searchpairpos('{', '', '}', 'nW', skip)
+      if closing[0] >= a:cursor
+        let pair = [opening[0], opening[1] - 1, closing[0], closing[1] - 1]
+        call add(pairs, pair)
+        if s:CBlockKind(s:CHeader(pair)[1]) ==# a:kind
+          break
+        endif
       endif
-    endfor
-  endfor
+    endwhile
+  finally
+    call winrestview(view)
+  endtry
   return pairs
 endfunction
 
@@ -171,7 +203,8 @@ function! s:CHeaderStart(open_line) abort
   let line = a:open_line
   while line > 1 && a:open_line - line < 30
     let previous = getline(line - 1)
-    if empty(trim(previous)) || previous =~# '^\s*#'
+    " 与 trim() 的默认空白一致，包含 U+00A0；旧 Vim 也可直接判断。
+    if previous =~# '^[\x01-\x20 ]*$' || previous =~# '^\s*#'
           \ || previous =~# '^\s*\%(public\|private\|protected\):\s*$'
           \ || previous =~# '[;{}]\s*$'
       break
@@ -204,7 +237,7 @@ endfunction
 
 function! s:CObject(kind, cursor) abort
   let best = []
-  for pair in s:CBracePairs()
+  for pair in s:CBracePairs(a:cursor, a:kind)
     if a:cursor < pair[0] || a:cursor > pair[2]
       continue
     endif

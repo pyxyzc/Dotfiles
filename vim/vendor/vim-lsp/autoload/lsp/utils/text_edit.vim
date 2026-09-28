@@ -96,8 +96,10 @@ function! s:_apply(bufnr, text_edit, cursor_position) abort
     " create before/after line.
     let l:start_line = getline(a:text_edit['range']['start']['line'] + 1)
     let l:end_line = getline(a:text_edit['range']['end']['line'] + 1)
-    let l:before_line = strcharpart(l:start_line, 0, a:text_edit['range']['start']['character'])
-    let l:after_line = strcharpart(l:end_line, a:text_edit['range']['end']['character'], strchars(l:end_line) - a:text_edit['range']['end']['character'])
+    let l:start_byte = lsp#utils#utf16#byteidx(l:start_line, a:text_edit['range']['start']['character'])
+    let l:end_byte = lsp#utils#utf16#byteidx(l:end_line, a:text_edit['range']['end']['character'])
+    let l:before_line = strpart(l:start_line, 0, l:start_byte)
+    let l:after_line = strpart(l:end_line, l:end_byte)
 
     " create new lines.
     let l:new_lines = lsp#utils#_split_by_eol(a:text_edit['newText'])
@@ -125,7 +127,7 @@ function! s:_apply(bufnr, text_edit, cursor_position) abort
     elseif a:text_edit['range']['end']['line'] == a:cursor_position['line'] && a:text_edit['range']['end']['character'] <= a:cursor_position['character']
         " fix cursor line and col
         let a:cursor_position['line'] += l:new_lines_len - l:range_len
-        let l:end_character = strchars(l:new_lines[-1]) - strchars(l:after_line)
+        let l:end_character = lsp#utils#utf16#length(l:new_lines[-1]) - lsp#utils#utf16#length(l:after_line)
         let l:end_offset = a:cursor_position['character'] - a:text_edit['range']['end']['character']
         let a:cursor_position['character'] = l:end_character + l:end_offset
     endif
@@ -225,4 +227,3 @@ function! s:delete(bufnr, start, end) abort
       let &foldenable = l:foldenable
   endif
 endfunction
-

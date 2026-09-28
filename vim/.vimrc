@@ -58,7 +58,9 @@ if !exists('#vimrc_lite_large_file#BufReadPost')
 endif
 filetype plugin indent on
 syntax enable
-runtime plugin/matchparen.vim
+if !s:SourceModule('matchparen.vim')
+  runtime plugin/matchparen.vim
+endif
 
 set encoding=utf-8
 set hidden autoread
@@ -70,6 +72,8 @@ set statusline=%n:%f\ %m%r%h%=%y\ %l:%c\ %p%%
 set scrolloff=5 sidescrolloff=5 nowrap
 set splitbelow splitright
 set backspace=indent,eol,start
+" 终端转义序列独立计时；Esc 不再等待默认的一秒，组合映射仍保留完整输入时间。
+set ttimeout ttimeoutlen=30
 set expandtab tabstop=4 softtabstop=4 shiftwidth=4
 set incsearch hlsearch ignorecase smartcase
 set wildmenu wildmode=longest:full,full
@@ -95,7 +99,9 @@ else
 endif
 
 " 当前行使用下划线提示，不铺整行背景色。
-set cursorlineopt=both
+if exists('+cursorlineopt')
+  set cursorlineopt=both
+endif
 
 " 在当前行文字下方绘制横线，并保持背景透明。
 highlight CursorLine gui=underline guibg=NONE
@@ -114,39 +120,11 @@ augroup vimrc_lite
   autocmd FileType python,c,cpp,cuda setlocal foldmethod=manual
   autocmd FileType help,qf nnoremap <silent><buffer> q :close<CR>
   autocmd BufReadPost * call s:RestoreCursor()
-  autocmd TextChangedI * call s:OnTextChangedI()
-  autocmd CompleteDone * call s:OnCompleteDone()
 augroup END
 
 function! s:RestoreCursor() abort
   if line("'\"") > 0 && line("'\"") <= line('$')
     execute 'normal! g`"'
-  endif
-endfunction
-
-function! s:OnTextChangedI() abort
-  if get(s:, 'skip_auto_completion', 0)
-    let s:skip_auto_completion = 0
-    return
-  endif
-  call s:AutoCompleteWords()
-endfunction
-
-function! s:AutoCompleteWords() abort
-  if mode(1) !~# '^i' || pumvisible() || &paste || &buftype !=# '' || !&modifiable
-    return
-  endif
-  let line = strpart(getline('.'), 0, col('.') - 1)
-  let word = matchstr(line, '\k\+$')
-  if strchars(word) < 2
-    return
-  endif
-  call feedkeys("\<C-n>", 'n')
-endfunction
-
-function! s:OnCompleteDone() abort
-  if !empty(v:completed_item)
-    let s:skip_auto_completion = 1
   endif
 endfunction
 
@@ -216,6 +194,10 @@ endif
 " 编辑辅助模块：清空、去空白、注释切换。
 if !s:SourceModule('edit.vim')
   call s:Warn('missing edit.vim; copy the complete vim directory')
+endif
+
+if !s:SourceModule('completion.vim')
+  call s:Warn('missing completion.vim; copy the complete vim directory')
 endif
 
 " Lightweight structural text objects for supported programming languages.

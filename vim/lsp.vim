@@ -79,6 +79,8 @@ let g:lsp_semantic_enabled = 0
 let g:lsp_inlay_hints_enabled = 0
 let g:lsp_fold_enabled = 0
 let g:lsp_completion_documentation_enabled = 0
+" 随附客户端为无 user_data 的旧 Vim 提供候选标记；仍尊重用户显式关闭。
+let g:lsp_text_edit_enabled = get(g:, 'lsp_text_edit_enabled', 1)
 let g:lsp_untitled_buffer_enabled = 0
 let g:lsp_preview_float = exists('*popup_create') && has('patch-8.1.1517')
       \ && get(g:, 'lsp_preview_float', 1)

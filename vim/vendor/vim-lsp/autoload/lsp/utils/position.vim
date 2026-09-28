@@ -1,6 +1,6 @@
 " This function can be error prone if the caller forgets to use +1 to vim line
 " so use lsp#utils#position#lsp_to_vim instead
-" Convert a character-index (0-based) to byte-index (1-based)
+" Convert a UTF-16 code-unit index (0-based) to byte-index (1-based).
 " This function requires a buffer specifier (expr, see :help bufname()),
 " a line number (lnum, 1-based), and a character-index (char, 0-based).
 function! s:to_col(expr, lnum, char) abort
@@ -14,11 +14,11 @@ function! s:to_col(expr, lnum, char) abort
         let l:lines = readfile(a:expr, '', a:lnum)
         if l:lines == []
             " when the file is empty. a:char should be 0 in the case
-            return a:char + 1
+            return 1
         endif
     endif
     let l:linestr = l:lines[-1]
-    return strlen(strcharpart(l:linestr, 0, a:char)) + 1
+    return lsp#utils#utf16#byteidx(l:linestr, a:char) + 1
 endfunction
 
 " The inverse version of `s:to_col`.
@@ -33,8 +33,11 @@ function! s:to_char(expr, lnum, col) abort
         " a:expr is a file that is not yet loaded as a buffer
         let l:lines = readfile(a:expr, '', a:lnum)
     endif
+    if empty(l:lines)
+        return 0
+    endif
     let l:linestr = l:lines[-1]
-    return strchars(strpart(l:linestr, 0, a:col - 1))
+    return lsp#utils#utf16#length(strpart(l:linestr, 0, max([0, a:col - 1])))
 endfunction
 
 " @param expr = see :help bufname()
@@ -88,4 +91,3 @@ function! lsp#utils#position#vim_to_lsp(expr, pos) abort
          \   'character': s:to_char(a:expr, a:pos[0], a:pos[1])
          \ }
 endfunction
-

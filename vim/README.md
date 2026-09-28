@@ -5,8 +5,14 @@
 没有插件管理器或自动下载；语言服务器 Pyright、clangd 及其运行环境由用户自行安装。
 主题默认透明背景，不需要特殊字体。
 
+全项目性能审查、实测对照、复测命令和未完成项见 [PERFORMANCE.md](PERFORMANCE.md)。
+终端转义序列等待默认 30 ms，普通组合映射仍使用 Vim 的 `timeoutlen`。
+如果远程终端会拆分按键序列，可在加载配置后增大 `ttimeoutlen`。
+
 `.vimrc` 保留基础设置、通用功能和快捷键；`buffers.vim` 管理顶部 buffer 栏、
 buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等编辑辅助；
+`completion.vim` 分批扫描已加载 buffer，提供自动单词补全；
+`matchparen.vim` 为系统括号高亮增加光标附近的快速检查，避免无括号长行的重复扫描；
 `dashboard.vim` 管理首页，
 `clipboard.vim` 管理 OSC 52 远程剪贴板与复制粘贴回退，
 `tree.vim` 集中管理 netrw 侧边文件树的加载、选项和快捷键；
@@ -56,6 +62,8 @@ bash ~/Dotfiles/vim/vim-install.sh --config-only
 ~/.vim/tree.vim
 ~/.vim/buffers.vim
 ~/.vim/edit.vim
+~/.vim/completion.vim
+~/.vim/matchparen.vim
 ~/.vim/textobjects.vim
 ~/.vim/git.vim
 ~/.vim/terminal.vim
@@ -121,6 +129,8 @@ vim --cmd 'let g:vimrc_lite_transparent = 0' -u ~/Dotfiles/vim/.vimrc
 | `g:vimrc_lite_osc52` | 检测 SSH 环境 | 是否经 OSC 52 向终端发送复制内容；可手动设为 `0` 或 `1` |
 | `g:vimrc_lite_clipboard_yank` | `1` | 未指定寄存器的 yank/删除/修改是否自动同步剪贴板，对应 Neovim 的 `clipboard=unnamedplus` |
 | `g:vimrc_lite_dashboard` | `1` | 无参数交互启动时显示首页；设为 `0` 关闭自动显示 |
+| `g:vimrc_lite_completion_max` | `100` | 自动单词补全的菜单上限；继续输入按新前缀重新扫描，手动补全不受此上限影响 |
+| `g:vimrc_lite_netrw_fast_listing` | `1` | 对已核对的 netrw 实现启用本地树批量列举；设为 `0` 回退原生列举 |
 | `g:vimrc_lite_lsp` | `1` | 根据文件类型自动启动已安装的语言服务器；设为 `0` 禁用 LSP |
 | `g:vimrc_lite_lsp_pyright_cmd` | `['pyright-langserver', '--stdio']` | Python 服务器的命令参数列表 |
 | `g:vimrc_lite_lsp_clangd_cmd` | `['clangd', '--background-index']` | C/C++ 服务器的命令参数列表 |
@@ -210,8 +220,25 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 `D` 删除、`gx` 用系统程序打开等 netrw 原生按键保持不变；`a`、`r`、`d`、`c`、
 `x`、`p`、`R`、`H` 会覆盖 netrw 的同名默认行为。
 
+Unix 本地树按名称／扩展名排序时，会为已核对完整函数体的 netrw 运行时启用批量列举，
+减少重复文件属性查询和逐行写入。未知运行时、其他列表布局、大小／时间排序、
+动态列宽及换行／回车文件名保留原生路径；不修改系统 netrw 文件。
+可用 `let g:vimrc_lite_netrw_fast_listing = 0` 随时关闭加速，便于对照排查。
+树布局中的自定义文件操作会区分字面 `@`、`*`、`=`、`|` 后缀与文件类型标记；
+显示歧义或属性已变化时拒绝猜测目标，并提示使用明确路径或刷新。
+这项保护不替代 netrw 原生按键或其他列表布局的路径处理。
+
 首次按 `<leader>e` 打开文件树时，树根是当前文件所在目录；无名 buffer 使用 Vim
-当前工作目录。文件树已打开时再次按 `<leader>e` 会关闭它。
+当前工作目录。文件树已打开时再次按 `<leader>e` 会关闭当前标签页的树，包括直接
+`vim 目录` 打开的树。若树占用唯一窗口，优先返回有效的备用编辑 buffer，否则保留空窗口；
+不会退出 Vim，也不会丢掉其他 buffer 中的未保存内容。
+
+具备 `+job` 和 `+timers` 时，文件树的复制粘贴在后台执行，期间可继续编辑。
+`:VimTreeCopyStatus` 查看活动复制，`:VimTreeCopyCancel` 取消本次 Vim 中的所有活动复制。
+取消或失败保留已复制的部分，并显示目标路径；已有目标会拒绝操作，执行期间新出现的
+文件也不会覆盖。复制完成后刷新原文件树；在其他窗口编辑时延后到返回树窗口再刷新。
+退出 Vim 后复制继续运行；若希望停止，请先取消并查看状态。不具备这些功能的 Vim
+使用同步复制。剪切移动保持原有的重命名行为。
 
 `Ctrl-w` 已用于关闭 buffer，原生窗口前缀被替换。窗口移动映射不会递归触发
 关闭；其他操作可用 `:split`、`:wincmd =` 等命令。关闭 buffer 时保留分屏；
@@ -242,9 +269,12 @@ Git 仓库中时只显示提示，不修改 buffer。
 - Python/C/C++/CUDA 默认手动折叠，避免打开或跳转时计算全文折叠。
   可用 `zf` 创建折叠；需要自动折叠时，在当前窗口执行 `:setlocal foldmethod=indent`
   （Python）或 `:setlocal foldmethod=syntax`（C/C++/CUDA）。
-- 插入模式输入至少两个字符后自动弹出当前及已加载 buffer 中的词语补全，候选使用
-  Vim 原生 `.,w,b` 来源；用 `Ctrl-n/p` 浏览、回车确认，`Ctrl-x Ctrl-f` 补全路径。
-  连接 LSP 后仍可用 `Ctrl-x Ctrl-o` 手动进行语义补全。
+- 插入模式输入至少两个字符后，分批扫描当前及其他已加载的普通文件 buffer，
+  自动菜单最多显示 100 个候选；继续输入会用新前缀重新查找，不局限于前 100 个词。
+  超长候选仅缩短菜单显示标签，选中后仍插入完整单词；长行分片扫描以保持输入响应。
+  用 `Ctrl-n/p` 浏览、回车确认，`Ctrl-e` 取消菜单。菜单关闭时 `Ctrl-n/p` 仍执行
+  原生 `.,w,b` 完整扫描，可能在巨型 buffer 上耗时较长；`Ctrl-x Ctrl-f` 补全路径。
+  连接 LSP 后仍可用 `Ctrl-x Ctrl-o` 手动进行语义补全。大文件模式不自动弹出菜单。
 - 注释切换读取当前文件类型的 `commentstring`，无需插件；空行不会插入注释符号。
 - 原生 `%` 匹配括号，`i{`/`a{` 等选择括号内容；`af`/`if`、`ac`/`ic` 和
   `ab`/`ib` 在 Python、C/C++/CUDA 中按缩进或大括号选择函数、类和常见控制块。
@@ -358,12 +388,12 @@ CompileFlags:
 本配置不执行构建，不生成数据库，也不硬编码 C++ 标准。未配置编译参数时，
 clangd 的跨文件跳转和补全可能不完整。首版不注册 CUDA 文件的语言服务器。
 
-### 已知上游限制
+### Unicode 位置兼容
 
-此固定提交的部分位置转换按 Unicode 字符计数，未完整处理 LSP 默认的 UTF-16
-代理对。若目标符号前有 emoji 等非 BMP 字符，跳转列和请求位置可能偏移；
-中文等 BMP 字符已有离线测试覆盖。上游源码保持原样，测试以一项 `expected failure`
-记录该问题，升级客户端时应重新核验。
+固定客户端额外包含有记录的 UTF-16 本地补丁，修复 emoji 等非 BMP 字符后的请求、
+增量同步、跳转及补全编辑错位；组合音标、变体选择符和零宽连接符也分别计数。
+原有预期失败已转为正常回归，并使用真实 clangd/Pyright 验证含这些字符的请求。
+补丁范围、回退实现及升级注意事项见 [SOURCE.md](vendor/vim-lsp/SOURCE.md)。
 
 ## 文件和文本搜索
 
@@ -407,6 +437,8 @@ fzf 0.29.x–0.30.x 不支持自动预览布局，固定在下方显示预览。
 避免 Vim 与 fzf 叠加等待。搜索结束或配置重载时恢复原设置，普通映射的等待时间不变。
 无匹配时保持空列表；无效正则显示错误，可以继续编辑查询。取消搜索不丢弃未保存内容，
 也不清空原有 quickfix。结果直接打开文件，不自动写入 quickfix。
+Esc 先向搜索终端发送 Ctrl-C；100 毫秒后作业仍未退出时，向本次搜索作业发送 SIGTERM，
+避免卡住的工具探测无限等待。仍待退出与通道关闭后清理，取消后不再打开迟到的选择结果。
 文件名及查询中的空格、中文、引号和 shell 特殊字符会作为数据处理。
 
 两类查询分别保存在 `${XDG_STATE_HOME:-~/.local/state}/vim-lite/search/`，各保留 100 条。
@@ -469,12 +501,23 @@ python3 ~/Dotfiles/vim/tests/test_vim.py
 LazyGit 生命周期测试使用模拟程序，验证首页返回、未保存内容、后台退出和配置重载。
 LSP 测试用 Python 标准库实现的本地 stdio 协议服务，验证初始化、文件同步、定义跳转、
 引用、文档、手动补全、中文位置、配置重载、缺失依赖和插件安装升级，不访问网络。
-其中一项预期失败记录上述非 BMP 位置问题，不代表已经修复。
+非 BMP 位置问题已修复，回归覆盖 emoji、组合字符、UTF-16 增量同步与补全编辑。
+完整测试及性能基准命令见 [PERFORMANCE.md](PERFORMANCE.md)。
 真实 Pyright/clangd 验收需另在装有服务器的机器上完成：用 Python 跨模块引用以及
 带编译数据库的 C++ 工程检查 `gd`、`gr`、`K` 和手动补全，确认 `Ctrl-o` 可返回。
 fd/rg 数据规则使用真实程序验证；终端生命周期另有模拟 fzf 的测试。真实按键测试通过
 PTY 测量单次 Esc 的退出延迟，并验证方向键和设置恢复。真实 fzf 交互测试
 需要已安装 fzf，缺少时明确跳过。软件包安装使用模拟命令，不实际安装系统软件或联网。
-本机实测 Vim 9.1；Vim 8 采用传统 Vimscript 和特性检查，但未在独立 Vim 8 上实测。
+已用系统 Vim 9.1 和独立编译的 Vim 8.2.5172 运行完整回归；可通过
+`VIM_TEST_BINARY` 指定测试用 Vim，未安装的源码构建还需设置其 `VIMRUNTIME`。
+Vim 8.0.1394 已通过启动、显式首页、结构选区、文件树复制与 LSP Unicode 回退等专项，
+尚未完整兼容：LSP 预览窗口用例及部分测试接口仍需适配。
+文件树刷新现已覆盖已展开子目录的外部变更，并保留多层展开、类型标记、排序和隐藏规则。
+原生目录符号链接的展开显示仍有限制，详见性能记录。
+Vim 8.2 搜索取消后重开的输入模式交接已修复，并通过重复实键回归，验证范围见性能记录。
+8.0.1493 之前缺少补全 `user_data`，客户端使用 `[LSP 服务器:编号]` 菜单标记
+区分同名候选，支持附加编辑和简单 snippet；`g:lsp_text_edit_enabled = 0` 仍可禁用编辑。
+缺少 `v:argv` 时保留原生启动画面，可手动执行 `:Dashboard`；
+Vim 9.0.0036 之前不为首页修改全局 `fillchars`，避免影响其他窗口。
 缺少 `+terminal` 的 Vim 不注册终端快捷键；没有 `+clipboard` 也可使用内部复制和 OSC 52。
 自动 yank 同步需要 Vim 8.0.1394+ 的 `TextYankPost` 事件，过旧的版本仅保留显式复制。

@@ -1,7 +1,12 @@
 " 原生首页：恢复 Vim 初始欢迎文字，并加入居中的 slogan。
 let s:dashboard_options = ['number', 'relativenumber', 'cursorline', 'cursorcolumn',
       \ 'foldcolumn', 'signcolumn', 'foldenable', 'wrap', 'list', 'spell',
-      \ 'colorcolumn', 'scrolloff', 'sidescrolloff', 'fillchars']
+      \ 'colorcolumn', 'scrolloff', 'sidescrolloff']
+" 旧版 fillchars 是全局选项；首页不能修改其他窗口的显示。
+let s:dashboard_local_fillchars = has('patch-9.0.0036')
+if s:dashboard_local_fillchars
+  call add(s:dashboard_options, 'fillchars')
+endif
 let s:dashboard_stdin = get(s:, 'dashboard_stdin', 0)
 let s:dashboard_slogan = 'Les annees heureuses sont des annees perdues.'
 
@@ -43,7 +48,7 @@ function! s:DashboardIntro() abort
         \ '',
         \ 'type  :q<Enter>               to exit',
         \ 'type  :help<Enter>  or  <F1>  for on-line help',
-        \ 'type  :help version9<Enter>   for version info',
+        \ 'type  :help version' . (v:version / 100) . '<Enter>   for version info',
         \ ])
   return intro
 endfunction
@@ -135,7 +140,9 @@ function! s:DashboardEnter() abort
   setlocal nonumber norelativenumber nocursorline nocursorcolumn
   setlocal foldcolumn=0 signcolumn=no nofoldenable nowrap nolist nospell
   setlocal colorcolumn= scrolloff=0 sidescrolloff=0
-  execute 'setlocal fillchars+=eob:\ '
+  if s:dashboard_local_fillchars
+    execute 'setlocal fillchars+=eob:\ '
+  endif
   if winnr('$') == 1
     if !exists('s:dashboard_laststatus')
       let s:dashboard_laststatus = &laststatus
@@ -178,6 +185,10 @@ endfunction
 
 " --cmd 可设置首页开关；-c、+cmd、-S 和 Ex/脚本启动交还调用者。
 function! s:HasStartupCommands() abort
+  " 无法检查 -c/-S 时保留原生启动画面；显式 :Dashboard 仍可使用。
+  if !exists('v:argv')
+    return 1
+  endif
   let skip = 0
   for arg in v:argv[1:]
     if skip

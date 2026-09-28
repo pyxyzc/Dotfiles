@@ -58,17 +58,18 @@ function! s:UntrackedHunks() abort
   return [{'start': 1, 'end': line('$')}]
 endfunction
 
-function! s:IndexHunks(root, relative) abort
-  let index = system(s:Command(['git', '-C', a:root, 'show', ':' . a:relative]))
+function! s:IndexHunks(root, relative, blob) abort
+  let index = system(s:Command(['git', '-C', a:root, 'show', a:blob]))
   let index_status = v:shell_error
   if index_status != 0
     call s:Warn('could not read the Git index for ' . a:relative)
-    return []
+    return v:null
   endif
 
   let index_file = tempname()
   try
-    call writefile(split(index, "\n", 1), index_file, 'b')
+    " 临时差异输入无需 fsync；真实文件保存仍保留 Vim 默认的持久化行为。
+    call writefile(split(index, "\n", 1), index_file, 'bS')
     let output = systemlist(s:Command(['git', 'diff', '--no-index', '--no-ext-diff',
           \ '--unified=0', '--no-color', '--no-renames', '--', index_file, '-']), bufnr('%'))
     let diff_status = v:shell_error
@@ -79,7 +80,7 @@ function! s:IndexHunks(root, relative) abort
   call delete(index_file)
   if diff_status > 1
     call s:Warn('could not compare the current buffer with the Git index')
-    return []
+    return v:null
   endif
 
   let hunks = []
@@ -117,8 +118,24 @@ function! s:Hunks() abort
     call s:Warn('could not determine the Git path for the current file')
     return []
   endif
+  " 每次读取真实 index 对象 ID；同一秒内的 git add、切分支也立即使缓存失效。
+  let output = systemlist(s:Command(['git', '-C', root, 'rev-parse', '--verify',
+        \ ':' . relative]))
+  if !v:shell_error && !empty(output)
+    let key = [file, b:changedtick, output[0], &endofline, &fileformat, &encoding]
+    if get(b:, 'vimrc_lite_hunk_key', []) !=# key
+      let hunks = s:IndexHunks(root, relative, output[0])
+      if type(hunks) != type([])
+        return []
+      endif
+      let b:vimrc_lite_hunks = hunks
+      let b:vimrc_lite_hunk_key = key
+    endif
+    return b:vimrc_lite_hunks
+  endif
   if s:IsTracked(root, relative)
-    return s:IndexHunks(root, relative)
+    call s:Warn('could not read the Git index for ' . relative)
+    return []
   endif
   if s:IsIgnored(root, relative)
     return []
