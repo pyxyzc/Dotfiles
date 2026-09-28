@@ -236,6 +236,8 @@ if !s:SourceModule('dashboard.vim')
 endif
 
 " 文件保存、buffer 复制与标签页；buffer 栏及切换按键由 buffers.vim 提供。
+" 禁用普通模式下的 q 宏录制按键。
+nnoremap q <Nop>
 nnoremap <silent> <C-s> :wall<CR>
 inoremap <silent> <C-s> <C-o>:wall<CR>
 xnoremap <silent> <C-s> <Esc>:wall<CR>gv
