@@ -36,6 +36,7 @@ def benchmark(config, rounds=5, profile=None, completion_lines=0):
         script = work / 'probe.vim'
         script.write_text(r'''
 set nomore shell=/bin/sh
+call setqflist([{'filename': 'main.cpp', 'lnum': 2, 'text': 'latency probe'}])
 let g:probe_channel = ch_open(''' + quote('127.0.0.1:' + str(listener.getsockname()[1])) + r''',
       \ {'mode': 'raw'})
 let g:probe_last = ''
@@ -43,7 +44,9 @@ function! Probe(timer) abort
   let value = json_encode({'name': expand('%:t'), 'line': getline('.'),
         \ 'lnum': line('.'), 'col': col('.'), 'mode': mode(1), 'modified': &modified,
         \ 'filetype': &filetype, 'windows': winnr('$'), 'tabs': tabpagenr('$'),
-        \ 'menu': pumvisible(), 'buftype': &buftype})
+        \ 'menu': pumvisible(), 'buftype': &buftype, 'commentstring': &commentstring,
+        \ 'winid': win_getid(),
+        \ 'terminal_status': &buftype ==# 'terminal' ? term_getstatus(bufnr('%')) : ''})
   if value !=# g:probe_last
     call ch_sendraw(g:probe_channel, value . "\n")
     let g:probe_last = value
@@ -109,8 +112,12 @@ call timer_start(2, function('Probe'), {'repeat': -1})
                 action(None, b':2\r', lambda s: s['lnum'] == 2 and s['mode'] == 'n')
                 action('insert_key', b'A ', lambda s: s['mode'].startswith('i') and s['line'].endswith(' '))
                 action('insert_escape', b'\x1b', lambda s: s['mode'] == 'n')
-                action('comment', b'gcc', lambda s: '/*' in s['line'])
-                action('uncomment', b'gcc', lambda s: '/*' not in s['line'])
+                original = state['line']
+                token = state['commentstring'].partition('%s')[0].strip()
+                if not token:
+                    raise AssertionError('C++ commentstring has no comment prefix')
+                action('comment', b'gcc', lambda s: s['line'].lstrip().startswith(token))
+                action('uncomment', b'gcc', lambda s: s['line'] == original)
                 action('trim_whitespace', b' bw', lambda s: not s['line'].endswith(' '))
                 action('save', b'\x13', lambda s: not s['modified'] and s['mode'] == 'n')
                 action('buffer_next', b'L', lambda s: s['name'] == other.name)
@@ -121,6 +128,23 @@ call timer_start(2, function('Probe'), {'repeat': -1})
                 action('tree_close', b' e', lambda s: s['name'] == source.name and s['windows'] == 1)
                 action('terminal_open', b' ;', lambda s: s['buftype'] == 'terminal' and s['mode'] == 't')
                 action('terminal_exit', b'exit\r', lambda s: s['name'] == source.name and s['tabs'] == 1)
+                action('quickfix_open', b' xQ', lambda s: s['filetype'] == 'qf')
+                action('quickfix_close', b' xQ', lambda s: s['name'] == source.name and s['windows'] == 1)
+                action('help_open', b':help help\r', lambda s: s['filetype'] == 'help')
+                action('help_close', b'q', lambda s: s['name'] == source.name and s['windows'] == 1)
+                action('keys_open', b' ?', lambda s: s['buftype'] == 'nofile' and s['windows'] == 2)
+                action('keys_close', b'q', lambda s: s['name'] == source.name and s['windows'] == 1)
+                action('health_open', b' ch', lambda s: s['buftype'] == 'nofile' and s['windows'] == 2)
+                action('health_close', b'q', lambda s: s['name'] == source.name and s['windows'] == 1)
+                action('terminal_toggle_open', b' tt', lambda s: s['buftype'] == 'terminal' and s['mode'] == 't')
+                action('terminal_toggle_hide', b'\x07', lambda s: s['name'] == source.name and s['windows'] == 1)
+                action('terminal_toggle_reopen', b' tt', lambda s: s['buftype'] == 'terminal' and s['mode'] == 't')
+                action('terminal_toggle_exit', b'exit\r', lambda s: s['name'] == source.name and s['windows'] == 1)
+                previous_window = state['winid']
+                action('session_save_restore', b':VimSessionSave\r:VimSessionLoad\r',
+                       lambda s: s['name'] == source.name and s['winid'] != previous_window)
+                action('dashboard_open', b':Dashboard\r', lambda s: s['filetype'] == 'vimdashboard')
+                action('dashboard_return', b' 1', lambda s: s['name'] == source.name)
                 if completion_lines:
                     action('automatic_completion', b'Goal', lambda s: s['menu'])
                     action('completion_cancel', b'\x05\x1b', lambda s: s['mode'] == 'n')

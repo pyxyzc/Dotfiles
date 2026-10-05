@@ -297,5 +297,29 @@ call assert_false(bufexists(terminal))
 call assert_equal(origin, win_getid())
 ''')
 
+    def test_health_and_key_query_and_reload(self):
+        self.vim(r'''
+let origin = win_getid()
+VimKeys rename
+call assert_match('符号重命名', join(getline(1, '$'), "\n"))
+call assert_match('<Space>rn', join(getline(1, '$'), "\n"))
+call feedkeys('q', 'xt')
+call assert_equal(origin, win_getid())
+VimKeys language server
+call assert_match('<Space>ci', join(getline(1, '$'), "\n"))
+call assert_match('LSP 状态面板', join(getline(1, '$'), "\n"))
+call feedkeys('q', 'xt')
+VimHealth
+call assert_match('Project:', join(getline(1, '$'), "\n"))
+call assert_match('Undo:', join(getline(1, '$'), "\n"))
+call assert_match('missing executable:', join(getline(1, '$'), "\n"))
+call feedkeys('q', 'xt')
+source ''' + str(ROOT / '.vimrc') + r'''
+call assert_equal(2, exists(':VimTask'))
+call assert_equal(2, exists(':VimSessionSave'))
+call assert_true(&undofile)
+''')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

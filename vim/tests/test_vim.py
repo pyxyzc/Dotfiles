@@ -2789,7 +2789,10 @@ class InstallerTests(unittest.TestCase):
         colors.mkdir(parents=True)
         dashboard = self.target / '.vim' / 'dashboard.vim'
         dashboard.write_text('" old dashboard\n')
-        modules = [self.target / '.vim' / name for name in ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim')]
+        modules = [self.target / '.vim' / name for name in
+                   ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim',
+                    'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim',
+                    'project.vim', 'tasks.vim', 'session.vim', 'tools.vim')]
         for module in modules:
             module.write_text('" old module\n')
         (colors / "unrelated.vim").write_text('" leave alone\n')
@@ -2799,7 +2802,10 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
-        for name in ('search.vim', 'search.sh', 'search.awk', 'lsp.vim', 'clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim'):
+        for name in ('search.vim', 'search.sh', 'search.awk', 'lsp.vim', 'clipboard.vim',
+                     'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim',
+                     'completion.vim', 'matchparen.vim', 'textobjects.vim',
+                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), [])
         for module in modules:

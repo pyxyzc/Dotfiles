@@ -11,6 +11,7 @@ config_files=(
     project.vim
     tasks.vim
     session.vim
+    tools.vim
     dashboard.vim
     lsp.vim
     clipboard.vim

@@ -245,7 +245,7 @@ if !s:SourceModule('git.vim')
         \ 'missing git.vim; copy the complete vim directory')
 endif
 
-for s:module in ['tasks.vim', 'session.vim']
+for s:module in ['tasks.vim', 'session.vim', 'tools.vim']
   if !s:SourceModule(s:module)
     call s:Warn('missing ' . s:module . '; copy the complete vim directory')
   endif
@@ -326,6 +326,8 @@ nnoremap <silent> <leader>rs :VimTaskStatus<CR>
 nnoremap <silent> <leader>ro :VimTaskOutput<CR>
 nnoremap <silent> <leader>ss :VimSessionSave<CR>
 nnoremap <silent> <leader>sl :VimSessionLoad<CR>
+nnoremap <silent> <leader>? :VimKeys<CR>
+nnoremap <silent> <leader>ch :VimHealth<CR>
 
 if has('terminal')
   tnoremap <Esc><Esc> <C-w>N
