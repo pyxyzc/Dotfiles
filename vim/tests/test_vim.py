@@ -42,11 +42,11 @@ class VimSession(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="vim-lite-tests-")
         self.addCleanup(self.temp.cleanup)
-        self.work = Path(self.temp.name)
+        self.work = Path(self.temp.name).resolve()
         self.env = os.environ.copy()
         self.env['XDG_STATE_HOME'] = str(self.work / 'state')
 
-    def vim(self, body, config=None, before=None):
+    def vim(self, body, config=None, before=None, timeout=20):
         report = self.work / "errors.txt"
         script = self.work / "check.vim"
         script.write_text(
@@ -73,7 +73,7 @@ class VimSession(unittest.TestCase):
         result = subprocess.run(
             command + ["-S", str(script)], cwd=self.work,
             stdin=subprocess.DEVNULL, capture_output=True, text=True,
-            timeout=20, start_new_session=True, env=self.env,
+            timeout=timeout, start_new_session=True, env=self.env,
         )
         errors = report.read_text(errors='replace') if report.exists() else ""
         self.assertEqual(result.returncode, 0, errors + result.stdout + result.stderr)
@@ -2547,7 +2547,7 @@ class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="vim-lite-install-")
         self.addCleanup(self.temp.cleanup)
-        self.work = Path(self.temp.name)
+        self.work = Path(self.temp.name).resolve()
         self.target = self.work / "user with spaces"
 
     def install(self, *options, env=None, expected=0):

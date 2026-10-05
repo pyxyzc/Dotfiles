@@ -168,6 +168,10 @@ function! s:Quit() abort
 endfunction
 
 " 剪贴板模块先于文件树加载，提供 OSC 52 复制与粘贴回退。
+if !s:SourceModule('project.vim')
+  call s:Warn('missing project.vim; copy the complete vim directory')
+endif
+
 if !s:SourceModule('clipboard.vim')
   command! VimCopyPath call <SID>Warn(
         \ 'missing clipboard.vim; copy the complete vim directory')
@@ -241,6 +245,8 @@ nnoremap q <Nop>
 nnoremap <silent> <C-s> :wall<CR>
 inoremap <silent> <C-s> <C-o>:wall<CR>
 xnoremap <silent> <C-s> <Esc>:wall<CR>gv
+nnoremap <silent> <leader>w :wall<CR>
+xnoremap <silent> <leader>w <Esc>:wall<CR>gv
 nnoremap <silent> <leader>bP :VimCopyPath<CR>
 nnoremap <silent> <leader>bC :VimCopyContent<CR>
 nnoremap <silent> tn :tabnew<CR>

@@ -8,6 +8,7 @@ staged=''
 
 # Required files are registered only here; preflight, occupancy checks and install share the list.
 config_files=(
+    project.vim
     dashboard.vim
     lsp.vim
     clipboard.vim
