@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import pty
+import re
 import select
 import signal
 import shutil
@@ -1962,6 +1963,10 @@ class SearchTests(VimSession):
     def records(output):
         return [record.decode().split('\t', 4) for record in output.split(b'\0') if record]
 
+    @staticmethod
+    def preview_text(output):
+        return re.sub(r'\x1b\[[0-9;]*m', '', output.decode())
+
     def require_backends(self):
         if not shutil.which('rg') or not (shutil.which('fd') or shutil.which('fdfind')):
             self.skipTest('Requires manually installed rg and fd/fdfind')
@@ -2047,7 +2052,7 @@ call assert_equal([], popup_list())
         encoded, line, column, offset, display = matches[0]
         self.assertEqual([line, column], ['2', '4'])
         self.assertEqual(offset, '7')
-        preview = self.helper('preview', encoded, line, offset, display).decode()
+        preview = self.preview_text(self.helper('preview', encoded, line, offset, display))
         self.assertIn('>     2 xx safe-value', preview)
         self.assertNotIn('\x1b]51;', preview)
         self.helper('query', self.session, "$(touch injected)|'|`touch injected`")
@@ -2055,9 +2060,111 @@ call assert_equal([], popup_list())
         self.assertIn('%2509%09%0A', encoded)
         (self.project / name).write_text(''.join(f'context {index}\n' for index in range(1, 201)))
         offset = sum(len(f'context {index}\n') for index in range(1, 150))
-        preview = self.helper('preview', encoded, '150', offset, display).decode()
+        preview = self.preview_text(self.helper('preview', encoded, '150', offset, display))
         self.assertIn('>   150 context 150', preview)
         self.assertIn('   200 context 200', preview)
+
+    def test_preview_syntax_colors_preserve_text_and_can_be_disabled(self):
+        examples = [
+            ('code.py', 'def draw(value):\n    return "if # 中文" + str(42) # for\n', 'def'),
+            ('code.cpp', 'int draw() { return 42; } // if\n', 'return'),
+            ('code.ts', 'function draw(): number { return 42; } // if\n', 'function'),
+            ('code.sh', 'if true; then\n  local value=42 # for\nfi\n', 'if'),
+            ('code.vim', '" if comment\nlet value = 42\ncall Draw(\'can\'\'t\')\n', 'let'),
+            ('code.json', '{"value": 42, "ready": true}\n', None),
+            ('code.yaml', 'value: 42 # if\n', None),
+        ]
+        for name, text, keyword in examples:
+            with self.subTest(name=name):
+                target = self.project / name
+                target.write_text(text)
+                colored = self.helper('preview', str(target), 41, 0, name)
+                plain = self.helper('preview', str(target), 41, 0, name, 0)
+                self.assertEqual(self.preview_text(colored), self.preview_text(plain))
+                self.assertEqual([row for row in self.preview_text(colored).splitlines() if row],
+                                 [('>' if index == 0 else ' ') + f'{41 + index:6d} ' + line
+                                  for index, line in enumerate(text.splitlines())])
+                self.assertIn(b'\x1b[38;2;255;158;100m42\x1b[0m', colored)
+                self.assertNotIn(b'\x1b[38;2;', plain)
+                if keyword:
+                    self.assertIn(b'\x1b[38;2;187;154;247m' + keyword.encode() + b'\x1b[0m',
+                                  colored)
+        target = self.project / 'unknown.txt'
+        target.write_text('return 42 # plain\n')
+        self.assertNotIn(b'\x1b[38;2;', self.helper('preview', str(target), 1, 0, 'unknown'))
+
+    def test_preview_centers_match_with_context_and_pads_file_edges(self):
+        target = self.project / 'context.cpp'
+        source = [f'context {index} 中文\n' for index in range(1, 81)]
+        target.write_text(''.join(source))
+        for height in (4, 10, 21):
+            self.env['FZF_PREVIEW_LINES'] = str(height)
+            for line in (1, 40, 80):
+                with self.subTest(height=height, line=line):
+                    offset = len(''.join(source[:line - 1]).encode())
+                    rows = self.preview_text(
+                        self.helper('preview', str(target), line, offset, 'context')).splitlines()
+                    center = (height - 1) // 2
+                    self.assertEqual(rows[center], f'>{line:6d} context {line} 中文')
+                    if line == 1:
+                        self.assertEqual(rows[:center], [''] * center)
+                    else:
+                        self.assertEqual(rows[center - 1], f' {line - 1:6d} context {line - 1} 中文')
+                    if line < 80:
+                        self.assertEqual(rows[center + 1], f' {line + 1:6d} context {line + 1} 中文')
+
+    def test_preview_deep_context_is_bounded_and_has_correct_line_numbers(self):
+        target = self.project / 'deep_context.cpp'
+        offset = 256 * 1024 * 1024
+        prefix = ''.join(f'// preceding {index} 中文\n' for index in range(1, 40)).encode()
+        with target.open('wb') as stream:
+            stream.seek(offset - len(prefix))
+            stream.write(prefix + b'int deep_match = 42;\n// following context\n')
+        self.env['FZF_PREVIEW_LINES'] = '20'
+        rows = self.preview_text(
+            self.helper('preview', str(target), 9000000, offset, 'deep context')).splitlines()
+        self.assertEqual(rows[9], '>9000000 int deep_match = 42;')
+        self.assertEqual(rows[8], ' 8999999 // preceding 39 中文')
+        self.assertEqual(rows[10], ' 9000001 // following context')
+
+    def test_preview_strings_and_comments_do_not_color_their_contents_as_code(self):
+        examples = [
+            ('multiline.py', 'value = """if\nreturn # inside\n"""\nreturn 42 # outside\n',
+             b'\x1b[38;2;158;206;106mreturn # inside\x1b[0m'),
+            ('multiline.cpp', '/* comment\nreturn 42\n*/ return 7;\n',
+             b'\x1b[38;2;86;95;137mreturn 42\x1b[0m'),
+            ('escaped.py', r'text = "escaped \" # string" # outside' + '\nreturn 42\n',
+             b'\x1b[38;2;158;206;106mescaped \\" # string"\x1b[0m'),
+        ]
+        for name, text, expected in examples:
+            with self.subTest(name=name):
+                target = self.project / name
+                target.write_text(text)
+                colored = self.helper('preview', str(target), 1, 0, name)
+                self.assertIn(expected, colored)
+                self.assertIn(b'\x1b[38;2;187;154;247mreturn\x1b[0m', colored)
+                self.assertEqual(self.preview_text(colored),
+                                 self.preview_text(self.helper('preview', str(target), 1, 0, name, 0)))
+
+    def test_colored_preview_keeps_bounds_unicode_safety_and_deep_seek(self):
+        target = self.project / 'deep.cpp'
+        offset = 256 * 1024 * 1024
+        with target.open('wb') as stream:
+            stream.seek(offset)
+            stream.write(b'int deep_match = 42;\n' + b'return 7;\n' * 500)
+        colored = self.helper('preview', str(target), 9000000, offset, 'deep match')
+        plain = self.preview_text(colored)
+        self.assertIn('>9000000 int deep_match = 42;', plain)
+        self.assertEqual(len(plain.splitlines()), 201)
+        self.assertIn('Preview limited', plain)
+        target.write_text('const char* text = "' + '中' * 1000000)
+        colored = self.helper('preview', str(target), 1, 0, 'long line')
+        self.assertLess(len(colored), 1500)
+        self.assertIn('Preview limited', self.preview_text(colored))
+        target.write_text('return 42; \x1b]51;bad\x07\n')
+        colored = self.helper('preview', str(target), 1, 0, 'control characters')
+        self.assertNotIn(b'\x1b]51;', colored)
+        self.assertIn('return 42;', self.preview_text(colored))
 
     def test_large_file_threshold_and_window_options_do_not_leak(self):
         small = self.project / 'small.py'
@@ -2120,10 +2227,23 @@ call assert_false(get(b:, 'vimrc_lite_large_file', 0))
                 path, line, column, offset, display = record
                 preview = self.helper('preview', path, line, offset, display).decode()
                 self.assertIn('xx needle', preview)
+                text_preview = self.preview_text(preview.encode())
+                self.assertIn('     1 first', text_preview)
+                self.assertIn('>     2 xx needle', text_preview)
                 if encoding == 'utf-8-sig':
-                    self.assertTrue(preview.startswith('\x1b[1;36m>     2 xx needle'))
+                    self.assertNotIn('\ufeff', text_preview)
                 else:
                     self.assertIn('Transcoded file', preview)
+
+    def test_transcoded_preview_does_not_mark_the_wrong_line_outside_byte_cap(self):
+        self.require_backends()
+        target = self.project / 'deep_utf16.txt'
+        target.write_bytes(('padding\n' * 10000 + 'needle\n').encode('utf-16'))
+        path, line, column, offset, display = self.records(
+            self.helper('query', self.session, 'needle'))[0]
+        preview = self.preview_text(self.helper('preview', path, line, offset, display))
+        self.assertIn('Match is outside the bounded preview', preview)
+        self.assertNotRegex(preview, r'>\s+\d+\s')
 
     def test_streaming_first_record_does_not_wait_for_source_exit(self):
         self.require_backends()
@@ -2403,8 +2523,9 @@ call assert_equal([], popup_list())
     def split_config(self):
         config = self.work / 'fallback config'
         config.mkdir()
-        for name in ('.vimrc', 'search.sh', 'search.awk', 'dashboard.vim', 'tree.vim',
-                     'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim'):
+        for name in ('.vimrc', 'search.sh', 'search.awk', 'search-preview.awk', 'dashboard.vim', 'tree.vim',
+                     'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim',
+                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim'):
             shutil.copyfile(ROOT / name, config / name)
         # Simulate a Vim without popup windows while exercising the actual split implementation.
         (config / 'search.vim').write_text((ROOT / 'search.vim').read_text().replace(
@@ -2454,7 +2575,8 @@ let started = reltime()
 VimFind
 ''' + self.wait_search() + r'''
 call assert_equal(''' + quoted(target) + r''', expand('%:p'))
-call assert_true(reltimefloat(reltime(started)) < 0.5)
+let elapsed = reltimefloat(reltime(started))
+call assert_true(elapsed < 0.5, 'search selection elapsed: ' . elapsed)
 ''', config=config)
 
     def test_query_error_keeps_original_buffer_and_cleans_session(self):
@@ -2735,6 +2857,168 @@ call assert_equal([2, 4], [line('.'), col('.')])
 call assert_true(filereadable($XDG_STATE_HOME . '/vim-lite/search/grep.history'))
 ''')
 
+    def test_search_terminal_preserves_utf8_across_pty_chunks(self):
+        self.require_backends()
+        target = self.project / 'src' / '中文.py'
+        target.write_text('first\nneedle 中文\n')
+        chunks = [b'\x1b[?1049h\x1b[2J\x1b[H']
+        expected = []
+        for prefix, character, suffix in (
+                ('filename ', '中', '文.py'), ('text ', '安', '装'),
+                ('pointer ', '▌', ''), ('emoji ', '🙂', ''), ('combining e', '́', '')):
+            encoded = character.encode()
+            for cut in range(1, len(encoded)):
+                expected.append(prefix + character + suffix)
+                chunks.extend([(prefix.encode() + encoded[:cut]),
+                               encoded[cut:] + suffix.encode() + b'\r\n'])
+        tools = self.work / 'chunked-ui-tools'
+        tools.mkdir()
+        progress, acknowledged, release = [self.work / name for name in
+                                            ('chunk-progress', 'chunk-ack', 'chunk-release')]
+        fake = tools / 'fzf'
+        fake.write_text(f'#!{sys.executable}\n' +
+                        'import os, sys, time\nfrom pathlib import Path\n' +
+                        'if "--filter=" in sys.argv: sys.exit(1)\n' +
+                        f'progress = Path({str(progress)!r})\n' +
+                        f'acknowledged = Path({str(acknowledged)!r})\n' +
+                        f'release = Path({str(release)!r})\n' +
+                        f'for index, chunk in enumerate({chunks!r}):\n' +
+                        '    os.write(2, chunk)\n'
+                        '    progress.write_text(str(index))\n'
+                        '    while not acknowledged.exists() or acknowledged.read_text().strip() != str(index):\n'
+                        '        time.sleep(.001)\n'
+                        'while not release.exists(): time.sleep(.001)\n' +
+                        f'path = {str(target)!r} if "--prompt=Recent> " in sys.argv else "src/中文.py"\n' +
+                        'os.write(1, (path + "\\t2\\t1\\t6\\t" + path + "\\0").encode())\n')
+        fake.chmod(0o755)
+        self.env['PATH'] = str(tools) + os.pathsep + self.env['PATH']
+        self.terminal_vim(r'''
+let v:oldfiles = [''' + quoted(target) + r''']
+for command in ['VimSearch', 'VimFind', 'VimRecent']
+  for pass in range(2)
+    for path in [''' + ', '.join(map(quoted, (progress, acknowledged, release))) + r''']
+      call delete(path)
+    endfor
+    execute 'edit ' . fnameescape(''' + quoted(self.project / 'origin.py') + r''')
+    execute command
+    let terminal = winbufnr(popup_list()[0])
+    for index in range(''' + str(len(chunks)) + r''')
+      for attempt in range(200)
+        call term_wait(terminal, 5)
+        if filereadable(''' + quoted(progress) + r''')
+              \ && get(readfile(''' + quoted(progress) + r'''), 0, '') ==# string(index)
+          break
+        endif
+      endfor
+      call assert_equal(string(index), get(readfile(''' + quoted(progress) + r'''), 0, ''))
+      " 排空这一片输出后才允许下一片，保证 UTF-8 在两次 PTY 读取之间拆开。
+      call term_wait(terminal, 1)
+      call writefile([string(index)], ''' + quoted(acknowledged) + r''', 'S')
+    endfor
+    let screen = TerminalScreen(terminal)
+    for text in ''' + '[' + ', '.join(map(quoted, expected)) + ']' + r'''
+      call assert_true(stridx(screen, text) >= 0, command . ': ' . text . ' missing: ' . screen)
+    endfor
+    call assert_notmatch('�', screen)
+    call writefile([], ''' + quoted(release) + r''', 'S')
+''' + self.wait_search() + r'''
+    call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+    call assert_equal([2, 1], [line('.'), col('.')])
+  endfor
+endfor
+''')
+
+    @unittest.skipUnless(shutil.which('fzf'), 'Real fzf UI requires manually installed fzf')
+    def test_real_fzf_preview_renders_syntax_colors_and_opens_match(self):
+        self.require_backends()
+        self.env['NO_COLOR'] = '1'
+        target = self.project / 'src' / '中文_preview.py'
+        target.write_text('def demo(): # 函数前文\n    return 42 # colored_marker 中文\n')
+        self.terminal_vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(self.project / 'origin.py') + r''')
+VimSearch
+''' + self.wait_fzf('Live grep>') + r'''
+call term_sendkeys(terminal, 'colored_marker')
+for attempt in range(200)
+  call term_wait(terminal, 10)
+  let cells = []
+  for row in range(1, term_getsize(terminal)[0])
+    let cells += term_scrape(terminal, row)
+  endfor
+  if !empty(filter(copy(cells), 'v:val.chars ==# "4" && v:val.fg ==# "#ff9e64"'))
+        \ && !empty(filter(copy(cells), 'v:val.chars ==# "r" && v:val.fg ==# "#bb9af7"'))
+        \ && !empty(filter(copy(cells), 'v:val.chars ==# "#" && v:val.fg ==# "#565f89"'))
+        \ && TerminalScreen(terminal) =~# 'colored_marker 中文' && TerminalScreen(terminal) =~# '函数前文'
+    break
+  endif
+endfor
+call assert_false(empty(filter(copy(cells), 'v:val.chars ==# "4" && v:val.fg ==# "#ff9e64"')))
+call assert_false(empty(filter(copy(cells), 'v:val.chars ==# "r" && v:val.fg ==# "#bb9af7"')))
+call assert_false(empty(filter(copy(cells), 'v:val.chars ==# "#" && v:val.fg ==# "#565f89"')))
+call assert_match('中文_preview.py', TerminalScreen(terminal))
+call assert_match('colored_marker 中文', TerminalScreen(terminal))
+call assert_match('函数前文', TerminalScreen(terminal))
+call assert_notmatch('�', TerminalScreen(terminal))
+call term_sendkeys(terminal, "\<C-u>\<C-d>\<CR>")
+''' + self.wait_search() + r'''
+call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+call assert_equal([2, 17], [line('.'), col('.')])
+let g:vimrc_lite_search_highlight = 0
+VimSearch
+''' + self.wait_fzf('Live grep>') + r'''
+call assert_equal('0', job_info(term_getjob(terminal)).cmd[-1])
+call term_sendkeys(terminal, "\<Esc>")
+''' + self.wait_search())
+
+    @unittest.skipUnless(shutil.which('fzf'), 'Real fzf UI requires manually installed fzf')
+    def test_real_fzf_preview_centers_context_and_tracks_resize(self):
+        self.require_backends()
+        target = self.project / 'src' / 'centered_preview.py'
+        rows = []
+        for index in range(1, 81):
+            if index == 40:
+                rows.append('    return 42 # centered_marker\n')
+            elif index == 65:
+                rows.append('    return 7 # secondary_marker\n')
+            else:
+                kind = 'upper' if index < 40 or 55 <= index < 65 else 'lower'
+                rows.append(f'# {kind}_{index:03d}\n')
+        target.write_text(''.join(rows))
+        self.terminal_vim(r'''
+function! ContextCounts(buf) abort
+  let screen = TerminalScreen(a:buf)
+  return [len(split(screen, 'upper_')) - 1, len(split(screen, 'lower_')) - 1]
+endfunction
+function! WaitCentered(buf, minimum, line) abort
+  for attempt in range(200)
+    call term_wait(a:buf, 10)
+    let [above, below] = ContextCounts(a:buf)
+    if above >= a:minimum && below >= a:minimum && abs(above - below) <= 1
+          \ && TerminalScreen(a:buf) =~# '>\s*' . a:line . '\s*return '
+      break
+    endif
+  endfor
+  call assert_true(above >= a:minimum, 'no upper context: ' . TerminalScreen(a:buf))
+  call assert_true(below >= a:minimum, 'no lower context: ' . TerminalScreen(a:buf))
+  call assert_true(abs(above - below) <= 1, 'match not centered: ' . TerminalScreen(a:buf))
+  call assert_match('>\s*' . a:line . '\s*return ', TerminalScreen(a:buf))
+endfunction
+execute 'edit ' . fnameescape(''' + quoted(self.project / 'origin.py') + r''')
+VimSearch
+''' + self.wait_fzf('Live grep>') + r'''
+call term_sendkeys(terminal, 'centered_marker')
+call WaitCentered(terminal, 3, 40)
+call term_sendkeys(terminal, repeat("\x7f", strlen('centered_marker')) . 'secondary_marker')
+call WaitCentered(terminal, 3, 65)
+set columns=40 lines=22
+doautocmd VimResized
+call WaitCentered(terminal, 1, 65)
+call term_sendkeys(terminal, "\<CR>")
+''' + self.wait_search() + r'''
+call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+call assert_equal([65, 16], [line('.'), col('.')])
+''')
+
     @unittest.skipUnless(shutil.which('fzf'), 'Real fzf UI requires manually installed fzf')
     def test_real_fzf_file_fuzzy_matching_and_cancel(self):
         self.require_backends()
@@ -2802,7 +3086,7 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.target / ".vimrc").is_symlink())
         self.assertEqual((self.target / ".vimrc").read_bytes(), (ROOT / ".vimrc").read_bytes())
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
-        for name in ('search.vim', 'search.sh', 'search.awk', 'lsp.vim', 'clipboard.vim',
+        for name in ('search.vim', 'search.sh', 'search.awk', 'search-preview.awk', 'lsp.vim', 'clipboard.vim',
                      'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim',
                      'completion.vim', 'matchparen.vim', 'textobjects.vim',
                      'project.vim', 'tasks.vim', 'session.vim', 'tools.vim'):

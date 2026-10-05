@@ -321,5 +321,94 @@ call assert_true(&undofile)
 ''')
 
 
+class SearchWorkflowTests(VimSession):
+    # Only the new cases belong to this suite; existing SearchTests are run separately.
+    def setUp(self):
+        super().setUp()
+        if not test_vim.shutil.which('gawk'):
+            self.skipTest('requires gawk')
+        self.project = self.work / 'project with spaces'
+        self.project.mkdir()
+        (self.project / '.git').mkdir()
+        (self.project / 'src').mkdir()
+        self.session = self.work / 'search session'
+        self.session.mkdir()
+
+    fake_fzf = test_vim.SearchTests.fake_fzf
+    require_backends = test_vim.SearchTests.require_backends
+    wait_search = staticmethod(test_vim.SearchTests.wait_search)
+
+    @unittest.skipUnless(test_vim.shutil.which('fzf'), 'requires real fzf')
+    def test_seeded_visual_literal_search_and_ctrl_q_single_result(self):
+        self.require_backends()
+        source = self.project / 'source.txt'
+        source.write_text('a+b[0]\n')
+        self.terminal_vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(source) + r''')
+let origin = bufnr('%')
+let @z = 'keep z'
+let @" = 'keep unnamed'
+call feedkeys('gg0v$' . "\<Space>fw", 'xt')
+let terminal = winbufnr(popup_list()[0])
+for attempt in range(200)
+  call term_wait(terminal, 10)
+  if TerminalScreen(terminal) =~# '1/1' | break | endif
+endfor
+call assert_match('1/1', TerminalScreen(terminal))
+call assert_match('a+b\[0\]', TerminalScreen(terminal))
+call assert_equal('keep z', @z)
+call assert_equal('keep unnamed', @")
+call term_sendkeys(terminal, "\<C-q>")
+''' + self.wait_search() + r'''
+call assert_equal(1, len(getqflist()))
+call assert_equal(origin, getqflist()[0].bufnr)
+call assert_equal('qf', &filetype)
+''')
+
+    @unittest.skipUnless(test_vim.shutil.which('fzf'), 'requires real fzf')
+    def test_seeded_word_search_opens_without_typing_query(self):
+        self.require_backends()
+        source = self.project / 'word.txt'
+        source.write_text('unique_word\n')
+        self.terminal_vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(source) + r''')
+VimSearchWord
+let terminal = winbufnr(popup_list()[0])
+for attempt in range(200)
+  call term_wait(terminal, 10)
+  if TerminalScreen(terminal) =~# '1/1' | break | endif
+endfor
+call assert_match('1/1', TerminalScreen(terminal))
+call term_sendkeys(terminal, "\<CR>")
+''' + self.wait_search() + r'''
+call assert_equal('word.txt', expand('%:t'))
+call assert_equal([], getqflist())
+''')
+    def test_multiple_selected_results_export_exact_special_paths(self):
+        self.fake_fzf()
+        fake = self.work / 'bin/fzf'
+        fake.write_text(fake.read_text().replace(
+            "sys.stdout.buffer.write(records[0] + b'\\0')",
+            "sys.stdout.buffer.write(b'\\0'.join(records[:2]) + b'\\0')"))
+        for name in ['src/one:中文.txt', 'src/two\t%0A\n.txt']:
+            (self.project / name).write_text('first\nneedle\n')
+        self.env['SEARCH_TEST_QUERY'] = 'needle'
+        self.terminal_vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(self.project / 'origin.txt') + r''')
+call setline(1, 'unsaved origin')
+let origin = bufnr('%')
+VimSearch
+''' + self.wait_search() + r'''
+let entries = getqflist()
+call assert_equal(2, len(entries))
+call assert_equal([2, 2], map(copy(entries), 'v:val.lnum'))
+call assert_equal([''' + quoted(self.project / 'src/one:中文.txt') + ', '
+            + quoted(self.project / 'src/two\t%0A\n.txt') + r'''],
+      \ sort(map(copy(entries), 'fnamemodify(bufname(v:val.bufnr), ":p")')))
+call assert_equal(['unsaved origin'], getbufline(origin, 1, '$'))
+call assert_equal('qf', &filetype)
+''')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

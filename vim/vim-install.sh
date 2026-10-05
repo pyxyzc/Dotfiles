@@ -26,6 +26,7 @@ config_files=(
     search.vim
     search.sh
     search.awk
+    search-preview.awk
 )
 color_files=(
     colors/tokyonight-night.vim

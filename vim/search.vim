@@ -168,11 +168,11 @@ function! s:Colors() abort
   let transparent = get(g:, 'vimrc_lite_transparent', 1)
   if exists('+termguicolors') && &termguicolors
     return 'bg:' . (transparent ? '-1' : '#1a1b26')
-          \ . ',fg:#c0caf5,bg+:#292e42,fg+:#c0caf5,hl:#7aa2f7,hl+:#7dcfff'
+          \ . ',fg:#c0caf5,preview-fg:#c0caf5,bg+:#292e42,fg+:#c0caf5,hl:#7aa2f7,hl+:#7dcfff'
           \ . ',border:#565f89,prompt:#7aa2f7,pointer:#bb9af7,info:#9ece6a,header:#9aa5ce'
   endif
   return 'bg:' . (transparent ? '-1' : '234')
-        \ . ',fg:153,bg+:236,fg+:153,hl:111,hl+:117,border:60,'
+        \ . ',fg:153,preview-fg:153,bg+:236,fg+:153,hl:111,hl+:117,border:60,'
         \ . 'prompt:111,pointer:141,info:149,header:146'
 endfunction
 
@@ -210,7 +210,7 @@ function! s:Cleanup(state, ...) abort
   endif
   if has_key(a:state, 'capability_key') && filereadable(a:state.directory . '/capabilities')
     let capabilities = get(readfile(a:state.directory . '/capabilities'), 0, '')
-    if capabilities =~# '^baseline\%(,path\)\?\%(,layout\)\?$'
+    if capabilities =~# '^baseline\%(,path\)\?\%(,layout\)\?\%(,resize\)\?$'
       let s:capabilities[a:state.capability_key] = capabilities
     endif
   endif
@@ -252,6 +252,20 @@ function! s:Finish(state, status, timer) abort
   let path = ''
   let position = []
   let error = ''
+  let results = []
+  if a:status == 0 && filereadable(a:state.directory . '/export')
+    for record in readfile(a:state.directory . '/results')
+      let fields = split(record, "\t", 1)
+      if len(fields) < 5 || empty(fields[0])
+        continue
+      endif
+      let name = s:DecodePath(fields[0])
+      let name = a:state.mode ==# 'recent' ? fnamemodify(name, ':p')
+            \ : a:state.root . '/' . name
+      call add(results, {'filename': name, 'lnum': str2nr(fields[1]),
+            \ 'col': str2nr(fields[2]), 'text': join(fields[4:], "\t")})
+    endfor
+  endif
   if a:status == 0 && filereadable(a:state.directory . '/path')
     " 文件名独占二进制文件；换行、冒号等字符不参与字段解析。
     let path = join(readfile(a:state.directory . '/path', 'b'), "\n")
@@ -260,9 +274,19 @@ function! s:Finish(state, status, timer) abort
     let error = filereadable(a:state.directory . '/error')
           \ ? join(readfile(a:state.directory . '/error'), ' ') : 'search process failed'
   endif
-  call s:Cleanup(a:state, !empty(path))
+  call s:Cleanup(a:state, !empty(path) || !empty(results))
   if !empty(error)
     call s:Warn(error)
+  endif
+  if !empty(results)
+    call setqflist([], ' ', {'title': 'Search: ' . a:state.root, 'items': results})
+    if win_gotoid(a:state.origin)
+      botright copen
+    endif
+    if exists('#User#VimrcLiteSearchClosed')
+      doautocmd <nomodeline> User VimrcLiteSearchClosed
+    endif
+    return
   endif
   if empty(path) || len(position) != 2
     return
@@ -393,7 +417,39 @@ function! s:Show(state, width, height) abort
   endif
 endfunction
 
-function! s:Open(mode) abort
+function! s:DecodePath(path) abort
+  let path = a:path
+  for [encoded, decoded] in [['%09', "\t"], ['%0A', "\n"], ['%0D', "\r"],
+        \ ['%1B', "\e"], ['%25', '%']]
+    let path = substitute(path, encoded, '\=decoded', 'g')
+  endfor
+  return path
+endfunction
+
+function! s:Seed(visual) abort
+  if a:visual
+    let saved = [getreg('z', 1, 1), getregtype('z'), getreg('"', 1, 1), getregtype('"')]
+    try
+      normal! gv"zy
+      let text = getreg('z')
+      if getregtype('z') ==# 'V'
+        let text = substitute(text, '\n$', '', '')
+      endif
+    finally
+      call setreg('z', saved[0], saved[1])
+      call setreg('"', saved[2], saved[3])
+    endtry
+  else
+    let text = expand('<cword>')
+  endif
+  if text =~# "\n" || empty(text)
+    call s:Warn('select nonempty text within one line for project search')
+    return
+  endif
+  call s:Open('grep', escape(text, '\.^$[]*+?{}()|'))
+endfunction
+
+function! s:Open(mode, ...) abort
   if !has('terminal') || !has('timers')
     call s:Warn('requires Vim +terminal and +timers')
     return
@@ -406,7 +462,8 @@ function! s:Open(mode) abort
     return
   endif
   if !filereadable(s:helper) || !filereadable(fnamemodify(s:helper, ':h') . '/search.awk')
-    call s:Warn('missing search.sh/search.awk; copy the complete vim directory')
+        \ || !filereadable(fnamemodify(s:helper, ':h') . '/search-preview.awk')
+    call s:Warn('missing search helpers; copy the complete vim directory')
     return
   endif
   if &columns < 30 || &lines < 8
@@ -419,12 +476,16 @@ function! s:Open(mode) abort
         \ 'mode': a:mode, 'popup': 0, 'split': 0, 'buf': 0, 'done': 0,
         \ 'ttimeout': &ttimeout, 'ttimeoutlen': &ttimeoutlen}
   let state.capability_key = exepath('fzf') . ':' . getftime(exepath('fzf'))
+        \ . ':' . getftime(s:helper)
   let s:active = state
   try
     " 只在搜索期间缩短终端按键序列的等待，不改变普通映射的 timeoutlen。
     set ttimeout
     let &ttimeoutlen = min([30, state.ttimeoutlen < 0 ? &timeoutlen : state.ttimeoutlen])
     call mkdir(state.directory, '', 0700)
+    if a:0 && !empty(a:1)
+      call writefile(split(a:1, "\n", 1), state.directory . '/query', 'b')
+    endif
     let [width, height] = s:Geometry()
     if a:mode ==# 'recent'
       call s:WriteRecent(state)
@@ -445,7 +506,8 @@ function! s:Open(mode) abort
     let state.buf = term_start([exepath('bash'), s:helper, 'run', a:mode,
           \ state.directory, s:History(a:mode), s:Colors(),
           \ get(s:capabilities, state.capability_key, ''),
-          \ get(s:finders, string([$PATH, getcwd()]), '')], options)
+          \ get(s:finders, string([$PATH, getcwd()]), ''),
+          \ get(g:, 'vimrc_lite_search_highlight', 1) ? '1' : '0'], options)
     if !state.buf
       throw 'could not start the search terminal'
     endif
@@ -464,6 +526,8 @@ endfunction
 command! VimFind call <SID>Open('files')
 command! VimSearch call <SID>Open('grep')
 command! VimRecent call <SID>Open('recent')
+command! VimSearchWord call <SID>Seed(0)
+command! VimSearchSelection call <SID>Seed(1)
 call s:ClearOrdinal()
 if s:ordinal_supported
   highlight default link VimrcLiteSearchOrdinal Comment

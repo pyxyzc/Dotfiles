@@ -53,7 +53,8 @@ query() {
 }
 
 preview() {
-    local encoded=$1 line=$2 offset=$3 display=$4 signature encoding=''
+    local encoded=$1 line=$2 offset=$3 display=$4 highlight=${5:-1} signature encoding='' syntax=''
+    local start=0 content_start=0 by_line=0 header_rows=0
     display=${display:0:500}
     if [[ -z "$encoded" ]]; then printf '%s\n' "$display"; return; fi
     decode_path "$encoded"
@@ -64,51 +65,48 @@ preview() {
     fi
     # rg offsets are measured after transcoding or stripping the BOM.
     signature=$(od -An -tx1 -N3 -- "$search_path")
+    signature=${signature//[[:space:]]/}
     case "$signature" in
-        *'ff fe'*) encoding=UTF-16LE ;;
-        *'fe ff'*) encoding=UTF-16BE ;;
-        *'ef bb bf'*) offset=$((offset + 3)) ;;
+        fffe*) encoding=UTF-16LE ;;
+        feff*) encoding=UTF-16BE ;;
+        efbbbf*) offset=$((offset + 3)); content_start=3 ;;
     esac
     if [[ -n "$encoding" ]]; then
-        printf '%s\n' "${display//[[:cntrl:]]/ }" '[Transcoded file: preview starts at the beginning]'
-        offset=0
-        line=1
+        printf '%s\n' "${display//[[:cntrl:]]/ }" '[Transcoded file: bounded decoding from the beginning]'
+        header_rows=2
+        by_line=1
+        if ! command -v iconv >/dev/null 2>&1; then
+            printf '%s\n' '[Install iconv to preview the file header]'
+            return 0
+        fi
     fi
+    if [[ "$highlight" != 0 ]]; then
+        case "$search_path" in
+            *.py|*.pyi|*.pyw) syntax=python ;;
+            *.c|*.C|*.cc|*.cpp|*.cxx|*.h|*.H|*.hh|*.hpp|*.hxx|*.cu|*.cuh) syntax=cpp ;;
+            *.js|*.jsx|*.mjs|*.cjs|*.ts|*.tsx) syntax=javascript ;;
+            *.sh|*.bash|*.zsh|*/.bashrc|*/.bash_profile|*/.zshrc) syntax=shell ;;
+            *.vim|*/.vimrc) syntax=vim ;;
+            *.json) syntax=json ;;
+            *.yaml|*.yml) syntax=yaml ;;
+        esac
+    fi
+    # Seek at most 32 KiB back for preceding context, then read at most 64 KiB total.
+    # The renderer keeps only enough complete preceding lines to center the match.
+    start=$((offset > content_start + 32768 ? offset - 32768 : content_start))
     # tail seeks on regular files; head bounds even a huge single line.
     # Early exits intentionally cause SIGPIPE in upstream processes.
     {
         if [[ -n "$encoding" ]]; then
-            if command -v iconv >/dev/null 2>&1; then
-                head -c 65536 -- "$search_path" | iconv -f "$encoding" -t UTF-8 2>/dev/null
-            else
-                printf '%s\n' '[Install iconv to preview the file header]'
-            fi
+            head -c 65536 -- "$search_path" | iconv -f "$encoding" -t UTF-8 2>/dev/null |
+                head -c 65536
         else
-            tail -c "+$((offset + 1))" -- "$search_path" | head -c 65536
+            tail -c "+$((start + 1))" -- "$search_path" | head -c 65536
         fi
-    } | LC_ALL=C "$search_awk_bin" -v first="$line" '
-        {
-            bytes += length($0) + 1
-            text = $0
-            gsub(/[[:cntrl:]]/, " ", text)
-            if (length(text) > 500) {
-                text = substr(text, 1, 500)
-                sub(/[\300-\377][\200-\277]*$/, "", text)
-                text = text " …"
-                shortened = 1
-            } else if (bytes >= 65536) {
-                # The byte cap may end in the middle of a UTF-8 character.
-                sub(/[\300-\377][\200-\277]*$/, "", text)
-            }
-            if (NR == 1) printf "\033[1;36m>%6d %s\033[0m\n", first, text
-            else printf " %6d %s\n", first + NR - 1, text
-            if (NR == 200) exit
-        }
-        END {
-            if (NR == 200 || bytes >= 65536 || shortened)
-                print "[Preview limited to 64 KiB / 200 lines / 500 bytes per line; Enter opens the file]"
-        }
-    ' || :
+    } | LC_ALL=C "$search_awk_bin" -v match_line="$line" -v syntax="$syntax" \
+        -v target_offset="$((offset - start))" -v skip_first="$((start > content_start))" \
+        -v by_line="$by_line" -v header_rows="$header_rows" \
+        -f "${search_script%/*}/search-preview.awk" || :
 }
 
 recent() {
@@ -122,11 +120,18 @@ fzf_supports() {
 }
 
 run() {
-    local mode=$1 session=$2 history=$3 colors=$4 capabilities=${5:-} finder=${6:-}
-    local command preview_command preview_window status record encoded rest line column
+    local mode=$1 session=$2 history=$3 colors=$4 capabilities=${5:-} finder=${6:-} highlight=${7:-1}
+    local command preview_command preview_window status record encoded rest line column export_command
+    local initial='' count=0
+    # Vim's libvterm can split a UTF-8 character between its default G0 decoder
+    # and its UTF-8 decoder when PTY reads start with different byte classes.
+    # ASCII G0 makes every non-ASCII byte use the same persistent UTF-8 decoder.
+    # stderr is the terminal; stdout carries only selected NUL records.
+    printf '\033(B' >&2
+    # The explicit dark base keeps preview ANSI colors enabled even under NO_COLOR.
     local -a options=(--read0 --print0 --delimiter=$'\t' --with-nth=5..
-        --no-multi --no-mouse --layout=default --border=rounded --info=inline
-        --color="$colors" --bind='ctrl-j:down,ctrl-k:up,esc:abort,ctrl-c:abort')
+        --multi --no-mouse --layout=default --border=rounded --info=inline
+        --color="dark,$colors" --bind='ctrl-j:down,ctrl-k:up,esc:abort,ctrl-c:abort')
     # Prevent the user's global shell/fzf options from rewriting the result protocol or
     # mixing in other file sources.
     export SHELL="$BASH" FZF_DEFAULT_OPTS='' FZF_DEFAULT_OPTS_FILE=''
@@ -136,10 +141,14 @@ run() {
         if fzf_supports --preview-window='right,55%,<40(down,50%)'; then
             capabilities+=',layout'
         fi
+        if fzf_supports --bind='resize:refresh-preview'; then capabilities+=',resize'; fi
     fi
     printf '%s\n' "$capabilities" > "$session/capabilities"
     if [[ -n "$history" ]]; then options+=(--history="$history" --history-size=100); fi
     printf -v command 'exec %q %q' "$BASH" "$search_script"
+    printf -v export_command 'printf quickfix > %q' "$session/export"
+    options+=(--bind="ctrl-q:execute-silent($export_command)+accept"
+        --header='Tab select  •  Enter open / export selected  •  Ctrl-q quickfix  •  Esc cancel')
     if [[ "$mode" == files ]]; then
         printf -v FZF_DEFAULT_COMMAND '%s files %q %q' "$command" "$session" "$finder"
         # Space separates multiple terms so "parent-dir filename" narrows same-named files;
@@ -148,36 +157,36 @@ run() {
         # Path scoring is supported from 0.33.0; older versions keep the default fuzzy score.
         if [[ "$capabilities" == *',path'* ]]; then options+=(--scheme=path); fi
     elif [[ "$mode" == grep ]]; then
-        printf -v FZF_DEFAULT_COMMAND '%s query %q %q' "$command" "$session" ''
-        printf -v preview_command '%s preview {s1} {2} {4} {5..}' "$command"
+        if [[ -f "$session/query" ]]; then initial=$(< "$session/query"); fi
+        printf -v FZF_DEFAULT_COMMAND '%s query %q %q' "$command" "$session" "$initial"
+        printf -v preview_command '%s preview {s1} {2} {4} {5..} %q' "$command" "$highlight"
         preview_window='right,55%,<40(down,50%)'
         # Automatic layout is supported from 0.31.0; older versions pin the preview below
         # so it stays readable on narrow screens.
         if [[ "$capabilities" != *',layout'* ]]; then
             preview_window='down,50%'
         fi
-        options+=(--prompt='Live grep> ' --disabled --no-sort
+        options+=(--prompt='Live grep> ' --disabled --no-sort --query="$initial"
             --bind="change:reload:$command query $(printf '%q' "$session") {q}"
             --preview="$preview_command" --preview-window="$preview_window"
             --bind='ctrl-u:preview-half-page-up,ctrl-d:preview-half-page-down')
+        if [[ "$capabilities" == *',resize'* ]]; then
+            options+=(--bind='resize:refresh-preview')
+        fi
     else
         printf -v FZF_DEFAULT_COMMAND '%s recent %q' "$command" "$session"
-        printf -v preview_command '%s preview {s1} {2} {4} {5..}' "$command"
-        preview_window='right,55%,<40(down,50%)'
-        if [[ "$capabilities" != *',layout'* ]]; then
-            preview_window='down,50%'
-        fi
-        options+=(--prompt='Recent> ' --no-sort
-            --header='Recent files  •  Enter open  •  Esc cancel'
-            --preview="$preview_command" --preview-window="$preview_window"
-            --bind='ctrl-u:preview-half-page-up,ctrl-d:preview-half-page-down')
+        options+=(--prompt='Recent> ' --no-sort)
     fi
     export FZF_DEFAULT_COMMAND
     if [[ "$mode" == grep ]]; then
         # rg already performs matching. A single Go scheduler coalesces bursts of
         # typed keys before reload, avoiding repeated cancel/restart poll delays.
         # Empty stdin also avoids starting a shell for the initial empty query.
-        GOMAXPROCS=1 fzf "${options[@]}" < /dev/null > "$session/selection"
+        if [[ -n "$initial" ]]; then
+            query "$session" "$initial" | GOMAXPROCS=1 fzf "${options[@]}" > "$session/selection"
+        else
+            GOMAXPROCS=1 fzf "${options[@]}" < /dev/null > "$session/selection"
+        fi
     else
         fzf "${options[@]}" > "$session/selection"
     fi
@@ -188,21 +197,29 @@ run() {
         fi
         return "$status"
     fi
-    IFS= read -r -d '' record < "$session/selection" || return 1
-    encoded=${record%%$'\t'*}
-    rest=${record#*$'\t'}
-    line=${rest%%$'\t'*}
-    rest=${rest#*$'\t'}
-    column=${rest%%$'\t'*}
-    if [[ -z "$encoded" ]]; then
+    : > "$session/results"
+    while IFS= read -r -d '' record; do
+        encoded=${record%%$'\t'*}
+        rest=${record#*$'\t'}
+        line=${rest%%$'\t'*}
         rest=${rest#*$'\t'}
-        printf '%s\n' "${rest#*$'\t'}" > "$session/error"
-        return 2
-    fi
-    [[ "$line" =~ ^[1-9][0-9]*$ && "$column" =~ ^[1-9][0-9]*$ ]] || return 2
-    decode_path "$encoded"
-    printf '%s' "$search_path" > "$session/path"
-    printf '%s\n%s\n' "$line" "$column" > "$session/position"
+        column=${rest%%$'\t'*}
+        if [[ -z "$encoded" ]]; then
+            rest=${rest#*$'\t'}
+            printf '%s\n' "${rest#*$'\t'}" > "$session/error"
+            return 2
+        fi
+        [[ "$line" =~ ^[1-9][0-9]*$ && "$column" =~ ^[1-9][0-9]*$ ]] || return 2
+        printf '%s\n' "$record" >> "$session/results"
+        if (( count == 0 )); then
+            decode_path "$encoded"
+            printf '%s' "$search_path" > "$session/path"
+            printf '%s\n%s\n' "$line" "$column" > "$session/position"
+        fi
+        count=$((count + 1))
+    done < "$session/selection"
+    (( count > 0 )) || return 1
+    if (( count > 1 )); then printf quickfix > "$session/export"; fi
 }
 
 case "${1:-}" in

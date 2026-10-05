@@ -295,6 +295,8 @@ xnoremap > >gv
 nnoremap <silent> <leader>ff :VimFind<CR>
 nnoremap <silent> <leader>fp :VimSearch<CR>
 nnoremap <silent> <leader>fr :VimRecent<CR>
+nnoremap <silent> <leader>fw :VimSearchWord<CR>
+xnoremap <silent> <leader>fw :<C-u>VimSearchSelection<CR>
 nnoremap <silent> <leader>fh :nohlsearch<CR>
 nnoremap <silent> [q :cprevious<CR>
 nnoremap <silent> ]q :cnext<CR>

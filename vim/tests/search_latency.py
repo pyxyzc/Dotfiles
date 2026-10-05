@@ -31,9 +31,9 @@ def quote(value):
 
 def benchmark(config, rounds=30, files=10000, suffix='.cpp', size=0, split=False,
               lsp=True, modes=('ff', 'fp', 'fr'), profile=None, query_cycles=3,
-              key_delay_ms=0):
+              key_delay_ms=0, highlight=True):
     with tempfile.TemporaryDirectory(prefix='vim-search-latency-') as directory:
-        work = Path(directory)
+        work = Path(directory).resolve()
         project = work / 'project'
         project.mkdir()
         (project / '.git').mkdir()
@@ -91,6 +91,8 @@ call timer_start(2, function('Probe'), {'repeat': -1})
                    '--cmd', f'autocmd VimEnter * call writefile([], {quote(startup)})']
         if not lsp:
             command += ['--cmd', 'let g:vimrc_lite_lsp = 0']
+        if not highlight:
+            command += ['--cmd', 'let g:vimrc_lite_search_highlight = 0']
         if profile:
             command += ['--cmd', "execute 'profile start ' . fnameescape(" + quote(profile) + ')',
                         '--cmd', 'profile func *']
@@ -161,8 +163,13 @@ call timer_start(2, function('Probe'), {'repeat': -1})
             # Human typing time is excluded; measure from the final keystroke.
             return start
 
+        def preview_visible(state, word):
+            # The result list contains the same source text. The > line-number
+            # gutter distinguishes the actual preview from a matching result.
+            return bool(re.search(r'>\s+1\s+int benchmark_' + word, state.get('screen', '')))
+
         samples = {mode: {key: [] for key in
-                         ('startup', 'results', 'preview', 'reload', 'reload_preview', 'preview_switch', 'open',
+                         ('startup', 'results', 'preview', 'reload', 'reload_preview', 'open',
                           'edit_key', 'open_edit')}
                    for mode in ('ff', 'fp', 'fr')}
         try:
@@ -182,22 +189,14 @@ call timer_start(2, function('Probe'), {'repeat': -1})
                     send((' ' + mode).encode())
                     wait(lambda s: prompt in s.get('screen', ''))
                     samples[mode]['startup'].append((time.perf_counter() - start) * 1000)
-                    if mode == 'fr':
-                        wait(lambda s: 'int benchmark_unique' in s.get('screen', ''))
-                        start = time.perf_counter()
-                        send(b'\x0b')
-                        wait(lambda s: 'int benchmark_second' in s.get('screen', ''))
-                        samples[mode]['preview_switch'].append((time.perf_counter() - start) * 1000)
-                        send(b'\x0a')
-                        wait(lambda s: 'int benchmark_unique' in s.get('screen', ''))
                     query = 'benchmark_unique' if mode == 'fp' else 'unique_target'
                     query_start = type_query(query)
                     wait(lambda s: bool(re.search(r'\b1/\d+\b', s.get('screen', '')))
                          and prompt + ' ' + query in s.get('screen', '')
                          and ('unique_target' in s.get('screen', '') or mode == 'fp'))
                     samples[mode]['results'].append((time.perf_counter() - query_start) * 1000)
-                    if mode != 'ff':
-                        wait(lambda s: 'int benchmark_unique' in s.get('screen', ''))
+                    if mode == 'fp':
+                        wait(lambda s: preview_visible(s, 'unique'))
                         samples[mode]['preview'].append((time.perf_counter() - query_start) * 1000)
                     if mode == 'fp':
                         # Reuse the same fzf process: reload throttling can grow
@@ -211,7 +210,7 @@ call timer_start(2, function('Probe'), {'repeat': -1})
                                      and 'Live grep> ' + replacement in s.get('screen', '')
                                      and bool(re.search(r'\b1/1\b', s.get('screen', ''))))
                                 samples[mode]['reload'].append((time.perf_counter() - start) * 1000)
-                                wait(lambda s: 'int benchmark_' + word in s.get('screen', ''))
+                                wait(lambda s: preview_visible(s, word))
                                 samples[mode]['reload_preview'].append((time.perf_counter() - start) * 1000)
                                 query = replacement
                     start = time.perf_counter()
@@ -252,6 +251,8 @@ if __name__ == '__main__':
     parser.add_argument('--files', type=int, default=10000)
     parser.add_argument('--size', type=int, default=0)
     parser.add_argument('--no-lsp', action='store_true')
+    parser.add_argument('--no-highlight', action='store_true',
+                        help='disable preview syntax colors for a latency comparison')
     parser.add_argument('--mode', action='append', choices=['ff', 'fp', 'fr'])
     parser.add_argument('--profile', type=Path)
     parser.add_argument('--query-cycles', type=int, default=3,
@@ -275,7 +276,7 @@ if __name__ == '__main__':
     samples = benchmark(args.config.resolve(), args.rounds, args.files, size=args.size,
                         lsp=not args.no_lsp, modes=args.mode or ('ff', 'fp', 'fr'),
                         profile=args.profile, query_cycles=args.query_cycles,
-                        key_delay_ms=args.key_delay_ms)
+                        key_delay_ms=args.key_delay_ms, highlight=not args.no_highlight)
     if args.max_ms is not None:
         failures = [f'{mode}.{metric}: {max(values):.2f} ms'
                     for mode, metrics in samples.items() for metric, values in metrics.items()
