@@ -275,7 +275,7 @@ function! s:FastTreeDisplay(directory, depth) abort
     elseif entry =~ '/$' && has_key(w:netrw_treedict, path . '/')
       let child = path . '/'
     elseif entry =~ '@$' && has_key(w:netrw_treedict, path . '@')
-      let child = path . '/'
+      let child = path . s:tree_link_suffix
     endif
     if child !=# ''
       call s:AppendTreeLeaves(entries, first, index - 1, depth)
@@ -294,14 +294,18 @@ function! s:InstallFastTree(prefix) abort
     return
   endif
   let body = s:FunctionBody(a:prefix . 'NetrwTreeDisplay')
-  " 与列举适配相同，只接受已审查的 v156/v171/v173 完整函数体。
+  " 与列举适配相同，只接受已审查的 v156/v171/v173/v184 完整函数体。
+  let modern = '9f115ed66008af7f537cc6ecb0fc12865c47918ff89648c68e325d5432bf3049'
   let reviewed = [
         \ 'cffa2478ab99c62229ad34e1d0a2c076f495be49a21a1ad908bca8a10d305d41',
         \ 'b6dac9dfb933667731c9c1224eae6e4943c28f72914764b8d9fbdb9e819577a4',
-        \ 'b63316cf759dcb25c71f8f1bb5a29646a6c83c289311129dfd0fc831d9a6c0fb']
-  if index(reviewed, sha256(join(body, "\n"))) < 0
+        \ 'b63316cf759dcb25c71f8f1bb5a29646a6c83c289311129dfd0fc831d9a6c0fb', modern]
+  let digest = sha256(join(body, "\n"))
+  if index(reviewed, digest) < 0
     return
   endif
+  " v184 修正了链接子树的缓存键；旧实现的斜杠语义仍用于旧 runtime。
+  let s:tree_link_suffix = digest ==# modern ? '@' : '/'
   let loop = len(body) - index(reverse(copy(body)), 'for entry in w:netrw_treedict[dir]') - 1
   let head = body[: loop - 1]
   call map(head, 'substitute(v:val, "s:treedepthstring", "s:tree_indent", "g")')
@@ -320,6 +324,43 @@ function! s:InstallFastTree(prefix) abort
   unlet! s:tree_indent
 endfunction
 
+" v184 的列举入口返回列表；保留排序/布局回退，只去掉重复的路径及属性查询。
+function! s:FastListingList(directory, dynamic) abort
+  if !get(g:, 'vimrc_lite_netrw_fast_listing', 1)
+        \ || get(w:, 'netrw_liststyle', -1) != 3 || a:directory !~# '^/'
+        \ || a:directory =~# '://' || get(g:, 'netrw_dynamic_maxfilenamelen', 0)
+        \ || g:netrw_sort_by !~# '^\%(n\|ext\)'
+        \ || !exists('b:netrw_curdir') || b:netrw_curdir =~# '://'
+    return call(s:NativeListingList, [a:directory, a:dynamic])
+  endif
+  let directory = a:directory =~# '/$' ? a:directory : a:directory . '/'
+  let suffixes = {'link': '@', 'socket': '=', 'fifo': '|', 'dir': '/'}
+  let lines = []
+  for name in ['.', '..'] + readdir(a:directory)
+    let filename = directory . name
+    let kind = getftype(filename)
+    let suffix = has_key(suffixes, kind) ? suffixes[kind] : executable(filename) ? '*' : ''
+    call add(lines, name . suffix)
+  endfor
+  return lines
+endfunction
+
+function! s:InstallListingList(prefix) abort
+  if get(s:, 'listing_list_prefix', '') ==# a:prefix
+        \ || !exists('*' . a:prefix . 'NetrwLocalListingList')
+    return
+  endif
+  let body = s:FunctionBody(a:prefix . 'NetrwLocalListingList')
+  if sha256(join(body, "\n")) !=#
+        \ '4b7516d9be758dd0349e529d470e5020bbcdfa82265407b598de8be7f613bdf2'
+    return
+  endif
+  let s:NativeListingList = funcref(a:prefix . 'NetrwLocalListingList')
+  execute 'function! ' . a:prefix . "NetrwLocalListingList(dirname, dynamic) abort\n"
+        \ . 'return ' . s:sid . "FastListingList(a:dirname, a:dynamic)\nendfunction"
+  let s:listing_list_prefix = a:prefix
+endfunction
+
 function! s:InstallFastListing() abort
   if !has('unix') || !exists('*funcref') || !exists('*sha256')
     return
@@ -331,6 +372,7 @@ function! s:InstallFastListing() abort
   endif
   let prefix = '<SNR>' . matchstr(scripts[0], '^\s*\zs\d\+\ze:') . '_'
   call s:InstallFastTree(prefix)
+  call s:InstallListingList(prefix)
   if get(s:, 'fast_listing_prefix', '') ==# prefix
         \ || !exists('*' . prefix . 'LocalListing') || !exists('*' . prefix . 'NetrwGlob')
     return
@@ -650,7 +692,7 @@ function! s:Create(islocal) abort
   if directory
     let target = substitute(target, '/\+$', '', '')
   endif
-  if isdirectory(target) || filereadable(target)
+  if !empty(getftype(target))
     call s:Warn('already exists: ' . target)
     return ''
   endif
@@ -667,6 +709,104 @@ function! s:Create(islocal) abort
   return 'call ' . s:sid . 'Open(' . string(target) . ')'
 endfunction
 
+" 文件及目录移动同步所有已加载/未加载普通 buffer，保留未保存内容与窗口。
+function! s:Move(source, target, ...) abort
+  let changes = []
+  for buffer in getbufinfo()
+    if !empty(buffer.name) && fnamemodify(buffer.name, ':p') ==# a:target
+      throw 'target already has an open buffer: ' . a:target
+    endif
+  endfor
+  for buffer in getbufinfo()
+    let path = fnamemodify(buffer.name, ':p')
+    if getbufvar(buffer.bufnr, '&buftype') !=# '' || empty(buffer.name)
+      continue
+    endif
+    if path ==# a:source || (isdirectory(a:source) && stridx(path, a:source . '/') == 0)
+      let target = a:target . strpart(path, strlen(a:source))
+      for other in getbufinfo()
+        if other.bufnr != buffer.bufnr && !empty(other.name)
+              \ && fnamemodify(other.name, ':p') ==# target
+          throw 'target already has an open buffer: ' . target
+        endif
+      endfor
+      call add(changes, [buffer.bufnr, path, target])
+      if !buffer.loaded && exists('*bufload')
+        call bufload(buffer.bufnr)
+      endif
+    endif
+  endfor
+  if rename(a:source, a:target) != 0
+    throw get(a:000, 0, 'rename') . ' failed: ' . a:source
+  endif
+  if empty(changes)
+    return
+  endif
+  let origin = win_getid()
+  let layout = winrestcmd()
+  let temporary = 0
+  let applied = []
+  try
+    noautocmd keepalt botright 1split
+    let temporary = win_getid()
+    for change in changes
+      " 切换时 Vim 会检查旧文件时间戳；磁盘已移动的 E211 不应回滚成功的移动。
+      execute 'silent! noautocmd keepalt hide buffer ' . change[0]
+      if bufnr('%') != change[0]
+        throw 'could not activate buffer: ' . change[1]
+      endif
+      execute 'keepalt file ' . fnameescape(change[2])
+      call add(applied, change)
+      " :file 设置 notedited；一次由 BufReadCmd 接管的重新编辑只更新文件状态。
+      " 恢复原内存内容与撤销树，不写入目标文件，保留 modified 状态。
+      let modified = &modified
+      let settings = {'fileformat': &fileformat, 'fileencoding': &fileencoding,
+            \ 'bomb': &bomb, 'endofline': &endofline, 'binary': &binary, 'readonly': &readonly}
+      let s:rename_lines = getline(1, '$')
+      let undo = tempname()
+      if has('persistent_undo')
+        execute 'silent wundo ' . fnameescape(undo)
+        call setfperm(undo, 'rw-------')
+      endif
+      augroup vimrc_lite_tree_rename
+        autocmd!
+        autocmd BufReadCmd <buffer> call setline(1, s:rename_lines)
+      augroup END
+      try
+        silent keepalt edit!
+        if filereadable(undo)
+          execute 'silent rundo ' . fnameescape(undo)
+        endif
+        for [option, value] in items(settings)
+          call setbufvar(bufnr('%'), '&' . option, value)
+        endfor
+        let &modified = modified
+      finally
+        augroup vimrc_lite_tree_rename
+          autocmd!
+        augroup END
+        call delete(undo)
+        unlet! s:rename_lines
+      endtry
+    endfor
+  catch
+    let error = v:exception
+    for change in reverse(applied)
+      execute 'silent! noautocmd keepalt hide buffer ' . change[0]
+      execute 'keepalt file ' . fnameescape(change[1])
+    endfor
+    call rename(a:target, a:source)
+    throw 'buffer rename failed: ' . error
+  finally
+    if temporary && win_gotoid(temporary)
+      noautocmd close
+    endif
+    if win_gotoid(origin)
+      silent! execute layout
+    endif
+  endtry
+endfunction
+
 function! s:Rename(islocal) abort
   if !a:islocal
     return ''
@@ -681,14 +821,12 @@ function! s:Rename(islocal) abort
     return ''
   endif
   let target = s:Join(fnamemodify(entry.path, ':h'), newname)
-  if filereadable(target) || isdirectory(target)
+  if !empty(getftype(target))
     call s:Warn('already exists: ' . target)
     return ''
   endif
   try
-    if rename(entry.path, target) != 0
-      throw 'rename failed: ' . entry.path
-    endif
+    call s:Move(entry.path, target)
   catch
     call s:Warn(v:exception)
   endtry
@@ -872,9 +1010,7 @@ function! s:Paste(islocal) abort
         throw 'copy failed: ' . s:clip.path
       endif
     else
-      if rename(s:clip.path, target) != 0
-        throw 'move failed: ' . s:clip.path
-      endif
+      call s:Move(s:clip.path, target, 'move')
       let s:clip = {'op': '', 'path': ''}
     endif
   catch

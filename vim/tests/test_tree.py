@@ -30,6 +30,58 @@ call feedkeys('p', 'xt')
 
 
 class TreeTests(VimSession):
+    def test_modern_listing_leaves_unknown_implementation_untouched(self):
+        self.vim(r'''
+let tree = ScriptPrefix('/tree.vim$')
+function! VimLiteUnknownNetrwLocalListingList(directory, dynamic) abort
+  return ['custom listing']
+endfunction
+let before = execute('function VimLiteUnknownNetrwLocalListingList')
+call call(function(tree . 'InstallListingList'), ['VimLiteUnknown'])
+call assert_equal(before, execute('function VimLiteUnknownNetrwLocalListingList'))
+call assert_equal(['custom listing'], VimLiteUnknownNetrwLocalListingList('/', 0))
+''')
+
+    def test_create_and_rename_refuse_fifos(self):
+        os.mkfifo(self.work / 'pipe')
+        (self.work / 'source.txt').write_text('keep source\n')
+        self.vim(r'''
+call feedkeys(' e', 'xt')
+call cursor(1, 1)
+call feedkeys("apipe\<CR>", 'xt')
+call assert_equal('netrw', &filetype)
+call assert_equal('fifo', getftype('pipe'))
+call assert_match('already exists:', execute('messages'))
+call assert_true(search('source.txt', 'w') > 0)
+call feedkeys("r\<C-u>pipe\<CR>", 'xt')
+call assert_equal(['keep source'], readfile('source.txt'))
+call assert_equal('fifo', getftype('pipe'))
+''')
+
+    def test_create_refuses_broken_symlinks(self):
+        (self.work / 'broken').symlink_to('missing-target')
+        self.vim(r'''
+call feedkeys(' e', 'xt')
+call cursor(1, 1)
+call feedkeys("abroken\<CR>", 'xt')
+call assert_equal('netrw', &filetype)
+call assert_equal('link', getftype('broken'))
+call assert_equal('', getftype('missing-target'))
+call assert_match('already exists:', execute('messages'))
+''')
+
+    def test_rename_refuses_broken_symlinks(self):
+        (self.work / 'broken').symlink_to('missing-target')
+        (self.work / 'source.txt').write_text('keep source\n')
+        self.vim(r'''
+call feedkeys(' e', 'xt')
+call assert_true(search('source.txt', 'w') > 0)
+call feedkeys("r\<C-u>broken\<CR>", 'xt')
+call assert_equal(['keep source'], readfile('source.txt'))
+call assert_equal('link', getftype('broken'))
+call assert_equal('', getftype('missing-target'))
+''')
+
     def test_fast_tree_render_matches_native_filtering_cache_and_view(self):
         self.vim(r'''
 call feedkeys(' e', 'xt')
@@ -164,16 +216,32 @@ call assert_equal(getcwd() . '/pipe', call(function(tree . 'Entry'), []).path)
         os.mkfifo(directory / 'pipe')
         sock = socket.socket(socket.AF_UNIX)
         self.addCleanup(sock.close)
-        sock.bind(str(directory / 'socket'))
+        # macOS has a short sockaddr_un path limit; the fixture's absolute path
+        # may exceed it even though its filename is valid.
+        previous_directory = os.getcwd()
+        try:
+            os.chdir(directory)
+            sock.bind('socket')
+        finally:
+            os.chdir(previous_directory)
         self.vim(r'''
 execute 'cd ' . fnameescape(''' + quoted(directory) + r''')
 call feedkeys(' e', 'xt')
 let native = ScriptPrefix('/autoload/netrw\.vim$') . 'LocalListing'
+let modern_listing = !exists('*' . native)
+if modern_listing
+  let native = ScriptPrefix('/autoload/netrw\.vim$') . 'NetrwLocalListingList'
+endif
 function! Listing(enabled) abort
   let g:vimrc_lite_netrw_fast_listing = a:enabled
   setlocal modifiable noreadonly
   silent keepjumps %delete _
-  call call(function(g:native), [])
+  if g:modern_listing
+    let lines = call(function(g:native), [b:netrw_curdir, 1])
+    call setline(1, lines)
+  else
+    call call(function(g:native), [])
+  endif
   return [getline(1, '$'), &l:tabstop, get(g:, 'netrw_maxfilenamelen', 0)]
 endfunction
 for style in [0, 1, 2, 3]

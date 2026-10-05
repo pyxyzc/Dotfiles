@@ -63,5 +63,80 @@ call assert_equal(['int first() {', '}', '', 'int second() {', '  return 2;', '}
       \ getline(1, '$'))
 ''')
 
+    def test_tree_rename_modified_and_hidden_buffers_and_directory_move(self):
+        (self.work / 'old').mkdir()
+        (self.work / 'old/main.py').write_text('disk\n')
+        (self.work / 'old/hidden.txt').write_text('hidden\n')
+        self.vim(r'''
+edit old/hidden.txt
+let hidden = bufnr('%')
+edit old/main.py
+let main = bufnr('%')
+call setline(1, 'unsaved')
+edit origin.txt
+let origin = win_getid()
+call feedkeys(' e', 'xt')
+let tree = win_getid()
+call assert_true(search('old/', 'w') > 0)
+call feedkeys("r\<C-u>new\<CR>", 'xt')
+call assert_equal(tree, win_getid())
+call assert_equal(2, winnr('$'))
+call assert_equal('new/main.py', fnamemodify(bufname(main), ':~:.'))
+call assert_equal('new/hidden.txt', fnamemodify(bufname(hidden), ':~:.'))
+call assert_true(getbufvar(main, '&modified'))
+call assert_equal(['unsaved'], getbufline(main, 1, '$'))
+call win_gotoid(origin)
+execute 'buffer ' . main
+undo
+call assert_equal(['disk'], getline(1, '$'))
+redo
+call assert_equal(['unsaved'], getline(1, '$'))
+write
+call assert_equal(['unsaved'], readfile('new/main.py'))
+call assert_false(isdirectory('old'))
+call win_gotoid(tree)
+call assert_true(search('new/', 'w') > 0)
+call feedkeys("\<CR>", 'xt')
+call assert_true(search('main.py', 'w') > 0)
+call feedkeys("r\<C-u>renamed.py\<CR>", 'xt')
+call assert_equal('new/renamed.py', fnamemodify(bufname(main), ':~:.'))
+call assert_false(filereadable('new/main.py'))
+''')
+
+    def test_tree_rename_refuses_conflicting_open_target(self):
+        (self.work / 'old.txt').write_text('source\n')
+        self.vim(r'''
+edit target.txt
+call setline(1, 'unsaved target')
+let target = bufnr('%')
+call feedkeys(' e', 'xt')
+call assert_true(search('old.txt', 'w') > 0)
+call feedkeys("r\<C-u>target.txt\<CR>", 'xt')
+call assert_true(filereadable('old.txt'))
+call assert_false(filereadable('target.txt'))
+call assert_equal(['unsaved target'], getbufline(target, 1, '$'))
+call assert_match('target already has an open buffer', execute('messages'))
+''')
+
+    def test_tree_cut_moves_open_modified_buffer_without_saving_it(self):
+        (self.work / 'source.txt').write_text('disk\n')
+        (self.work / 'destination').mkdir()
+        self.vim(r'''
+edit source.txt
+let source = bufnr('%')
+call setline(1, 'unsaved')
+edit origin.txt
+call feedkeys(' e', 'xt')
+call assert_true(search('source.txt', 'w') > 0)
+call feedkeys('x', 'xt')
+call assert_true(search('destination/', 'w') > 0)
+call feedkeys('p', 'xt')
+call assert_equal(['disk'], readfile('destination/source.txt'))
+call assert_false(filereadable('source.txt'))
+call assert_equal('destination/source.txt', fnamemodify(bufname(source), ':~:.'))
+call assert_true(getbufvar(source, '&modified'))
+call assert_equal(['unsaved'], getbufline(source, 1, '$'))
+''')
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
