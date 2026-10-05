@@ -16,10 +16,13 @@ buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等�
 `dashboard.vim` 管理首页，
 `clipboard.vim` 管理 OSC 52 远程剪贴板与复制粘贴回退，
 `tree.vim` 集中管理 netrw 侧边文件树的加载、选项和快捷键；
-`search.vim`、`search.sh` 和 `search.awk` 连接 Vim 内置终端与 fd/ripgrep/fzf。
+`search.vim`、`search.sh` 和 `search.awk` 连接 Vim 内置终端与 fd/ripgrep/fzf；
+`search-preview.awk` 为受限的预览片段提供语法颜色。
 `lsp.vim` 显式加载 `vendor/vim-lsp/`，提供 Python、C/C++ 的基础语言服务。
 `git.vim` 提供 Git hunk 跳转和 LazyGit 入口，`terminal.vim` 统一管理 LazyGit 和普通
 shell 的终端退出清理；`textobjects.vim` 为 Python、C/C++/CUDA 提供轻量结构文本对象。
+`project.vim` 提供项目定位和持久撤销目录，`tasks.vim` 异步运行项目任务，
+`session.vim` 手动保存和恢复会话，`tools.vim` 提供快捷键查询及环境检查。
 
 ## Vimscript 代码风格
 
@@ -61,6 +64,10 @@ bash ~/Dotfiles/vim/vim-clean.sh
 ```text
 ~/.vimrc
 ~/.vim/dashboard.vim
+~/.vim/project.vim
+~/.vim/tasks.vim
+~/.vim/session.vim
+~/.vim/tools.vim
 ~/.vim/clipboard.vim
 ~/.vim/tree.vim
 ~/.vim/buffers.vim
@@ -73,6 +80,7 @@ bash ~/Dotfiles/vim/vim-clean.sh
 ~/.vim/search.vim
 ~/.vim/search.sh
 ~/.vim/search.awk
+~/.vim/search-preview.awk
 ~/.vim/lsp.vim
 ~/.vim/vendor/vim-lsp/
 ~/.vim/colors/tokyonight-night.vim
@@ -97,7 +105,8 @@ sudo apt install fd-find ripgrep fzf gawk
 ```
 
 其他发行版安装对应的 fd、ripgrep、fzf 软件包，并确认命令位于 `PATH`。
-不需要建立 `fd` 到 `fdfind` 的链接，也不需要安装 fzf.vim、bat 或 Python。
+不需要建立 `fd` 到 `fdfind` 的链接，也不需要安装 fzf.vim、bat 或 Python；
+预览语法颜色由已有 gawk 提供。
 
 已有同名文件会直接替换，不保留备份；内容相同的普通文件跳过。插件目录整体暂存后
 替换，升级不会残留旧文件。符号链接本身会被替换，不会改写它指向的文件。其他主题和旧插件
@@ -134,14 +143,21 @@ vim --cmd 'let g:vimrc_lite_transparent = 0' -u ~/Dotfiles/vim/.vimrc
 | `g:vimrc_lite_osc52` | 检测 SSH 环境 | 是否经 OSC 52 向终端发送复制内容；可手动设为 `0` 或 `1` |
 | `g:vimrc_lite_clipboard_yank` | `1` | 未指定寄存器的 yank/删除/修改是否自动同步剪贴板，对应 Neovim 的 `clipboard=unnamedplus` |
 | `g:vimrc_lite_dashboard` | `1` | 无参数交互启动时显示首页；设为 `0` 关闭自动显示 |
+| `g:vimrc_lite_buffer_slogans` | 下方三句 | 顶部 buffer 栏右侧的自定义 slogan 列表；空列表不显示 |
+| `g:vimrc_lite_persistent_undo` | `1` | 持久撤销；设为 `0` 不保存撤销记录 |
 | `g:vimrc_lite_completion_max` | `100` | 自动单词补全的菜单上限；继续输入按新前缀重新扫描，手动补全不受此上限影响 |
+| `g:vimrc_lite_search_highlight` | `1` | 文本搜索预览的轻量语法高亮；设为 `0` 使用纯文本预览 |
+| `g:vimrc_lite_search_ordinal` | `1` | 当前文件搜索的行尾序号；设为 `0` 隐藏 |
 | `g:vimrc_lite_netrw_fast_listing` | `1` | 对已核对的 netrw 实现启用本地树批量列举；设为 `0` 回退原生列举 |
+| `g:vimrc_lite_netrw_fast_tree` | `1` | 对已核对的 netrw 实现启用树批量渲染；设为 `0` 回退原生渲染 |
 | `g:vimrc_lite_lsp` | `1` | 根据文件类型自动启动已安装的语言服务器；设为 `0` 禁用 LSP |
 | `g:vimrc_lite_lsp_pyright_cmd` | `['pyright-langserver', '--stdio']` | Python 服务器的命令参数列表 |
 | `g:vimrc_lite_lsp_clangd_cmd` | `['clangd', '--background-index']` | C/C++ 服务器的命令参数列表 |
+| `g:vimrc_lite_lsp_diagnostics` | `1` | 新 buffer 默认显示诊断标记及下划线；设为 `0` 仅缓存诊断 |
+| `g:vimrc_lite_lsp_request_timeout_ms` | `10000` | LSP 操作及手动语义补全的超时，单位毫秒 |
 
-LSP 选项在启动时读取一次；修改命令、环境或开关后重启 Vim。
-重载 vimrc 会恢复客户端运行路径，不重复加载插件、注册服务器或创建进程。
+重载 vimrc 会更新函数、界面设置及服务器命令配置，保留已有进程。
+修改服务器命令后用 `:VimLspRestart` 应用到当前项目；全局 LSP 开关建议在启动前设置。
 
 ## 首页
 
@@ -166,7 +182,8 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 ## 快捷键
 
 编辑界面顶部常驻 buffer 栏，例如 `1:main.py  2:utils.py +  3:README.md`。
-当前项高亮，`+` 表示未保存，`[RO]` 表示只读，`[term]` 表示终端；未命名文件显示
+顶部保留浅灰蓝底色和深色文字的浅色横栏，当前项使用原来的蓝底深色字选中色块。
+`+` 表示未保存，`[RO]` 表示只读，`[term]` 表示终端；未命名文件显示
 `[No Name]`。同名文件补充最短可区分的父目录。栏内编号是列表位置，与空格 `1`～`9`
 对应；关闭文件后位置会重新编号，区别于 `:ls` / `:buffer` 使用的实际 buffer 编号。
 顶部栏使用键盘切换，不提供鼠标点击操作。
@@ -176,11 +193,32 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 切换。多个标签页时右侧显示 `Tab 当前页/总页数`，不足 40 列时优先显示 buffer。
 首页单独显示时隐藏顶部栏，返回编辑界面后恢复；搜索临时 buffer 不进入列表。
 
+当前配置预设以下三句 slogan，也可在 vimrc 顶部配置自己的列表，每个列表项是一句完整的文字：
+
+```vim
+let g:vimrc_lite_buffer_slogans = [
+      \ 'Per aspera ad astra.',
+      \ 'Les années heureuses sont les années perdues, on attend une souffrance pour travailler.',
+      \ 'Seize the day.',
+      \ ]
+```
+
+slogan 使用 buffer 标签和溢出标记之后的剩余空间，以斜体靠右显示；有 Tab 页码时放在
+页码左侧，左侧留两列、右侧留一列。首次显示、新打开 buffer 或切换 buffer 时，
+从能完整显示的句子中随机选择；有不同的可用句子时避开上一句，只有一条能放下时
+继续显示那条。普通重绘、修改文件名或状态、调整窗口大小时，当前句子放得下就保留，
+放不下时再选择合适的句子。没有合适的就隐藏，不截断；空间恢复后重新选择。
+slogan 不会挤掉原本能显示的 buffer 标签。
+中文等字符按显示列宽计算，`%` 按原文显示；空白、非字符串及含控制字符的条目会被忽略。
+列表配置错误时不显示 slogan。运行中修改列表后在下一次顶部栏重绘时生效，也可执行
+`:redrawtabline`（缺少此命令的旧 Vim 使用 `:redraw!`）。重新加载配置会保留仍有效的当前句子。
+
 `<leader>` 是空格；表中未特别说明的按键用于普通模式。`H/L` 就是 `Shift-h/l`。
 
 | 按键 | 功能 |
 | --- | --- |
 | `Ctrl-s` | 保存全部文件，支持普通、插入、可视模式 |
+| `<leader>w` | 保存全部文件，支持普通、可视模式；适用于终端拦截 `Ctrl-s` 的情况 |
 | `Ctrl-w` | 关闭当前 buffer；未保存时选择保存、放弃或取消 |
 | `H/L`、`Alt-o/i` | 上一个／下一个 buffer |
 | `<leader>bn` | 新建空 buffer |
@@ -193,6 +231,7 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 | `vaf` / `vif` | 选择当前函数整体／函数体 |
 | `vac` / `vic` | 选择当前类整体／类体 |
 | `vab` / `vib` | 选择当前条件、循环或异常控制块整体／内容 |
+| `daf` / `yaf` / `cif` | 删除／复制函数整体，或修改函数体；同样支持 `ac/ic`、`ab/ib` |
 | `gcc`、`gc{motion}` | 注释／取消注释当前行、动作范围或可视选区，可带计数；空行保持不变 |
 | `tn` / `tj` / `tk` / `to` | 新建／上一个／下一个／只留当前标签页 |
 | `<leader>aN` / `an` | 在新标签页打开当前 buffer／新建空标签页 |
@@ -209,11 +248,25 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 | `<leader>ff` | fd/fdfind 枚举文件，fzf 即时模糊筛选 |
 | `<leader>fp` | ripgrep 实时正则搜索，预览并跳转到匹配位置 |
 | `]c` / `[c` | 跳转到下一个／上一个 Git hunk；支持未保存 buffer 和未跟踪文件 |
-| `<leader>fr` | fzf 筛选 Vim 保存的最近文件，预览并打开 |
+| `<leader>fr` | fzf 筛选 Vim 保存的最近文件，只显示文件列表，回车打开 |
+| `<leader>fw` | 搜索当前单词；可视模式搜索单行选区，初始内容按字面值匹配 |
 | `<leader>fh` | 清除本次搜索高亮 |
 | `[q` / `]q` | 上一个／下一个 quickfix 结果 |
 | `<leader>xQ` / `xL` | 开关 quickfix／location list |
 | `<leader>;` | 新标签页打开内置终端，使用 Vim 的 `shell` 设置，退出 shell 后关闭终端页 |
+| `<leader>tt` | 显示／隐藏当前项目的可复用终端；终端输入模式下 `Ctrl-g` 隐藏 |
+| `<leader>rn` | LSP 符号重命名 |
+| `<leader>ca` / `cf` | LSP 代码操作／格式化；可视模式保留字符或整行选区 |
+| `<leader>cs` / `cS` | 当前文件符号／查询当前项目的工作区符号 |
+| `<leader>cd` / `ce` / `cl` | 当前文件诊断显示开关／当前行详情／当前文件诊断列表 |
+| `[d` / `]d` | 上一个／下一个诊断，跳转后显示当前行详情浮窗；支持次数及循环 |
+| `<leader>cD` / `ct` / `cm` | 声明／类型定义／实现 |
+| `<leader>ck` | 手动签名帮助，标出当前参数 |
+| `<leader>ci` | 查看 LSP 状态面板：当前文件生效的服务器、功能及未生效原因 |
+| `<leader>rt` / `rx` | 选择并运行项目任务／停止正在运行的任务 |
+| `<leader>rs` / `ro` | 查看任务状态／输出 |
+| `<leader>ss` / `sl` | 保存／恢复当前项目的默认会话 |
+| `<leader>?` / `ch` | 查看快捷键／环境检查 |
 | 终端内双 `Esc` | 进入终端普通模式；按 `i` 返回输入 |
 | `<leader>nh` / `<leader>q` | 查看消息历史／退出当前窗口；未保存时按 `s` 保存、`q` 放弃修改、`c` 或 `<Esc>` 取消 |
 | `<leader>gg` | 在新标签页的内置终端中打开 LazyGit，退出后自动关闭该标签页 |
@@ -250,7 +303,7 @@ Unix 本地树按名称／扩展名排序时，会为已核对完整函数体的
 最后一个已列出的普通 buffer 关闭时退出 Vim。运行中的终端必须先退出 shell，
 不会因这个快捷键直接杀死进程。
 
-若终端拦截 `Ctrl-s` 导致暂停，可按 `Ctrl-q` 恢复，使用 `:wall` 保存。
+若终端拦截 `Ctrl-s` 导致暂停，可按 `Ctrl-q` 恢复，使用 `<leader>w` 或 `:wall` 保存。
 如需启用该键，可自行在 shell 中运行 `stty -ixon`；安装脚本不修改流控。
 Alt、Ctrl-方向键的传递取决于终端和 tmux 设置。
 
@@ -277,12 +330,14 @@ Git 仓库中时只显示提示，不修改 buffer。
 - 插入模式输入至少两个字符后，分批扫描当前及其他已加载的普通文件 buffer，
   自动菜单最多显示 100 个候选；继续输入会用新前缀重新查找，不局限于前 100 个词。
   超长候选仅缩短菜单显示标签，选中后仍插入完整单词；长行分片扫描以保持输入响应。
-  用 `Ctrl-n/p` 浏览、回车确认，`Ctrl-e` 取消菜单。菜单关闭时 `Ctrl-n/p` 仍执行
+  用 `Ctrl-n/p` 浏览、回车确认选中的项；未选中候选时回车正常换行，`Ctrl-e` 取消菜单。
+  菜单关闭时 `Ctrl-n/p` 仍执行
   原生 `.,w,b` 完整扫描，可能在巨型 buffer 上耗时较长；`Ctrl-x Ctrl-f` 补全路径。
   连接 LSP 后仍可用 `Ctrl-x Ctrl-o` 手动进行语义补全。大文件模式不自动弹出菜单。
 - 注释切换读取当前文件类型的 `commentstring`，无需插件；空行不会插入注释符号。
 - 原生 `%` 匹配括号，`i{`/`a{` 等选择括号内容；`af`/`if`、`ac`/`ic` 和
   `ab`/`ib` 在 Python、C/C++/CUDA 中按缩进或大括号选择函数、类和常见控制块。
+  支持可视选择及 `d/y/c` 等操作符，例如 `yaf`、`dic`、`cab`；未找到结构时取消操作。
 - 已有 tags 文件时使用 `Ctrl-]` 和 `Ctrl-t`；配置不自动生成索引。
 - 构建使用项目自己的命令或 `:make`，不默认指定 C++ 标准或自动运行代码。
 
@@ -320,20 +375,65 @@ clangd 可通过系统包管理器或其官方发行包安装。离线机器应�
 
 | 按键 | 功能 |
 | --- | --- |
-| `gd` | 跳转定义；多个目标显示在 quickfix |
-| `gr` | 在 quickfix 中列出引用 |
-| `K` | 查看类型和文档；支持浮窗时使用浮窗，否则使用预览窗口 |
+| `gd` | 单个定义直接跳转；多个目标进入 quickfix 选择与预览 |
+| `gr` | 在底部 quickfix 选择引用；移动选中行时上方立即预览，回车确认并关闭列表 |
+| `K` | 查看类型和文档；同一位置再按一次进入可滚动、可搜索的文档窗口 |
 | `Ctrl-x Ctrl-o` | 插入模式手动语义补全，使用 Vim 原生补全菜单 |
 | `Ctrl-o` | 使用原生跳转记录返回 |
 
-引用和多目标列表复用 `[q`、`]q`、`<leader>xQ`；预览窗口可用 `:pclose` 关闭。
-保留原生词补全和 tags 按键。默认关闭诊断显示、自动签名提示、符号高亮、
-语义高亮、内嵌提示及 LSP 折叠；不增加格式化或重命名快捷键。
-客户端自带的其他 `:Lsp...` 命令仍由上游插件提供。
+引用列表中用 `j` / `k`、方向键或其他普通移动按键选择，上方原代码窗口即时显示
+对应位置，焦点保留在列表中；`Enter` 确认并收起列表，`q` / `Esc` 取消并回到调用位置。
+预览保留未保存内容，不加入跳转记录；确认后可用 `Ctrl-o` 返回调用位置。
+引用、实现、符号与多目标定义使用同一选择流程；普通搜索和任务 quickfix 保留原行为。
+列表仍复用 `[q`、`]q`、`<leader>xQ`。第一次 `K` 保持代码窗口焦点；第二次 `K`
+复用文档内容，不重复请求。文档窗口中可搜索、滚动，`q` / `Esc` 返回代码。
+较旧 Vim 使用普通预览窗口，同样支持第二次 `K` 进入阅读。
+
+自动单词补全继续保留；`Ctrl-x Ctrl-o` 的语义菜单优先占用补全界面，按服务器排序，
+支持浮窗和 `CompleteChanged` 的 Vim 会在选中候选后显示详情并按需解析文档。
+取消或失效的候选不会应用附加编辑。
+默认诊断只显示 sign 与下划线，普通光标移动不弹窗或在消息栏提示；
+`[d` / `]d` 跳转后立即显示当前行详情，`<leader>ce` 也可手动打开。
+浮窗采用细圆角边框，边框统一使用主题色，仅内部的严重程度与来源标题按严重程度着色。
+优先位于目标行上方，空间不足时放到下方，保持在当前代码窗口内且不覆盖目标行。
+同一行多条诊断优先展示当前跳转位置，
+其余按严重程度排序；长消息自动换行，溢出时可将鼠标移到浮窗上滚动。
+诊断浮窗显示期间临时启用普通模式鼠标，关闭后恢复原设置。
+移动光标、修改文本、进入插入模式、切换窗口或按 `Esc` 会关闭浮窗。
+不支持浮窗时，跳转只在消息栏显示摘要；`ce` 使用普通预览窗口。
+插入模式保留已有标记，退出插入模式后刷新。`<leader>cd` 只切换当前文件的显示，
+保留缓存及诊断跳转；`cl` 在当前窗口 location list 中选择诊断。
+`:VimLspDiagnosticList!` 列出当前项目的诊断，采用 quickfix 预览和确认流程。
+自动签名提示、符号高亮、语义高亮、内嵌提示及 LSP 折叠仍关闭；`ck` 手动查看签名。
+
+`<leader>rn` 支持服务器的重命名准备检查及默认名称；`ca` 显示代码操作，
+优先项与不可用原因清晰标明，并支持按需解析操作；`cf` 格式化全文或字符／整行选区。
+块选区会明确提示不支持。所有入口检查服务器能力，例如 Pyright 不提供格式化时会提示。
+跨文件编辑先检查所有文件的范围、版本和可编辑状态，失败时整体拒绝；每个文件可一次撤销。
+文件创建、重命名和删除类 WorkspaceEdit 会整体拒绝。不自动格式化、保存或打开编辑结果列表。
+延迟响应限定发起的文件、窗口、位置和版本；过期请求被取消，默认 10 秒超时。
+常用原生 `:LspDefinition` / `References` / `Hover` / `Rename` / `CodeAction` / 格式化及
+符号命令也使用上述流程；其余上游命令保持原实现。
 
 没有服务器时，保留原生按键与基础编辑；首页、帮助和终端不会启动服务器。
 缺失客户端或服务器时不弹出阻塞提示。`:VimLspStatus` 显示启用情况、
 缺失依赖、命令列表、项目根目录和服务器状态；启动失败后也可用它检查。
+右下角分别显示文件类型与已就绪的 LSP，例如 `[lang: python] [lsp: pyright]`、
+`[lang: cpp] [lsp: clangd]`。启动、分析或索引期间隐藏 LSP 栏目，完成后自动出现；
+缺少程序、启动失败、禁用、大文件模式或没有适用服务器时也隐藏该栏目。
+不显示动画、图标或状态文字。clangd 的解析状态按文件 URI 区分，分屏分别判断。
+状态由服务器通知和窗口事件更新，没有周期性计时器；状态栏绘制只读取缓存。
+LSP 栏目出现表示客户端已连接且没有正在报告的工作，不代表代码没有错误。
+进度使用标准 LSP `$/progress`，也兼容 Pyright 的旧进度通知；
+clangd 文件状态采用其 [协议扩展](https://clangd.llvm.org/extensions#file-status)。
+`:VimLspInfo` / `<leader>ci` 打开状态面板，优先列出当前文件生效的服务器
+（`ACTIVE`），并区分正在运行但未用于当前文件的服务器（`RUNNING`）和未就绪的
+服务器（`INACTIVE`）。面板显示源文件、文件类型、客户端加载情况、诊断开关、
+服务器命令及可执行文件路径、项目根目录和服务器支持的功能。
+未生效时显示原因，包括文件类型不匹配、大文件模式、缺少命令、启动失败和全局禁用。
+服务器支持的功能、当前文件诊断显示和待处理请求分别展示。
+按 `r` 刷新打开面板时的源文件状态，`q` / `Esc` 关闭并返回原窗口。
+在另一文件中再次打开时复用当前标签页的面板并切换查询目标。
 正常安装脚本仅提示缺失的默认服务器命令；`--config-only` 不检查依赖。
 
 命令可指定绝对路径或版本化名称，参数分开填写，不写成 shell 命令字符串：
@@ -351,8 +451,11 @@ vim --cmd 'let g:vimrc_lite_lsp = 0'
 
 ### 项目根目录与环境
 
-每个 Vim 会话面向一个项目，每种语言服务器首次启动时确定根目录，后续文件复用
-该进程。不同项目或不同 Python 环境使用不同 Vim 会话；本配置不管理多个独立工作区。
+同一 Vim 可打开多个项目，以服务器种类和规范化根目录分别创建实例。
+同一项目的文件复用进程，不向其他项目广播文档；列表中的临时预览不会启动新项目实例，
+确认目标后才按正常文件处理。Python 解释器和虚拟环境由各项目的 Pyright 配置决定。
+`:VimLspStop` 停止当前项目，切换文件或重载不会重新启动；`:VimLspStart` 手动启动，
+`:VimLspRestart` 重启当前项目并应用新命令配置。服务器退出后等待手动启动，避免反复重启。
 LSP 不改变 Vim 的 `:pwd`，搜索模块也继续使用自己的项目定位规则。
 
 - Python：从当前文件目录向上找最近的 `pyrightconfig.json`、`pyproject.toml`、
@@ -402,6 +505,13 @@ clangd 的跨文件跳转和补全可能不完整。首版不注册 CUDA 文件�
 
 ## 文件和文本搜索
 
+当前文件使用原生 `/`、`?`、`*`、`#` 搜索，`n` / `N` 跳到下一处／上一处。
+光标位于匹配文字内时，行尾显示 `[当前序号/全文匹配数]`，例如 `[3/12]`；
+同一行的多个匹配分别计数。序号从文件开头计算，与搜索方向无关。
+标记是虚拟文字，不改动文件；移出匹配、进入插入模式或用 `<leader>fh` /
+`:nohlsearch` 清除高亮后隐藏。需要 Vim 9.0.0121+ 的 `+textprop`；旧版保留原生搜索。
+计数最多用时 20 毫秒，未能完整统计时隐藏标记，避免显示不准确的序号。
+
 搜索从当前文件目录向上找最近的 `.git`、`_darcs`、`.hg`、`.bzr`、`.svn`、
 `Makefile`、`package.json` 或 `pom.xml`；首页和无文件 buffer 从当前工作目录开始。
 找不到标记时使用当前工作目录。仅搜索进程切换目录，Vim 的 `:pwd` 保持不变。
@@ -413,19 +523,30 @@ clangd 的跨文件跳转和补全可能不完整。首版不注册 CUDA 文件�
 - `fp`：直接输入 **ripgrep 正则**，输入后立即刷新结果。小写查询忽略大小写，
   包含大写则区分大小写。包含隐藏文件、排除 `.git`，遵守 ignore 规则；搜索所有文本
   文件，不再限于 Python/C++，也不再询问 glob。空查询不扫描文件。
-- `fr`：从 Vim 的 viminfo 最近文件记录中按新近顺序列出文件，支持模糊筛选和内容预览；
+- `fr`：从 Vim 的 viminfo 最近文件记录中按新近顺序列出文件，支持模糊筛选，只显示文件列表；
   文件已被删除时仍会显示路径，但选择后会给出提示。
 - `.gitignore`、`.ignore` 等由 fd/rg 按各自的原生规则处理；不再硬编码排除 `build`
   等目录，需要排除的生成文件应写入项目 ignore 文件。搜索读取磁盘内容。
 
 fzf 在居中终端弹窗中运行，宽约 90%、高约 80%，沿用 TokyoNight 配色与透明设置。
 不支持终端弹窗的 Vim 使用底部分屏；缺少必要功能或程序时提示，不使用旧同步搜索。
-`fp` 预览从命中行开始的后文，`fr` 预览文件开头；宽屏在右侧、窄屏在下方显示。
+搜索启动时初始化内置终端的字符集，避免分段读取 UTF-8 时中文或光标符号偶发显示成 `�`。
+`fp` 在预览中居中显示命中行及其上下文；宽屏在右侧、窄屏在下方显示。
+前文行数按预览区域的实际高度调整，文件开头不足的部分补空白。
+支持 `resize` 事件的 fzf 缩放终端后自动重算；旧版重新打开搜索后使用新尺寸。
+默认使用 TokyoNight 语法颜色，区分关键字、类型、函数、字符串、注释和数字。
+支持 Python、C/C++/CUDA、JavaScript/TypeScript、Shell、Vimscript、JSON 和 YAML；
+其他文件保持纯文本。上色复用已有 gawk 进程，不启动额外的编辑器或外部高亮工具。
+只解析当前预览片段，不向前扫描整个文件；片段起点之前的多行字符串或注释状态
+无法还原，因此颜色可能与完整编辑器略有差异。
+上色开关可用 `g:vimrc_lite_search_highlight` 设置；实测对照见
+[PERFORMANCE.md](PERFORMANCE.md)。
 预览输入最多 64 KiB、显示最多 200 行，每行最多 500 字节（不切断 UTF-8 字符）；
 超过限制时显示截断提示。命中行带标记和颜色，可在片段内翻页，回车查看完整内容。
-文本搜索携带行首字节偏移，预览深处的匹配无需从文件开头扫描。
-UTF-16 文件显示命中摘要，并在系统提供 iconv 时解码受限的文件开头，注明预览范围；
-跳转仍使用搜索返回的行列。
+文本搜索携带行首字节偏移，预览最多向前取 32 KiB，随后读取不超过 64 KiB 的窗口；
+预览深处的匹配无需从文件开头扫描。
+UTF-16 文件显示命中摘要，并在系统提供 iconv 时解码受限的文件开头；
+命中位于受限范围内时正常居中，超出范围时显示提示。跳转仍使用搜索返回的行列。
 fzf 0.29.x–0.30.x 不支持自动预览布局，固定在下方显示预览。
 
 | 搜索界面按键 | 功能 |
@@ -433,18 +554,100 @@ fzf 0.29.x–0.30.x 不支持自动预览布局，固定在下方显示预览。
 | 直接输入 | 模糊筛选文件／刷新文本搜索 |
 | `Ctrl-j/k`、方向键 | 下一个／上一个结果 |
 | `Ctrl-n/p` | 下一条／上一条查询历史 |
-| `Ctrl-u/d` | `fp`／`fr` 预览上翻／下翻半页 |
-| `Enter` | 在原窗口打开文件；文本搜索定位到行、列 |
+| `Ctrl-u/d` | `fp` 预览上翻／下翻半页 |
+| `Tab` / `Shift-Tab` | 选择／取消选择结果并移动光标 |
+| `Enter` | 打开当前结果；选中多条时将所选结果导入 quickfix |
+| `Ctrl-q` | 将所选结果（没有多选时为当前结果）导入 quickfix |
 | `Esc`、`Ctrl-c` | 取消并返回原窗口 |
 
 这里采用 fzf 的单一输入模式，没有 Telescope 的普通／插入模式切换。
 搜索期间将终端按键序列的等待上限设为 30 ms；确认单次 `Esc` 后直接发送取消指令，
 避免 Vim 与 fzf 叠加等待。搜索结束或配置重载时恢复原设置，普通映射的等待时间不变。
 无匹配时保持空列表；无效正则显示错误，可以继续编辑查询。取消搜索不丢弃未保存内容，
-也不清空原有 quickfix。结果直接打开文件，不自动写入 quickfix。
+也不清空原有 quickfix。普通单项选择直接打开文件；导入 quickfix 后用 `[q`、`]q`
+逐项跳转，`<leader>xQ` 开关列表。导入会创建新的 quickfix 历史，不覆盖之前的列表。
+`<leader>fw` 自动填入当前单词或单行选区，转义正则符号；仍可修改查询为其他正则。
+多行选区会提示缩小到单行，搜索读取磁盘内容。
 Esc 先向搜索终端发送 Ctrl-C；100 毫秒后作业仍未退出时，向本次搜索作业发送 SIGTERM，
 避免卡住的工具探测无限等待。仍待退出与通道关闭后清理，取消后不再打开迟到的选择结果。
 文件名及查询中的空格、中文、引号和 shell 特殊字符会作为数据处理。
+
+## 撤销、任务与会话
+
+普通文件默认启用持久撤销。保存文件后，退出再打开仍能使用 `u`、`Ctrl-r`、
+`:earlier` 和 `:later`；记录存放于 `$XDG_STATE_HOME/vim-lite/undo`，未设置 XDG 时
+使用 `~/.local/state/vim-lite/undo`，不在项目旁生成撤销文件。
+未保存的编辑不会因为持久撤销而自动写入磁盘。仍禁用交换文件。
+加载配置前设置 `g:vimrc_lite_persistent_undo = 0` 可关闭记录。
+
+项目任务、复用终端和会话从当前文件目录向上定位最近的 `.git`、`.hg`、`.svn`、
+`pyproject.toml`、`pyrightconfig.json`、`CMakeLists.txt`、`compile_commands.json`、
+`Makefile`、`package.json` 或 `.vim-lite-tasks.json`；没有标记则使用当前文件目录，
+无文件时从当前工作目录开始。项目定位不改变 Vim 工作目录。
+
+### 异步项目任务
+
+在项目根目录创建 `.vim-lite-tasks.json`，例如：
+
+```json
+{
+  "tasks": {
+    "test": {"cmd": ["python3", "-m", "pytest", "-q"]},
+    "build": {"cmd": ["make", "-j4"]},
+    "check": {
+      "cmd": ["python3", "check.py"],
+      "errorformat": "%f:%l:%c: %m"
+    }
+  }
+}
+```
+
+用 `:VimTask test` 运行指定任务，Tab 补全名称；`<leader>rt` 弹出编号选择。
+任务在项目根目录后台执行，标准输出与错误输出合并收集；可以继续编辑。
+结束时按任务的 `errorformat`（缺省为 Vim 的当前设置）解析到该任务自己的 quickfix
+历史列表，不抢焦点；`<leader>xQ` 查看结果。若期间创建了其他 quickfix 列表，
+当前列表保持不变。用 `:colder` 可回到任务列表。
+
+`:VimTaskStatus` / `<leader>rs` 查看状态，`:VimTaskOutput` / `<leader>ro` 显示当前
+输出快照，窗口内 `q` 关闭；`:VimTaskStop` / `<leader>rx` 停止任务。
+同一 Vim 同时运行一个任务。默认最多保留 10000 行输出，可用
+`g:vimrc_lite_task_max_lines` 调整，达到上限会显示提示。
+单行最多保留 16 KiB，可用 `g:vimrc_lite_task_line_bytes` 调整。
+
+命令必须为参数列表，不隐式解释 shell 字符。需要管道时明确使用
+`["sh", "-c", "你的命令"]`。配置在主动运行任务时读取，启动 Vim 不读取或执行任务。
+也可用 `g:vimrc_lite_tasks` 设置同样结构的任务字典；项目 JSON 文件存在时优先使用它。
+
+### 可复用终端
+
+`<leader>tt` / `:VimTerminalToggle` 在底部分屏显示或隐藏当前项目的终端。
+隐藏保留进程、shell 变量、目录和历史；再次打开使用同一个终端。
+终端输入模式按 `Ctrl-g` 隐藏，或双 `Esc` 后使用 `<leader>tt`。
+退出 shell 后清理终端，下次打开创建新进程；配置重载不会终止已有进程。
+原有 `<leader>;` / `:VimTerminal` 继续每次新建终端标签页。
+
+### 手动会话
+
+`<leader>ss` / `:VimSessionSave` 保存当前项目的默认会话，`<leader>sl` /
+`:VimSessionLoad` 恢复。可添加名称，例如 `:VimSessionSave debugging`、
+`:VimSessionLoad debugging`；`:VimSessionList` 列出名称，命令支持 Tab 补全。
+
+会话保存已存在文件的标签页、分屏、尺寸、视图和活动窗口，跳过首页、文件树、
+终端、quickfix 和未保存的新文件；隐藏的普通文件也保留在 buffer 列表中。
+数据使用 JSON，位于
+`$XDG_STATE_HOME/vim-lite/sessions`（默认 `~/.local/state/vim-lite/sessions`），
+按项目分开保存，不自动保存或执行会话脚本。
+恢复会重建可见布局；有未保存 buffer、文件缺失或数据无效时先提示并保留原布局。
+未保存内容不包含在会话里，应单独保存文件。不同项目与 Python 环境继续使用独立 Vim。
+
+## 快捷键查询与环境检查
+
+`<leader>?` / `:VimKeys` 查看实际映射；`:VimKeys rename`、`:VimKeys 搜索` 可按
+按键、功能或命令过滤。支持对应功能时，还显示当前 buffer 的结构文本对象映射。
+查询窗口内 `q` 关闭。旧 Vim 没有 `maplist()` 时使用原生映射列表。
+
+`<leader>ch` / `:VimHealth` 查看 Vim 功能、项目根目录、搜索工具路径、
+剪贴板方式、撤销目录、任务配置路径和 LSP 状态。检查只展示环境，不安装工具。
 
 两类查询分别保存在 `${XDG_STATE_HOME:-~/.local/state}/vim-lite/search/`，各保留 100 条。
 历史目录不可写时仍可搜索，但不保存历史。搜索界面隔离 `FZF_DEFAULT_OPTS`、
@@ -452,7 +655,7 @@ Esc 先向搜索终端发送 Ctrl-C；100 毫秒后作业仍未退出时，向�
 不修改当前 shell 的环境设置。
 
 候选文件和匹配结果由 awk 流式转换并及时刷新，不经过逐条 Bash 循环；
-fzf 能力检测在同一 Vim 会话中复用，替换 fzf 可执行文件后重新检测。
+fzf 能力检测在同一 Vim 会话中复用，替换 fzf 可执行文件或更新搜索 helper 后重新检测。
 `fp` 单独使用 `GOMAXPROCS=1`，减少连续输入时的重复取消与重启；rg 保留并行扫描，
 `ff/fr` 保留 fzf 的并行模糊匹配。空查询直接提供空输入，不启动额外 shell。
 低延迟实时搜索请使用 fzf 0.62.0 或更新版本；旧版仍可使用，但重复查询可能因
@@ -506,6 +709,8 @@ python3 ~/Dotfiles/vim/tests/test_vim.py
 LazyGit 生命周期测试使用模拟程序，验证首页返回、未保存内容、后台退出和配置重载。
 LSP 测试用 Python 标准库实现的本地 stdio 协议服务，验证初始化、文件同步、定义跳转、
 引用、文档、手动补全、中文位置、配置重载、缺失依赖和插件安装升级，不访问网络。
+`tests/test_lsp_behaviors.py` 另外验证多项目实例、停止／重启、超时／乱序响应、
+诊断缓存与插入模式、字符选区、候选与代码操作解析，以及跨文件编辑的整体预检和撤销。
 非 BMP 位置问题已修复，回归覆盖 emoji、组合字符、UTF-16 增量同步与补全编辑。
 完整测试及性能基准命令见 [PERFORMANCE.md](PERFORMANCE.md)。
 真实 Pyright/clangd 验收需另在装有服务器的机器上完成：用 Python 跨模块引用以及
