@@ -304,6 +304,7 @@ nnoremap <leader>nh :messages<CR>
 
 nnoremap <silent> <leader>gg :VimGit<CR>
 nnoremap <silent> <leader>; :VimTerminal<CR>
+nnoremap <silent> <leader>tt :VimTerminalToggle<CR>
 nnoremap <silent> <leader>rn :VimLspRename<CR>
 nnoremap <silent> <leader>ca :VimLspCodeAction<CR>
 xnoremap <silent> <leader>ca :<C-u>call VimLspSelection('action', visualmode())<CR>

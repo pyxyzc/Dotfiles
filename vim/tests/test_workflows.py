@@ -192,5 +192,38 @@ call assert_match('Vim task:', execute('messages'))
 call assert_equal(newer_id, getqflist({'id': 0}).id)
 ''')
 
+    def test_reusable_terminal_preserves_job_and_shell_state(self):
+        self.terminal_vim(r'''
+set shell=sh
+edit origin.txt
+let origin = win_getid()
+VimTerminalToggle
+let terminal = bufnr('%')
+let job = term_getjob(terminal)
+call term_sendkeys(terminal, "VALUE=remembered\n")
+call term_wait(terminal, 30)
+stopinsert
+VimTerminalToggle
+call assert_equal(origin, win_getid())
+call assert_true(bufexists(terminal))
+call assert_equal('run', job_status(job))
+VimTerminalToggle
+call assert_equal(terminal, bufnr('%'))
+call assert_equal(job, term_getjob(terminal))
+call term_sendkeys(terminal, "printf 'value:%s' \"$VALUE\"\n")
+for attempt in range(100)
+  call term_wait(terminal, 10)
+  if TerminalScreen(terminal) =~# 'value:remembered' | break | endif
+endfor
+call assert_match('value:remembered', TerminalScreen(terminal))
+call term_sendkeys(terminal, "exit\n")
+for attempt in range(200)
+  sleep 10m
+  if !bufexists(terminal) | break | endif
+endfor
+call assert_false(bufexists(terminal))
+call assert_equal(origin, win_getid())
+''')
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
