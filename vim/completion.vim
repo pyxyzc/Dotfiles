@@ -206,6 +206,7 @@ endfunction
 function! s:Changed() abort
   if mode(1) !~# '^i' || &paste || &buftype !=# '' || !&modifiable
         \ || get(b:, 'vimrc_lite_large_file', 0)
+        \ || get(b:, 'vimrc_lite_completion_owner', '') ==# 'lsp'
     return
   endif
   " 手动关键词/LSP 补全由其自身管理；用户正在挑选候选项时也不重置菜单。
@@ -249,4 +250,5 @@ augroup vimrc_lite_completion
   endif
   autocmd CompleteDone * call <SID>Done()
   autocmd InsertLeave,BufLeave * call <SID>Cancel()
+  autocmd User VimLspCompletionStart call <SID>Cancel()
 augroup END

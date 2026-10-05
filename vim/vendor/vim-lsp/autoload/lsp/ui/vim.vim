@@ -325,9 +325,13 @@ function! s:handle_location(ctx, server, type, data) abort "ctx = {counter, list
                     let l:level = count(l:parent[l:pos-1].text, g:lsp_tree_incoming_prefix)
                     let a:ctx['list'] = extend(l:parent, map(a:ctx['list'], 'extend(v:val, {"text": repeat("' . g:lsp_tree_incoming_prefix . '", l:level+1) . v:val.text})'), l:pos)
                 endif
-                call lsp#ui#vim#utils#setqflist(a:ctx['list'], a:type)
-                echo 'Retrieved ' . a:type
-                botright copen
+                if has_key(a:ctx, 'on_list')
+                    call a:ctx['on_list'](a:ctx['list'], a:type)
+                else
+                    call lsp#ui#vim#utils#setqflist(a:ctx['list'], a:type)
+                    echo 'Retrieved ' . a:type
+                    botright copen
+                endif
                 if get(a:ctx, 'add_tree', v:false)
                     " move the cursor to the newly added item
                     execute l:pos + 1

@@ -48,6 +48,15 @@ function! s:on_complete_done() abort
     return
   endif
 
+  if bufnr('%') != get(l:managed_user_data, 'buffer', bufnr('%'))
+      \ || win_getid() != get(l:managed_user_data, 'window', win_getid())
+      \ || lsp#utils#get_buffer_uri() !=# get(l:managed_user_data, 'uri', lsp#utils#get_buffer_uri())
+      \ || !lsp#is_server_running(l:managed_user_data.server_name)
+      \ || get(lsp#get_server_info(l:managed_user_data.server_name), 'vimrc_generation', 0)
+      \ != get(l:managed_user_data, 'generation', 0)
+    return
+  endif
+
   let s:context['done_line'] = getline('.')
   let s:context['done_line_nr'] = line('.')
   let s:context['done_position'] = lsp#utils#position#vim_to_lsp('%', getpos('.')[1 : 2])
@@ -56,6 +65,11 @@ function! s:on_complete_done() abort
   let s:context['completion_item'] = l:managed_user_data['completion_item']
   let s:context['start_character'] = l:managed_user_data['start_character']
   let s:context['complete_word'] = l:managed_user_data['complete_word']
+  let s:context.buffer = bufnr('%')
+  let s:context.window = win_getid()
+  let s:context.uri = lsp#utils#get_buffer_uri()
+  let s:context.resolved = get(l:managed_user_data, 'resolved', 0)
+  let s:context.generation = get(l:managed_user_data, 'generation', 0)
   call timer_start(0, {-> s:on_complete_done_after()})
 endfunction
 
@@ -68,6 +82,12 @@ function! s:on_complete_done_after() abort
 
   " Ignore process if the mode() is not insert-mode after feedkeys.
   if mode(1)[0] !=# 'i'
+    return ''
+  endif
+  if bufnr('%') != s:context.buffer || win_getid() != s:context.window
+      \ || !lsp#is_server_running(s:context.server_name)
+      \ || get(lsp#get_server_info(s:context.server_name), 'vimrc_generation', 0)
+      \ != s:context.generation
     return ''
   endif
 
@@ -92,7 +112,17 @@ function! s:on_complete_done_after() abort
     return ''
   endif
 
-  let l:completion_item = s:resolve_completion_item(l:completion_item, l:server_name)
+  if !s:context.resolved
+    let l:resolve_tick = b:changedtick
+    let l:completion_item = s:resolve_completion_item(l:completion_item, l:server_name)
+    if bufnr('%') != s:context.buffer || win_getid() != s:context.window
+        \ || lsp#utils#get_buffer_uri() !=# s:context.uri || b:changedtick != l:resolve_tick
+        \ || get(lsp#get_server_info(l:server_name), 'vimrc_generation', 0) != s:context.generation
+        \ || !lsp#is_server_running(l:server_name)
+      doautocmd <nomodeline> User lsp_complete_done
+      return ''
+    endif
+  endif
 
   " clear completed string if need.
   let l:is_expandable = s:is_expandable(l:done_line, l:done_position, l:complete_position, l:completion_item, l:complete_word)

@@ -60,13 +60,47 @@ rangeLength，且确认输入未被修改。`tests/test_lsp.py` 在临时客户�
 Unicode 附加编辑、两个同名候选、取消、禁用编辑、错误候选身份与协议 snippet 展开。
 小项目真实 clangd/Pyright 验收另外通过，不把模拟服务等同于所有语言服务器行为。
 
+## 本地补丁：引用列表选择回调（2026-10-04）
+
+`autoload/lsp/ui/vim.vim` 的多位置结果分支支持可选的 `ctx.on_list` 回调，
+把已聚合、已转换的条目和列表类型交给配置处理；没有回调的命令沿用上游行为。
+该可选回调继续供上游调用方使用；配置的常用导航入口已改为下述统一请求管理。
+
+`tests/test_lsp.py` 使用真实 Vim 与模拟 LSP 服务覆盖引用列表交互、未保存的 Unicode
+内容、分屏、列表复用和配置重载。
+
+## 本地补丁：项目实例、请求与编辑交互（2026-10-04）
+
+行为参考 [Neovim LSP](https://neovim.io/doc/user/lsp/) 与
+[diagnostic](https://neovim.io/doc/user/diagnostic/) 文档，具体选择列表和阅读窗口由
+第一方 `lsp.vim` 实现。Vim popup 无法像 Neovim 浮窗一样进入，第二次 `K`
+把缓存内容转到普通 scratch 窗口。
+
+- `autoload/lsp.vim`：可选 buffer prepare/filter 钩子，实现按服务器种类和根目录路由；
+  按指定 buffer 激活文档、查询已同步的文档版本；hover 窗口查询兼容第一方界面。
+  `workspace/applyEdit` 失败时返回 `applied: false` 和原因。
+- `utils/workspace_edit.vim`：全体目标预检，拒绝只读、过期版本、错误／重叠范围与文件资源操作；
+  计算完整结果后应用，不保存文件；每个 buffer 单独一次撤销，异常时撤回已应用的 buffer。
+- `utils/text_edit.vim`：补全编辑保留未保存 buffer 和窗口视图，合并一次操作内的撤销步骤。
+- `omni.vim` 与 `ui/vim/completion.vim`：有界等待、请求取消、原窗口／文档／实例校验，
+  管理自动单词补全与语义菜单归属；解析后的候选复用缓存，避免重复请求。
+- `internal/completion/documentation.vim`：解析选中候选的文档，校验当前候选与实例，
+  超时或菜单关闭时取消；缓存结果供确认时使用。
+- `internal/diagnostics/{state,signs,highlights}.vim`：显示开关只影响 buffer，缓存继续保留；
+  默认显示可配置，拒绝有版本号的旧诊断；插入模式不清除已有装饰，退出后再更新。
+- 随附 Vital Markdown：清除可选插件未定义的 syntax group 时不留下 `E28`。
+
+`tests/test_lsp_behaviors.py` 通过可延迟、乱序和自定义能力／结果的本地协议服务覆盖
+多根目录与生命周期、延迟响应取消、超时、选区、文档、诊断及编辑预检；
+`tests/test_lsp.py` 保留真实普通模式按键及 Unicode、未保存内容、旧版回退回归。
+
 ## 人工升级
 
 1. 确定新的完整提交号，下载该提交的源码归档并检查上游变更和许可证。
 2. 整体替换上面列出的目录及文件，避免保留旧提交中已删除的文件；不要加入 `.git`、上游 CI 或测试工具依赖。
 3. 对照本地补丁清单重新应用仍需保留的修复；若上游已修复，先验证等价性再删除本地补丁。
    更新本文件的提交号、归档地址、校验值、收录范围及补丁清单。
-4. 在 `vim/` 目录运行 `PYTHONPATH=tests python3 -m unittest test_vim test_tree test_completion test_clipboard test_edit test_matchparen test_lsp test_lsp_diff test_vim_style`，
+4. 在 `vim/` 目录运行 `PYTHONPATH=tests python3 -m unittest test_vim test_tree test_completion test_clipboard test_edit test_matchparen test_lsp test_lsp_behaviors test_lsp_diff test_vim_style`，
    再运行 `python3 tests/lsp_latency.py --rounds 5 --unicode` 验证真实 Pyright、clangd。
 5. 将源码快照和适配变更一起提交。安装脚本仅复制此快照，不访问上游。
 

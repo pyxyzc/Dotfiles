@@ -49,7 +49,7 @@ function! s:resolve_completion(event) abort
 
     let l:completion_item = l:managed_user_data['completion_item']
 
-    if has_key(l:completion_item, 'documentation')
+    if get(l:managed_user_data, 'resolved', 0) || has_key(l:completion_item, 'documentation')
         return lsp#callbag#of(l:managed_user_data)
     elseif lsp#capabilities#has_completion_resolve_provider(l:managed_user_data['server_name'])
         return lsp#callbag#pipe(
@@ -57,19 +57,37 @@ function! s:resolve_completion(event) abort
             \   'method': 'completionItem/resolve',
             \   'params': l:completion_item,
             \ }),
-            \ lsp#callbag#map({x->{
-            \   'server_name': l:managed_user_data['server_name'],
-            \   'completion_item': x['response']['result'],
-            \   'complete_position': l:managed_user_data['complete_position'],
-            \ }})
+            \ lsp#callbag#map({x->s:resolved_completion(l:managed_user_data, x)})
+            \ , lsp#callbag#takeUntil(lsp#callbag#interval(
+            \ get(g:, 'vimrc_lite_lsp_request_timeout_ms', 10000)))
             \ )
     else
         return lsp#callbag#of(l:managed_user_data)
     endif
 endfunction
 
+function! s:resolved_completion(managed, data) abort
+    if bufnr('%') != get(a:managed, 'buffer', bufnr('%'))
+        \ || win_getid() != get(a:managed, 'window', win_getid()) || !pumvisible()
+        \ || !has_key(get(a:data, 'response', {}), 'result')
+        \ || type(a:data.response.result) != type({})
+        \ || get(lsp#get_server_info(a:managed.server_name), 'vimrc_generation', 0)
+        \ != get(a:managed, 'generation', 0)
+        return {}
+    endif
+    let info = complete_info(['items', 'selected'])
+    if info.selected < 0 || lsp#omni#get_managed_user_data_from_completed_item(
+        \ info.items[info.selected]) isnot a:managed
+        return {}
+    endif
+    let a:managed.completion_item = a:data.response.result
+    let a:managed.resolved = 1
+    return a:managed
+endfunction
+
 function! s:show_floating_window(event, managed_user_data) abort
     if empty(a:managed_user_data) || !pumvisible()
+        \ || bufnr('%') != get(a:managed_user_data, 'buffer', bufnr('%'))
         call s:close_floating_window(v:true)
         return
     endif

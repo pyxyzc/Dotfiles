@@ -68,7 +68,9 @@ set hidden autoread
 set noswapfile
 set number relativenumber cursorline
 set laststatus=2 showmode showcmd
-set statusline=%n:%f\ %m%r%h%=%y\ %l:%c\ %p%%
+let &statusline = '%n:%f %m%r%h%='
+      \ . '%{exists("*VimLspStatusLabel") ? VimLspStatusLabel() : '
+      \ . 'empty(&filetype) ? "" : "[lang: " . &filetype . "]"} %l:%c %p%%'
 set scrolloff=5 sidescrolloff=5 nowrap
 set splitbelow splitright
 set backspace=indent,eol,start
@@ -79,7 +81,9 @@ set incsearch hlsearch ignorecase smartcase
 set wildmenu wildmode=longest:full,full
 set complete=.,w,b
 set completeopt=menuone,noinsert,noselect
-inoremap <expr> <CR> pumvisible() ? "\<C-y>" : "\<CR>"
+inoremap <expr> <CR> !pumvisible() ? "\<CR>"
+      \ : exists('*complete_info') && complete_info(['selected']).selected < 0
+      \ ? "\<C-e>\<CR>" : "\<C-y>"
 set path=.,**
 set wildignore+=*/.git/*,*/.venv/*,*/venv/*,*/__pycache__/*
 set wildignore+=*/build/*,*/dist/*,*/node_modules/*
@@ -188,6 +192,7 @@ endif
 if !s:SourceModule('lsp.vim')
   command! VimLspStatus call <SID>Warn(
         \ 'missing lsp.vim; copy the complete vim directory')
+  command! VimLspInfo VimLspStatus
 endif
 
 " buffer 栏与 buffer 管理模块。
@@ -293,6 +298,21 @@ nnoremap <leader>nh :messages<CR>
 
 nnoremap <silent> <leader>gg :VimGit<CR>
 nnoremap <silent> <leader>; :VimTerminal<CR>
+nnoremap <silent> <leader>rn :VimLspRename<CR>
+nnoremap <silent> <leader>ca :VimLspCodeAction<CR>
+xnoremap <silent> <leader>ca :<C-u>call VimLspSelection('action', visualmode())<CR>
+nnoremap <silent> <leader>cf :VimLspFormat<CR>
+xnoremap <silent> <leader>cf :<C-u>call VimLspSelection('format', visualmode())<CR>
+nnoremap <silent> <leader>cs :VimLspSymbols<CR>
+nnoremap <silent> <leader>cd :VimLspDiagnostics<CR>
+nnoremap <silent> <leader>ce :VimLspDiagnosticDetails<CR>
+nnoremap <silent> <leader>cl :VimLspDiagnosticList<CR>
+nnoremap <silent> <leader>ci :VimLspInfo<CR>
+nnoremap <silent> <leader>cD :VimLspDeclaration<CR>
+nnoremap <silent> <leader>ct :VimLspTypeDefinition<CR>
+nnoremap <silent> <leader>cm :VimLspImplementation<CR>
+nnoremap <silent> <leader>cS :VimLspWorkspaceSymbols<CR>
+nnoremap <silent> <leader>ck :VimLspSignature<CR>
 
 if has('terminal')
   tnoremap <Esc><Esc> <C-w>N

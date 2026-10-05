@@ -310,6 +310,10 @@ function! lsp#activate() abort
   call s:on_text_document_did_open()
 endfunction
 
+function! lsp#activate_buffer(buffer) abort
+    call s:on_text_document_did_open(a:buffer)
+endfunction
+
 function! s:on_text_document_did_save() abort
     let l:buf = bufnr('%')
     if getbufvar(l:buf, '&buftype') ==# 'terminal' | return | endif
@@ -1009,8 +1013,13 @@ function! s:on_request(server_name, id, request) abort
     call lsp#stream(1, l:stream_data) " notify stream before callbacks
 
     if a:request['method'] ==# 'workspace/applyEdit'
-        call lsp#utils#workspace_edit#apply_workspace_edit(a:request['params']['edit'])
-        call s:send_response(a:server_name, { 'id': a:request['id'], 'result': { 'applied': v:true } })
+        try
+            call lsp#utils#workspace_edit#apply_workspace_edit(a:request['params']['edit'], a:server_name)
+            let l:result = { 'applied': v:true }
+        catch
+            let l:result = { 'applied': v:false, 'failureReason': v:exception }
+        endtry
+        call s:send_response(a:server_name, { 'id': a:request['id'], 'result': l:result })
     elseif a:request['method'] ==# 'workspace/configuration'
         let l:config = lsp#utils#workspace_config#get(a:server_name)
         let l:response_items = map(a:request['params']['items'], { key, val -> lsp#utils#workspace_config#projection(l:config, val) })
@@ -1082,6 +1091,10 @@ endfunction
 " call lsp#get_allowed_servers(bufnr('%'))
 " call lsp#get_allowed_servers('typescript')
 function! lsp#get_allowed_servers(...) abort
+    let l:buffer = a:0 == 0 ? bufnr('%') : (type(a:1) == type(0) ? a:1 : -1)
+    if l:buffer > 0 && exists('g:lsp_buffer_prepare')
+        call call(g:lsp_buffer_prepare, [l:buffer])
+    endif
     if a:0 == 0
         let l:buffer_filetype = &filetype
     else
@@ -1097,6 +1110,10 @@ function! lsp#get_allowed_servers(...) abort
 
     for l:server_name in keys(s:servers)
         let l:server_info = s:servers[l:server_name]['server_info']
+        if l:buffer > 0 && has_key(l:server_info, 'buffer_filter')
+                \ && !l:server_info.buffer_filter(l:buffer)
+            continue
+        endif
         let l:blocked = 0
 
         if has_key(l:server_info, 'blocklist')
@@ -1133,6 +1150,13 @@ function! lsp#get_allowed_servers(...) abort
     endfor
 
     return l:active_servers
+endfunction
+
+function! lsp#get_document_version(server_name, buffer) abort
+    let l:server = get(s:servers, a:server_name, {})
+    let l:document = get(get(l:server, 'buffers', {}), lsp#utils#get_buffer_uri(a:buffer), {})
+    return get(l:document, 'changed_tick', -1) == getbufvar(a:buffer, 'changedtick')
+        \ ? get(l:document, 'version', v:null) : v:null
 endfunction
 
 function! s:get_text_document_text(buf, server_name) abort
@@ -1419,6 +1443,9 @@ function! lsp#get_progress() abort
 endfunction
 
 function! lsp#document_hover_preview_winid() abort
+    if exists('g:lsp_hover_window_getter')
+        return call(g:lsp_hover_window_getter, [])
+    endif
     return lsp#internal#document_hover#under_cursor#getpreviewwinid()
 endfunction
 

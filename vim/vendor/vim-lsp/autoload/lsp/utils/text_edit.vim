@@ -11,17 +11,24 @@ function! lsp#utils#text_edit#get_range(text_edit) abort
 endfunction
 
 function! lsp#utils#text_edit#apply_text_edits(uri, text_edits) abort
-    let l:current_bufname = bufname('%')
+    let l:current_buffer = bufnr('%')
+    let l:view = winsaveview()
     let l:target_bufname = lsp#utils#uri_to_path(a:uri)
     let l:cursor_position = lsp#get_position()
 
-    call s:_switch(l:target_bufname)
-    for l:text_edit in s:_normalize(a:text_edits)
-        call s:_apply(bufnr(l:target_bufname), l:text_edit, l:cursor_position)
-    endfor
-    call s:_switch(l:current_bufname)
-
-    if bufnr(l:current_bufname) == bufnr(l:target_bufname)
+    try
+        call s:_switch(l:target_bufname)
+        let l:first = 1
+        for l:text_edit in s:_normalize(a:text_edits)
+            if !l:first | silent! undojoin | endif
+            call s:_apply(bufnr('%'), l:text_edit, l:cursor_position)
+            let l:first = 0
+        endfor
+    finally
+        execute 'noautocmd keepalt keepjumps hide buffer ' . l:current_buffer
+        call winrestview(l:view)
+    endtry
+    if l:current_buffer == bufnr(l:target_bufname)
         call cursor(lsp#utils#position#lsp_to_vim('%', l:cursor_position))
     endif
 endfunction
@@ -141,6 +148,7 @@ function! s:_apply(bufnr, text_edit, cursor_position) abort
     endif
 
     " set lines.
+    if l:new_lines_len != l:range_len | silent! undojoin | endif
     call setline(a:text_edit['range']['start']['line'] + 1, l:new_lines)
 endfunction
 
@@ -211,7 +219,7 @@ function! s:_switch(path) abort
   if bufnr(a:path) == -1
     execute printf('badd %s', fnameescape(a:path))
   endif
-  execute printf('keepalt keepjumps %sbuffer!', bufnr(a:path))
+  execute 'noautocmd keepalt keepjumps hide buffer ' . bufnr(a:path)
 endfunction 
 
 "

@@ -83,9 +83,11 @@ endfunction
 " _clear
 "
 function! s:_clear(group) abort
+  let l:previous_error = v:errmsg
   try
-    execute printf('silent! syntax clear %s', a:group)
-  catch /.*/
+    execute printf('silent syntax clear %s', a:group)
+  catch /^Vim\%((\a\+)\)\=:E28:/
+    let v:errmsg = l:previous_error
   endtry
 endfunction
 
@@ -152,4 +154,3 @@ function! s:_get_filetype_from_mark(mark) abort
   endfor
   return a:mark
 endfunction
-

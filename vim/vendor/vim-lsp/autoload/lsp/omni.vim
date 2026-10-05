@@ -54,6 +54,9 @@ function! lsp#omni#complete(findstart, base) abort
     endif
 
     if a:findstart
+        call lsp#omni#cancel()
+        let b:vimrc_lite_completion_owner = 'lsp'
+        doautocmd <nomodeline> User VimLspCompletionStart
         return col('.')
     else
         if !g:lsp_async_completion
@@ -74,7 +77,12 @@ function! lsp#omni#complete(findstart, base) abort
             return exists('v:none') ? v:none : []
         else
             " Wait for finished the textDocument/completion request and then call `s:display_completions` explicitly.
-            call lsp#utils#_wait(-1, {-> s:completion['status'] isnot# s:completion_status_pending || complete_check()}, 10)
+            call lsp#utils#_wait(get(g:, 'vimrc_lite_lsp_request_timeout_ms', 10000),
+                \ {-> s:completion['status'] isnot# s:completion_status_pending || complete_check()}, 10)
+            if s:completion['status'] ==# s:completion_status_pending
+                call lsp#omni#leave()
+                return exists('v:none') ? v:none : []
+            endif
             call timer_start(0, { timer -> s:display_completions(timer, l:info) })
 
             return exists('v:none') ? v:none : []
@@ -130,6 +138,9 @@ let s:pair = {
 \}
 
 function! s:display_completions(timer, info) abort
+    if !s:valid_completion(a:info) || s:completion.status !=# s:completion_status_success
+        return
+    endif
     " TODO: Allow multiple servers
     let l:server_name = a:info['server_names'][0]
     let l:server_info = lsp#get_server_info(l:server_name)
@@ -170,17 +181,23 @@ function! s:display_completions(timer, info) abort
             endfor
         endif
         call complete(s:completion['startcol'], l:matches)
+    else
+        call lsp#omni#leave()
     endif
 endfunction
 
 function! s:handle_omnicompletion(server_name, complete_counter, info, data) abort
-    if s:completion['counter'] != a:complete_counter
+    if s:completion['counter'] != a:complete_counter || !s:valid_completion(a:info)
         " ignore old completion results
         return
+    endif
+    if has_key(s:completion, 'timer')
+        call timer_stop(remove(s:completion, 'timer'))
     endif
 
     if lsp#client#is_error(a:data) || !has_key(a:data, 'response') || !has_key(a:data['response'], 'result')
         let s:completion['status'] = s:completion_status_failed
+        call lsp#omni#leave()
         return
     endif
 
@@ -246,15 +263,69 @@ function! s:send_completion_request(info) abort
     let s:completion['counter'] = s:completion['counter'] + 1
     let l:server_name = a:info['server_names'][0]
     " TODO: support multiple servers
-    call lsp#send_request(l:server_name, {
+    let a:info.buffer = bufnr('%')
+    let a:info.window = win_getid()
+    let a:info.tick = b:changedtick
+    let a:info.position = getpos('.')
+    let a:info.counter = s:completion.counter
+    let a:info.generation = get(lsp#get_server_info(l:server_name), 'vimrc_generation', 0)
+    let s:completion.info = a:info
+    let s:completion.timer = timer_start(get(g:, 'vimrc_lite_lsp_request_timeout_ms', 10000),
+        \ {_->lsp#omni#leave()})
+    let s:completion.request = lsp#request_with_context(l:server_name, {
         \ 'method': 'textDocument/completion',
+        \ 'bufnr': a:info.buffer,
         \ 'params': {
         \   'textDocument': lsp#get_text_document_identifier(),
         \   'position': lsp#get_position(),
         \   'context': { 'triggerKind': 1 },
         \ },
-        \ 'on_notification': function('s:handle_omnicompletion', [l:server_name, s:completion['counter'], a:info]),
         \ })
+    let s:completion.dispose = lsp#callbag#pipe(s:completion.request.callbag,
+        \ lsp#callbag#subscribe({'next': function('s:handle_omnicompletion',
+        \ [l:server_name, s:completion.counter, a:info])}))
+endfunction
+
+function! s:valid_completion(info) abort
+    return get(a:info, 'counter', -1) == s:completion.counter
+        \ && bufnr('%') == get(a:info, 'buffer', -1)
+        \ && win_getid() == get(a:info, 'window', -1)
+        \ && b:changedtick == get(a:info, 'tick', -1)
+        \ && getpos('.') ==# get(a:info, 'position', [])
+        \ && lsp#is_server_running(a:info.server_names[0])
+        \ && get(lsp#get_server_info(a:info.server_names[0]), 'vimrc_generation', 0)
+        \ == get(a:info, 'generation', 0)
+endfunction
+
+function! lsp#omni#cancel() abort
+    let s:completion.counter += 1
+    let s:completion.status = ''
+    if has_key(s:completion, 'timer')
+        call timer_stop(remove(s:completion, 'timer'))
+    endif
+    if has_key(s:completion, 'request')
+        call lsp#cancel_request(s:completion.request.ctx)
+        call remove(s:completion, 'request')
+    endif
+    if has_key(s:completion, 'dispose')
+        call s:completion.dispose()
+        call remove(s:completion, 'dispose')
+    endif
+endfunction
+
+function! lsp#omni#leave() abort
+    call lsp#omni#cancel()
+    let b:vimrc_lite_completion_owner = ''
+endfunction
+
+function! lsp#omni#done() abort
+    call timer_start(1, {_->s:release_completion()})
+endfunction
+
+function! s:release_completion() abort
+    if !pumvisible()
+        call lsp#omni#leave()
+    endif
 endfunction
 
 function! s:get_completion_result(server_name, data) abort
@@ -403,6 +474,9 @@ endfunction
 function! s:create_user_data(completion_item, server_name, complete_position, start_character, complete_word) abort
     let l:user_data_key = s:create_user_data_key(s:managed_user_data_key_base)
     let s:managed_user_data_map[l:user_data_key] = {
+    \   'buffer': bufnr('%'), 'window': win_getid(),
+    \   'uri': lsp#utils#get_buffer_uri(),
+    \   'generation': get(lsp#get_server_info(a:server_name), 'vimrc_generation', 0),
     \   'complete_position': a:complete_position,
     \   'server_name': a:server_name,
     \   'completion_item': a:completion_item,

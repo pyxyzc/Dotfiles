@@ -58,6 +58,7 @@ function! lsp#internal#diagnostics#signs#_enable() abort
         \ ),
         \ lsp#callbag#filter({_->g:lsp_diagnostics_signs_enabled}),
         \ lsp#callbag#debounceTime(g:lsp_diagnostics_signs_delay),
+        \ lsp#callbag#filter({_->g:lsp_diagnostics_signs_insert_mode_enabled || mode()[0] !=# 'i'}),
         \ lsp#callbag#tap({x->s:clear_signs(x)}),
         \ lsp#callbag#tap({x->s:set_signs(x)}),
         \ lsp#callbag#subscribe(),

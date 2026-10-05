@@ -4,6 +4,32 @@ from test_vim import VimSession, quoted
 
 
 class CompletionTests(VimSession):
+    def test_enter_without_selected_candidate_inserts_newline(self):
+        self.terminal_vim(r'''
+enew
+call setline(1, ['', 'alpha alphabet'])
+call cursor(1, 1)
+let g:completion_seen = 0
+let g:attempts = 0
+function! EnterWithoutSelection(timer) abort
+  let g:attempts += 1
+  if pumvisible()
+    let g:completion_seen = 1
+    call assert_equal(-1, complete_info(['selected']).selected)
+    call feedkeys("\<CR>\<Esc>", 't')
+    call timer_stop(a:timer)
+  elseif g:attempts > 100
+    call feedkeys("\<Esc>", 't')
+    call timer_stop(a:timer)
+  endif
+endfunction
+call timer_start(10, function('EnterWithoutSelection'), {'repeat': -1})
+call feedkeys('ial', 'xt!')
+call assert_equal(1, g:completion_seen)
+call assert_equal(['al', '', 'alpha alphabet'], getline(1, '$'))
+call assert_false(pumvisible())
+''')
+
     def test_unsaved_long_current_line_accepts_complete_candidate_without_changing_prefix(self):
         self.terminal_vim(r'''
 enew
@@ -36,6 +62,8 @@ call assert_true(&modified)
 ''')
 
     def test_context_windows_match_native_prefix_at_utf8_boundaries(self):
+        # This matrix deliberately runs Vim's quadratic reference regex hundreds
+        # of times on long lines; allow it more time than ordinary editor tests.
         self.vim(r'''
 let s:prefix = ScriptPrefix('/completion.vim$')
 for keywords in ['@,48-57,_,192-255', '@,48-57,_,192-255,-', '48-57,_']
@@ -56,7 +84,7 @@ for keywords in ['@,48-57,_,192-255', '@,48-57,_,192-255,-', '48-57,_']
     endfor
   endfor
 endfor
-''')
+''', timeout=90)
 
     def test_context_cache_observes_text_cursor_buffer_keyword_and_encoding_changes(self):
         self.vim(r'''

@@ -63,6 +63,7 @@ function! lsp#internal#diagnostics#highlights#_enable() abort
         \ ),
         \ lsp#callbag#filter({_->g:lsp_diagnostics_highlights_enabled}),
         \ lsp#callbag#debounceTime(g:lsp_diagnostics_highlights_delay),
+        \ lsp#callbag#filter({_->g:lsp_diagnostics_highlights_insert_mode_enabled || mode()[0] !=# 'i'}),
         \ lsp#callbag#tap({x->s:clear_highlights(x)}),
         \ lsp#callbag#tap({x->s:set_highlights(x)}),
         \ lsp#callbag#subscribe(),

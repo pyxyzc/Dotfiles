@@ -99,6 +99,12 @@ endfunction
 
 function! s:on_text_documentation_publish_diagnostics(server, response) abort
     if lsp#client#is_error(a:response) | return | endif
+    let l:version = get(a:response.params, 'version', v:null)
+    let l:buffer = bufnr(lsp#utils#uri_to_path(a:response.params.uri))
+    if l:version isnot v:null && l:buffer > 0
+        let l:current = lsp#get_document_version(a:server, l:buffer)
+        if l:current is v:null || l:version < l:current | return | endif
+    endif
     let l:normalized_uri = lsp#utils#normalize_uri(a:response['params']['uri'])
     if !has_key(s:diagnostics_state, l:normalized_uri)
         let s:diagnostics_state[l:normalized_uri] = {}
@@ -186,21 +192,21 @@ function! s:notify_diagnostics_update(...) abort
 endfunction
 
 function! lsp#internal#diagnostics#state#_enable_for_buffer(bufnr) abort
-    if getbufvar(a:bufnr, 'lsp_diagnostics_enabled', 1) == 0
+    if getbufvar(a:bufnr, 'lsp_diagnostics_enabled', get(g:, 'vimrc_lite_lsp_diagnostics', 1)) == 0
         call setbufvar(a:bufnr, 'lsp_diagnostics_enabled', 1)
         call s:notify_diagnostics_update()
     endif
 endfunction
 
 function! lsp#internal#diagnostics#state#_disable_for_buffer(bufnr) abort
-    if getbufvar(a:bufnr, 'lsp_diagnostics_enabled', 1) != 0
+    if getbufvar(a:bufnr, 'lsp_diagnostics_enabled', get(g:, 'vimrc_lite_lsp_diagnostics', 1)) != 0
         call setbufvar(a:bufnr, 'lsp_diagnostics_enabled', 0)
         call s:notify_diagnostics_update()
     endif
 endfunction
 
 function! lsp#internal#diagnostics#state#_is_enabled_for_buffer(bufnr) abort
-    return getbufvar(a:bufnr, 'lsp_diagnostics_enabled', 1) == 1
+    return getbufvar(a:bufnr, 'lsp_diagnostics_enabled', get(g:, 'vimrc_lite_lsp_diagnostics', 1)) == 1
 endfunction
 
 " Return dict with diagnostic counts for the specified buffer
