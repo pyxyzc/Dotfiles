@@ -10,6 +10,7 @@ staged=''
 config_files=(
     project.vim
     tasks.vim
+    session.vim
     dashboard.vim
     lsp.vim
     clipboard.vim

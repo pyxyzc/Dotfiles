@@ -192,6 +192,78 @@ call assert_match('Vim task:', execute('messages'))
 call assert_equal(newer_id, getqflist({'id': 0}).id)
 ''')
 
+    def test_session_restores_tabs_layout_views_and_skips_auxiliary_buffers(self):
+        for name in ['one.txt', 'two.txt', 'three.txt']:
+            (self.work / name).write_text('one\ntwo\nthree\nfour\n')
+        self.vim(r'''
+edit one.txt
+vsplit two.txt
+call cursor(3, 2)
+tabnew three.txt
+call cursor(2, 1)
+let active_path = expand('%:p')
+let root = VimLiteProjectRoot()
+VimSessionSave work
+tabonly
+only
+edit one.txt
+VimSessionLoad work
+call assert_equal(2, tabpagenr('$'))
+call assert_equal(active_path, expand('%:p'))
+call assert_equal([2, 1], [line('.'), col('.')])
+call assert_equal(root, VimLiteProjectRoot())
+tabfirst
+call assert_equal('row', winlayout()[0])
+call assert_equal(2, winnr('$'))
+wincmd l
+call assert_equal('two.txt', expand('%:t'))
+call assert_equal([3, 2], [line('.'), col('.')])
+call assert_match('work', execute('VimSessionList'))
+''')
+
+    def test_session_load_rejects_modified_missing_and_invalid_layout(self):
+        (self.work / 'one.txt').write_text('saved\n')
+        self.vim(r'''
+edit one.txt
+VimSessionSave
+let origin = win_getid()
+call setline(1, 'unsaved')
+VimSessionLoad
+call assert_equal('unsaved', getline(1))
+call assert_equal(origin, win_getid())
+call assert_match('modified buffers', execute('messages'))
+setlocal nomodified
+let paths = glob($XDG_STATE_HOME . '/vim-lite/sessions/*/default.json', 0, 1)
+let saved = readfile(paths[0])
+call delete('one.txt')
+VimSessionLoad
+call assert_equal(origin, win_getid())
+call assert_match('missing file', execute('messages'))
+call writefile(['saved'], 'one.txt')
+call writefile(['{"version":1,"tabs":[],"root":"bad"}'], paths[0])
+VimSessionLoad
+call assert_equal(origin, win_getid())
+call assert_equal(1, tabpagenr('$'))
+VimSessionSave ../escape
+call assert_match('session name', execute('messages'))
+''')
+
+    def test_session_restores_hidden_file_list_across_processes(self):
+        for name in ['hidden.txt', 'visible.txt']:
+            (self.work / name).write_text('saved\n')
+        self.vim(r'''
+edit hidden.txt
+edit visible.txt
+VimSessionSave persisted
+''')
+        self.vim(r'''
+VimSessionLoad persisted
+call assert_equal('visible.txt', expand('%:t'))
+call assert_true(buflisted(bufnr('hidden.txt')))
+call assert_false(bufloaded(bufnr('hidden.txt')))
+call assert_equal(1, winnr('$'))
+''')
+
     def test_reusable_terminal_preserves_job_and_shell_state(self):
         self.terminal_vim(r'''
 set shell=sh
