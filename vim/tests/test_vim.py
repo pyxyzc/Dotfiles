@@ -702,7 +702,7 @@ call setline(1, 'changed')
 setlocal readonly
 let bar = Call('BufferLine', [])
 call assert_match('1:src/main.py ', bar)
-call assert_match('%#TabLineSel# 2:tests/main.py + \[RO\]', bar)
+call assert_match('%#VimrcBufferLineCurrent# 2:tests/main.py + \[RO\]', bar)
 call assert_notmatch('removed.py', bar)
 setlocal noreadonly
 call mkdir('tests', 'p')
@@ -787,7 +787,12 @@ call assert_match('Tab 2/2', BarText())
 tabprevious
 call assert_match('Tab 1/2', BarText())
 colorscheme tokyonight-night
-call assert_equal(synIDtrans(hlID('StatusLine')), synIDtrans(hlID('VimrcBufferLine')))
+for mode in ['gui', 'cterm']
+  call assert_equal(synIDattr(synIDtrans(hlID('TabLineFill')), 'bg', mode),
+        \ synIDattr(hlID('VimrcBufferLine'), 'fg', mode))
+  call assert_equal(synIDattr(synIDtrans(hlID('Normal')), 'fg', mode),
+        \ synIDattr(hlID('VimrcBufferLine'), 'bg', mode))
+endfor
 ''', args=['-c', 'let g:skip_home = 1'])
 
     def test_buffer_bar_cache_observes_silent_changes_and_long_unicode(self):
@@ -813,13 +818,230 @@ call assert_equal('~', strcharpart(label, strchars(label) - 1))
     def test_buffer_bar_reload_and_empty_list(self):
         self.vim(r'''
 setlocal nobuflisted
-call assert_equal('%#TabLineFill#', Call('BufferLine', []))
+call assert_equal('%#VimrcBufferLine#', Call('BufferLine', []))
 source ''' + str(ROOT / '.vimrc') + r'''
 source ''' + str(ROOT / '.vimrc') + r'''
 call assert_equal(2, &showtabline)
 let redraw_command = exists(':redrawtabline') == 2 ? 'redrawtabline' : 'redraw'
 call assert_equal(1, len(filter(split(execute('autocmd vimrc_lite_buffers BufEnter'), '\n'), 'v:val =~# redraw_command')))
 call assert_match('BufferLine()', &tabline)
+''')
+
+    def test_buffer_slogan_selection_stays_until_it_no_longer_fits(self):
+        self.vim(r'''
+set columns=60
+edit a
+let long = repeat('L', 30)
+let g:vimrc_lite_buffer_slogans = [long]
+call assert_match(long, Call('BufferLine', []))
+call add(g:vimrc_lite_buffer_slogans, 'short')
+let initial = Call('BufferLine', [])
+for iteration in range(20)
+  call assert_equal(initial, Call('BufferLine', []))
+endfor
+execute 'badd ' . repeat('b', 24)
+let bar = Call('BufferLine', [])
+call assert_match('2:' . repeat('b', 24), bar)
+call assert_notmatch(long, bar)
+call assert_match('%#VimrcBufferSlogan#short', bar)
+execute 'bdelete ' . bufnr(repeat('b', 24))
+call assert_match('%#VimrcBufferSlogan#short', Call('BufferLine', []))
+set columns=12
+call assert_notmatch('VimrcBufferSlogan', Call('BufferLine', []))
+call assert_notmatch('VimrcBufferSlogan', Call('BufferLine', []))
+set columns=60
+let restored = Call('BufferLine', [])
+call assert_true(stridx(restored, long) >= 0 || stridx(restored, '#short') >= 0)
+call assert_equal(restored, Call('BufferLine', []))
+''')
+
+    def test_buffer_slogan_terminal_width_literals_flags_and_tabs(self):
+        self.terminal_vim(r'''
+function! BarText() abort
+  redraw!
+  let text = ''
+  let column = 1
+  while column <= &columns
+    let char = screenstring(1, column)
+    let text .= char
+    let column += max([1, strdisplaywidth(char)])
+  endwhile
+  return text
+endfunction
+edit a
+let slogan = "志e\u0301100%"
+let g:vimrc_lite_buffer_slogans = [slogan]
+let &columns = strdisplaywidth(' 1:a ') + strdisplaywidth(slogan) + 3
+doautocmd VimResized
+call assert_equal(' 1:a   ' . slogan . ' ', BarText())
+let &columns -= 1
+doautocmd VimResized
+call assert_equal(' 1:a ' . repeat(' ', &columns - strdisplaywidth(' 1:a ')), BarText())
+set columns=80
+doautocmd VimResized
+let bar = BarText()
+call assert_equal(&columns - strdisplaywidth(slogan) - 1,
+      \ strdisplaywidth(strpart(bar, 0, stridx(bar, slogan))))
+let slogan = '100%#TabLineSel# %= %{1+1}'
+let g:vimrc_lite_buffer_slogans[0] = slogan
+let bar = BarText()
+call assert_true(stridx(bar, slogan) >= 0)
+call assert_equal('', v:errmsg)
+call assert_equal(screenattr(1, &columns), screenattr(1, 8))
+call assert_notequal(screenattr(1, &columns), screenattr(1, stridx(bar, slogan) + 1))
+tab split
+let suffix = slogan . '  Tab 2/2 '
+let bar = BarText()
+call assert_equal(suffix, strpart(bar, strlen(bar) - strlen(suffix)))
+call setline(1, 'changed')
+setlocal readonly
+call assert_match('1:a + \[RO\]', BarText())
+set columns=40
+let g:vimrc_lite_buffer_slogans = ['x']
+for number in range(2, 15)
+  execute 'badd file' . number . '.txt'
+endfor
+buffer file8.txt
+let bar = BarText()
+call assert_match('^< ', bar)
+call assert_match('8:file8.txt', bar)
+call assert_match(' >', bar)
+call assert_notmatch('x  Tab', bar)
+set columns=44
+let bar = BarText()
+call assert_match('^< ', bar)
+call assert_match('8:file8.txt', bar)
+call assert_match(' >', bar)
+call assert_match('x  Tab 2/2 $', bar)
+let visible = split(eval(strpart(&tabline, 2)), '%=')[0]
+let g:vimrc_lite_buffer_slogans = []
+call assert_equal(visible, split(eval(strpart(&tabline, 2)), '%=')[0])
+call assert_equal('', v:errmsg)
+''', args=['-c', 'let g:skip_home = 1'])
+
+    def test_buffer_slogan_configuration_and_display_width_changes(self):
+        self.vim(r'''
+set columns=60
+edit a
+let plain = Call('BufferLine', [])
+let invalid = [0, {}, [], '', '   ', "bad\nline", "bad\tline", "bad\rline",
+      \ nr2char(27) . '[31m', nr2char(127)]
+for source in [0, 'text', {}, invalid]
+  let g:vimrc_lite_buffer_slogans = source
+  call assert_equal(plain, Call('BufferLine', []))
+endfor
+let g:vimrc_lite_buffer_slogans = invalid + ['valid']
+call assert_match('%#VimrcBufferSlogan#valid', Call('BufferLine', []))
+let g:vimrc_lite_buffer_slogans[-1] = 'updated'
+call assert_match('%#VimrcBufferSlogan#updated', Call('BufferLine', []))
+call assert_notmatch('#valid', Call('BufferLine', []))
+call remove(g:vimrc_lite_buffer_slogans, -1)
+call assert_equal(plain, Call('BufferLine', []))
+call add(g:vimrc_lite_buffer_slogans, 'appeared')
+call assert_match('%#VimrcBufferSlogan#appeared', Call('BufferLine', []))
+unlet g:vimrc_lite_buffer_slogans
+call assert_equal(plain, Call('BufferLine', []))
+let g:vimrc_lite_buffer_slogans = [repeat('·', 6)]
+set ambiwidth=single columns=15
+call assert_match('VimrcBufferSlogan', Call('BufferLine', []))
+set ambiwidth=double
+call assert_notmatch('VimrcBufferSlogan', Call('BufferLine', []))
+set ambiwidth=single
+call assert_match('VimrcBufferSlogan', Call('BufferLine', []))
+setlocal nobuflisted
+call assert_equal('%#VimrcBufferLine#', Call('BufferLine', []))
+''', before=["let g:vimrc_lite_buffer_slogans = []"])
+
+    def test_buffer_slogan_reload_and_theme(self):
+        self.vim(r'''
+set columns=80
+edit a
+call assert_match('%#VimrcBufferSlogan#kept', Call('BufferLine', []))
+call extend(g:vimrc_lite_buffer_slogans, ['alternative', 'another'])
+let before = Call('BufferLine', [])
+source ''' + str(ROOT / '.vimrc') + r'''
+source ''' + str(ROOT / '.vimrc') + r'''
+call assert_equal(before, Call('BufferLine', []))
+highlight VimrcBufferSlogan guifg=#ffffff guibg=#000000 gui=bold
+colorscheme tokyonight-night
+call assert_equal(before, Call('BufferLine', []))
+for mode in ['gui', 'cterm']
+  for group in ['VimrcBufferLine', 'VimrcBufferSlogan']
+    call assert_equal(synIDattr(synIDtrans(hlID('TabLineFill')), 'bg', mode),
+          \ synIDattr(hlID(group), 'fg', mode))
+    call assert_equal(synIDattr(synIDtrans(hlID('Normal')), 'fg', mode),
+          \ synIDattr(hlID(group), 'bg', mode))
+    call assert_equal('', synIDattr(hlID(group), 'reverse', mode))
+  endfor
+  call assert_equal(synIDattr(synIDtrans(hlID('TabLineSel')), 'fg', mode),
+        \ synIDattr(hlID('VimrcBufferLineCurrent'), 'fg', mode))
+  call assert_equal(synIDattr(synIDtrans(hlID('TabLineSel')), 'bg', mode),
+        \ synIDattr(hlID('VimrcBufferLineCurrent'), 'bg', mode))
+  call assert_equal('', synIDattr(hlID('VimrcBufferLineCurrent'), 'bold', mode))
+  call assert_equal('', synIDattr(hlID('VimrcBufferLineCurrent'), 'underline', mode))
+  call assert_equal('', synIDattr(hlID('VimrcBufferLineCurrent'), 'reverse', mode))
+  call assert_equal('', synIDattr(hlID('VimrcBufferLine'), 'bold', mode))
+  call assert_equal('', synIDattr(hlID('VimrcBufferSlogan'), 'bold', mode))
+  call assert_equal('1', synIDattr(hlID('VimrcBufferSlogan'), 'italic', mode))
+endfor
+''', before=["let g:vimrc_lite_buffer_slogans = ['kept']"])
+
+    def test_buffer_slogan_rotates_on_open_and_switch_without_repeating(self):
+        self.vim(r'''
+function! CurrentSlogan() abort
+  return matchstr(Call('BufferLine', []),
+        \ '%#VimrcBufferSlogan#\zs.\{-}\ze%#VimrcBufferLine#')
+endfunction
+set columns=200
+edit first
+let g:vimrc_lite_buffer_slogans = ['alpha', 'bravo', 'charlie', 'alpha']
+let previous = CurrentSlogan()
+edit second
+let current = CurrentSlogan()
+call assert_true(index(g:vimrc_lite_buffer_slogans, current) >= 0)
+call assert_notequal(previous, current)
+let previous = current
+enew
+let current = CurrentSlogan()
+call assert_notequal(previous, current)
+for iteration in range(20)
+  let previous = current
+  execute 'buffer ' . (iteration % 2 ? 'first' : 'second')
+  let current = CurrentSlogan()
+  call assert_true(index(g:vimrc_lite_buffer_slogans, current) >= 0)
+  call assert_notequal(previous, current)
+  call assert_equal(current, CurrentSlogan())
+endfor
+call setline(1, 'changed')
+setlocal readonly
+call assert_equal(current, CurrentSlogan())
+set columns=210
+doautocmd VimResized
+call assert_equal(current, CurrentSlogan())
+''')
+
+    def test_buffer_slogan_switch_with_one_or_no_fitting_candidate(self):
+        self.vim(r'''
+set columns=40
+edit a
+let g:vimrc_lite_buffer_slogans = [repeat('L', 50), 'tiny']
+call assert_match('%#VimrcBufferSlogan#tiny', Call('BufferLine', []))
+edit b
+call assert_match('%#VimrcBufferSlogan#tiny', Call('BufferLine', []))
+buffer a
+call assert_match('%#VimrcBufferSlogan#tiny', Call('BufferLine', []))
+set columns=12
+buffer b
+call assert_notmatch('VimrcBufferSlogan', Call('BufferLine', []))
+buffer a
+call assert_notmatch('VimrcBufferSlogan', Call('BufferLine', []))
+set columns=80
+let before = Call('BufferLine', [])
+buffer b
+let after = Call('BufferLine', [])
+let pattern = '%#VimrcBufferSlogan#\zs.\{-}\ze%#VimrcBufferLine#'
+call assert_notequal(matchstr(before, pattern), matchstr(after, pattern))
+call assert_equal(after, Call('BufferLine', []))
 ''')
 
     def test_content_edits_preserve_registers_and_undo(self):

@@ -96,7 +96,8 @@ function! s:VisibleRange(buffers, names, focus, budget) abort
       break
     endif
   endwhile
-  return [first, last, labels]
+  let used += (first > 0 ? 2 : 0) + (last + 1 < len(a:buffers) ? 2 : 0)
+  return [first, last, labels, used]
 endfunction
 
 " 只为当前可见区间及相邻候选项生成标签；隐藏项无需查询选项或截断路径。
@@ -114,12 +115,88 @@ function! s:Label(buffers, names, index, budget) abort
   return prefix . s:BufferLabel(a:names[a:index], width) . flags
 endfunction
 
+" 重载时保留当前句子；配置及显示宽度变化时重新建立候选缓存。
+let s:slogan_cache = get(s:, 'slogan_cache', {
+      \ 'source': [], 'display': [], 'entries': [], 'current': {}, 'miss': -1, 'rotate': 0})
+let s:slogan_seed = get(s:, 'slogan_seed', [])
+
+" 新打开的 buffer 也会触发 BufEnter；只排队一次选择，重绘时按最终空间挑句子。
+function! s:RotateSlogan(buffer) abort
+  if buflisted(a:buffer)
+    let s:slogan_cache.rotate = 1
+  endif
+endfunction
+
+function! s:SloganIndex(count) abort
+  if exists('*rand') && exists('*srand')
+    if empty(s:slogan_seed)
+      let s:slogan_seed = srand()
+    endif
+    return rand(s:slogan_seed) % a:count
+  endif
+  " 旧 Vim 的 16 位伪随机回退；乘积不会溢出 32 位整数。
+  let seed = get(s:, 'slogan_fallback_seed', (localtime() % 65536 + getpid() % 65536) % 65536)
+  let s:slogan_fallback_seed = (seed * 25173 + 13849) % 65536
+  return s:slogan_fallback_seed % a:count
+endfunction
+
+function! s:Slogan(width) abort
+  let source = get(g:, 'vimrc_lite_buffer_slogans', [])
+  if type(source) != type([])
+    let source = []
+  endif
+  let display = [&encoding, &ambiwidth, exists('+emoji') ? &emoji : 0]
+  let cache = s:slogan_cache
+  if source !=# cache.source || display !=# cache.display
+    let previous = get(cache.current, 'text', '')
+    let cache.source = deepcopy(source)
+    let cache.display = display
+    let cache.entries = []
+    let cache.current = {}
+    let cache.miss = -1
+    for text in source
+      if type(text) != type('') || text !~# '\S' || text =~# '[[:cntrl:]]'
+        continue
+      endif
+      let entry = {'text': text, 'width': strdisplaywidth(text)}
+      call add(cache.entries, entry)
+      if text ==# previous
+        let cache.current = entry
+      endif
+    endfor
+  endif
+  let rotate = get(cache, 'rotate', 0)
+  if !rotate && !empty(cache.current) && cache.current.width <= a:width
+    return cache.current.text
+  endif
+  let previous = get(cache.current, 'text', '')
+  let cache.current = {}
+  let cache.rotate = 0
+  if a:width <= 0 || cache.miss == a:width
+    return ''
+  endif
+  let candidates = filter(copy(cache.entries), 'v:val.width <= a:width')
+  if empty(candidates)
+    let cache.miss = a:width
+    return ''
+  endif
+  if rotate && !empty(previous)
+    let alternatives = filter(copy(candidates), 'v:val.text !=# previous')
+    if !empty(alternatives)
+      let candidates = alternatives
+    endif
+  endif
+  let cache.current = candidates[s:SloganIndex(len(candidates))]
+  let cache.miss = -1
+  return cache.current.text
+endfunction
+
 let s:name_key = []
 let s:names = []
 function! s:BufferLine() abort
   let buffers = s:ListedBuffers()
   if empty(buffers)
-    return '%#TabLineFill#'
+    return '%#VimrcBufferLine#'
   endif
   " 对比真实名称列表，兼容 :file、:badd、重载及 noautocmd 修改。
   let key = map(copy(buffers), 'v:val.name')
@@ -136,17 +213,47 @@ function! s:BufferLine() abort
     let tabs = ''
   endif
   let budget = &columns - strdisplaywidth(tabs)
-  let [first, last, labels] = s:VisibleRange(buffers, s:names, focus, budget)
-  let line = '%#TabLineFill#' . (first > 0 ? '< ' : '')
+  let [first, last, labels, used] = s:VisibleRange(buffers, s:names, focus, budget)
+  let line = '%#VimrcBufferLine#' . (first > 0 ? '< ' : '')
   for index in range(first, last)
-    let line .= index == current ? '%#TabLineSel#' : '%#VimrcBufferLine#'
+    let line .= index == current ? '%#VimrcBufferLineCurrent#' : '%#VimrcBufferLine#'
     let line .= substitute(labels[index], '%', '%%', 'g')
   endfor
-  return line . '%#TabLineFill#' . (last + 1 < len(buffers) ? ' >' : '') . '%=' . tabs
+  " buffer 与溢出标记优先；slogan 左侧留两列，右侧留一列。
+  let slogan = s:Slogan(budget - used - 3)
+  let suffix = empty(slogan) ? '' : '  %#VimrcBufferSlogan#'
+        \ . substitute(slogan, '%', '%%', 'g') . '%#VimrcBufferLine# '
+  return line . '%#VimrcBufferLine#' . (last + 1 < len(buffers) ? ' >' : '')
+        \ . '%=' . suffix . tabs
 endfunction
 
 function! s:BufferLineColors() abort
-  highlight! link VimrcBufferLine StatusLine
+  let status = synIDtrans(hlID('StatusLine'))
+  let normal = synIDtrans(hlID('Normal'))
+  let fill = synIDtrans(hlID('TabLineFill'))
+  let selected = synIDtrans(hlID('TabLineSel'))
+  " 恢复整条浅色横栏：以正文前景作底色、填充区背景作字色，直接设色而不依赖反色。
+  for [group, style] in [['VimrcBufferLine', 'NONE'],
+        \ ['VimrcBufferLineCurrent', 'NONE'], ['VimrcBufferSlogan', 'italic']]
+    execute 'highlight! ' . group . ' gui=' . style . ' cterm=' . style . ' term=' . style
+    for mode in ['gui', 'cterm']
+      let foreground = synIDattr(fill, 'bg', mode)
+      if empty(foreground)
+        let foreground = synIDattr(status, 'bg', mode)
+      endif
+      let background = synIDattr(normal, 'fg', mode)
+      if empty(background)
+        let background = synIDattr(status, 'fg', mode)
+      endif
+      if group ==# 'VimrcBufferLineCurrent'
+        let foreground = synIDattr(selected, 'fg', mode)
+        let background = synIDattr(selected, 'bg', mode)
+      endif
+      execute 'highlight ' . group . ' ' . mode . 'fg='
+            \ . (empty(foreground) ? 'NONE' : foreground) . ' ' . mode . 'bg='
+            \ . (empty(background) ? 'NONE' : background)
+    endfor
+  endfor
 endfunction
 call s:BufferLineColors()
 set showtabline=2
@@ -158,6 +265,7 @@ let s:redrawtabline = exists(':redrawtabline') == 2 ? 'redrawtabline' : 'redraw'
 augroup vimrc_lite_buffers
   autocmd!
   autocmd ColorScheme * call <SID>BufferLineColors()
+  autocmd BufEnter * call <SID>RotateSlogan(str2nr(expand('<abuf>')))
   execute 'autocmd BufAdd,BufDelete,BufEnter,BufFilePost,BufWritePost * ' . s:redrawtabline
   execute 'autocmd VimResized * ' . s:redrawtabline
   if exists('##BufModifiedSet')
@@ -166,7 +274,10 @@ augroup vimrc_lite_buffers
     execute 'autocmd TextChanged,TextChangedI * ' . s:redrawtabline
   endif
   if exists('##OptionSet')
-    execute 'autocmd OptionSet readonly,buflisted ' . s:redrawtabline
+    execute 'autocmd OptionSet readonly,buflisted,ambiwidth ' . s:redrawtabline
+    if exists('+emoji')
+      execute 'autocmd OptionSet emoji ' . s:redrawtabline
+    endif
   endif
 augroup END
 

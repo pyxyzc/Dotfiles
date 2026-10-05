@@ -191,6 +191,13 @@ if !s:SourceModule('lsp.vim')
 endif
 
 " buffer 栏与 buffer 管理模块。
+if !exists('g:vimrc_lite_buffer_slogans')
+  let g:vimrc_lite_buffer_slogans = [
+        \ 'Per aspera ad astra.',
+        \ 'Les années heureuses sont les années perdues, on attend une souffrance pour travailler.',
+        \ 'Seize the day.',
+        \ ]
+endif
 if !s:SourceModule('buffers.vim')
   call s:Warn('missing buffers.vim; copy the complete vim directory')
 endif
