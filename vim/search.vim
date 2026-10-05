@@ -3,6 +3,83 @@ let s:helper = fnamemodify(resolve(expand('<sfile>:p')), ':h') . '/search.sh'
 let s:active = {}
 let s:capabilities = get(s:, 'capabilities', {})
 let s:finders = get(s:, 'finders', {})
+let s:ordinal = get(s:, 'ordinal', {})
+let s:ordinal_cache = {}
+let s:ordinal_timer = get(s:, 'ordinal_timer', -1)
+let s:ordinal_supported = has('patch-9.0.0121') && has('textprop')
+      \ && exists('*searchcount') && has('timers')
+
+" /、?、n、N 使用原生搜索；只在当前匹配的行尾添加虚拟文字。
+function! s:ClearOrdinal() abort
+  if s:ordinal_timer != -1
+    call timer_stop(s:ordinal_timer)
+    let s:ordinal_timer = -1
+  endif
+  if !empty(s:ordinal) && bufloaded(s:ordinal.buffer)
+    let options = {'bufnr': s:ordinal.buffer, 'type': 'VimrcLiteSearchOrdinal', 'all': 1}
+    if getbufvar(s:ordinal.buffer, 'changedtick') == s:ordinal.tick
+      call prop_remove(options, s:ordinal.line, s:ordinal.line)
+    else
+      " 编辑可能移动或删除原行；此时按类型清理，避免留下旧标记。
+      call prop_remove(options)
+    endif
+  endif
+  let s:ordinal = {}
+endfunction
+
+function! s:UpdateOrdinal(timer) abort
+  let s:ordinal_timer = -1
+  if !get(g:, 'vimrc_lite_search_ordinal', 1) || !v:hlsearch || empty(@/)
+        \ || &buftype !=# '' || mode() =~# '^[iRt]' || !empty(getcmdtype())
+    call s:ClearOrdinal()
+    return
+  endif
+  let key = [bufnr('%'), b:changedtick, @/, &ignorecase, &smartcase, &magic]
+  let position = getpos('.')[1:3]
+  if get(s:ordinal_cache, 'key', []) !=# key
+        \ || (get(s:ordinal_cache, 'position', []) !=# position
+        \ && !get(get(s:ordinal_cache, 'count', {}), 'incomplete', 0))
+    try
+      " 不受默认 999 次计数上限影响；复杂正则最多占用 20 毫秒。
+      let stats = searchcount({'recompute': 1, 'maxcount': 0, 'timeout': 20})
+    catch
+      call s:ClearOrdinal()
+      let s:ordinal_cache = {}
+      return
+    endtry
+    let s:ordinal_cache = {'key': key, 'position': position, 'count': stats}
+  endif
+  let stats = s:ordinal_cache.count
+  if !get(stats, 'exact_match', 0) || get(stats, 'incomplete', 0)
+        \ || !get(stats, 'current', 0)
+    call s:ClearOrdinal()
+    return
+  endif
+  let text = printf(' [%d/%d]', stats.current, stats.total)
+  if get(s:ordinal, 'buffer', 0) == bufnr('%') && get(s:ordinal, 'line', 0) == line('.')
+        \ && get(s:ordinal, 'text', '') ==# text && s:ordinal.tick == b:changedtick
+    return
+  endif
+  call s:ClearOrdinal()
+  call prop_add(line('.'), 0, {'type': 'VimrcLiteSearchOrdinal', 'text': text,
+        \ 'text_align': 'after'})
+  let s:ordinal = {'buffer': bufnr('%'), 'line': line('.'), 'tick': b:changedtick,
+        \ 'text': text}
+endfunction
+
+function! s:QueueOrdinal(...) abort
+  if s:ordinal_timer != -1
+    call timer_stop(s:ordinal_timer)
+    let s:ordinal_timer = -1
+  endif
+  if !get(g:, 'vimrc_lite_search_ordinal', 1)
+        \ || (!a:0 && (!v:hlsearch || empty(@/) || &buftype !=# ''))
+    call s:ClearOrdinal()
+    return
+  endif
+  " CmdlineLeave 在命令执行前触发，延后才能读取新搜索或 :nohlsearch 的状态。
+  let s:ordinal_timer = timer_start(0, function('s:UpdateOrdinal'))
+endfunction
 
 function! s:Warn(message) abort
   echohl WarningMsg
@@ -387,6 +464,25 @@ endfunction
 command! VimFind call <SID>Open('files')
 command! VimSearch call <SID>Open('grep')
 command! VimRecent call <SID>Open('recent')
+call s:ClearOrdinal()
+if s:ordinal_supported
+  highlight default link VimrcLiteSearchOrdinal Comment
+  if empty(prop_type_get('VimrcLiteSearchOrdinal'))
+    call prop_type_add('VimrcLiteSearchOrdinal', {'highlight': 'VimrcLiteSearchOrdinal'})
+  endif
+endif
+augroup vimrc_lite_search_ordinal
+  autocmd!
+  if s:ordinal_supported
+    autocmd CursorMoved,BufEnter,WinEnter,InsertLeave,TextChanged * call s:QueueOrdinal()
+    autocmd CmdlineLeave * call s:QueueOrdinal(1)
+    autocmd InsertEnter,CmdlineEnter,BufLeave,WinLeave * call s:ClearOrdinal()
+    autocmd OptionSet hlsearch,ignorecase,smartcase,magic call s:QueueOrdinal()
+    autocmd User VimrcLiteReload call s:ClearOrdinal()
+    autocmd VimLeavePre * call s:ClearOrdinal()
+    autocmd ColorScheme * highlight default link VimrcLiteSearchOrdinal Comment
+  endif
+augroup END
 augroup vimrc_lite_search
   autocmd!
   autocmd VimResized * call s:Resize()
