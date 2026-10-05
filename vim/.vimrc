@@ -245,6 +245,12 @@ if !s:SourceModule('git.vim')
         \ 'missing git.vim; copy the complete vim directory')
 endif
 
+for s:module in ['tasks.vim']
+  if !s:SourceModule(s:module)
+    call s:Warn('missing ' . s:module . '; copy the complete vim directory')
+  endif
+endfor
+
 " 配置编辑入口与独立首页。
 command! VimConfig execute 'edit ' . fnameescape(s:vimrc_path)
 if !s:SourceModule('dashboard.vim')
@@ -313,6 +319,10 @@ nnoremap <silent> <leader>ct :VimLspTypeDefinition<CR>
 nnoremap <silent> <leader>cm :VimLspImplementation<CR>
 nnoremap <silent> <leader>cS :VimLspWorkspaceSymbols<CR>
 nnoremap <silent> <leader>ck :VimLspSignature<CR>
+nnoremap <silent> <leader>rt :VimTask<CR>
+nnoremap <silent> <leader>rx :VimTaskStop<CR>
+nnoremap <silent> <leader>rs :VimTaskStatus<CR>
+nnoremap <silent> <leader>ro :VimTaskOutput<CR>
 
 if has('terminal')
   tnoremap <Esc><Esc> <C-w>N

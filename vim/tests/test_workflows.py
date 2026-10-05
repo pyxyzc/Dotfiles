@@ -138,5 +138,59 @@ call assert_true(getbufvar(source, '&modified'))
 call assert_equal(['unsaved'], getbufline(source, 1, '$'))
 ''')
 
+    def test_tasks_background_errors_cwd_and_output(self):
+        source = self.work / 'main.py'
+        source.write_text('source\n')
+        script = self.work / 'task.py'
+        script.write_text('import os,time,sys\n'
+                          'time.sleep(.1)\n'
+                          'print(os.getcwd())\n'
+                          'print("main.py:1:2: build failed", file=sys.stderr)\n'
+                          'sys.exit(3)\n')
+        (self.work / '.vim-lite-tasks.json').write_text(json.dumps({'tasks': {
+            'build': {'cmd': [sys.executable, str(script)], 'errorformat': '%f:%l:%c: %m'}}}))
+        self.terminal_vim(WAIT + r'''
+edit main.py
+let origin = win_getid()
+let cwd = getcwd()
+VimTask build
+call assert_match('running', execute('VimTaskStatus'))
+call setline(1, 'editing during task')
+call WaitFor({-> execute('VimTaskStatus') =~# 'exit 3'})
+call assert_equal(origin, win_getid())
+call assert_equal(cwd, getcwd())
+call assert_equal('editing during task', getline(1))
+let entries = getqflist()
+call assert_equal(1, len(entries))
+call assert_equal(expand('%:p'), fnamemodify(bufname(entries[0].bufnr), ':p'))
+call assert_equal([1, 2, 'build failed'], [entries[0].lnum, entries[0].col, entries[0].text])
+VimTaskOutput
+call assert_match('build failed', join(getline(1, '$'), "\n"))
+call assert_match(cwd, join(getline(1, '$'), "\n"))
+call feedkeys('q', 'xt')
+call assert_equal(origin, win_getid())
+''')
+
+    def test_task_cancel_invalid_config_and_preserve_new_quickfix(self):
+        self.terminal_vim(WAIT + r'''
+let g:vimrc_lite_tasks = {'slow': [''' + quoted(sys.executable) + r''', '-c',
+      \ 'import time; print("start", flush=True); time.sleep(30)']}
+VimTask slow
+let task_id = getqflist({'id': 0}).id
+call setqflist([], ' ', {'title': 'newer list', 'items': [{'text': 'keep me'}]})
+let newer_id = getqflist({'id': 0}).id
+VimTask slow
+call assert_match('a task is running', execute('messages'))
+VimTaskStop
+call WaitFor({-> execute('VimTaskStatus') !~# 'running'})
+call assert_equal(newer_id, getqflist({'id': 0}).id)
+call assert_equal('newer list', getqflist({'title': 0}).title)
+call assert_match('cancelled', getqflist({'id': task_id, 'title': 0}).title)
+call writefile(['invalid JSON'], '.vim-lite-tasks.json')
+VimTask slow
+call assert_match('Vim task:', execute('messages'))
+call assert_equal(newer_id, getqflist({'id': 0}).id)
+''')
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)
