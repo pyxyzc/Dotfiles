@@ -36,5 +36,32 @@ call assert_false(&swapfile)
                  before=['let g:vimrc_lite_persistent_undo = 0'])
         self.assertTrue(any((self.work / 'state/vim-lite/undo').iterdir()))
 
+    def test_operator_text_objects_delete_yank_change_and_no_match(self):
+        self.vim(r'''
+setfiletype python
+call setline(1, ['def first():', '    return 1', '', 'def second():', '    return 2'])
+call cursor(2, 5)
+call feedkeys('yaf', 'xt')
+call assert_equal("def first():\n    return 1\n", @")
+call feedkeys('daf', 'xt')
+call assert_equal(['', 'def second():', '    return 2'], getline(1, '$'))
+call cursor(3, 5)
+call feedkeys("cifreturn 99\<Esc>", 'xt')
+call assert_equal(['', 'def second():', '    return 99'], getline(1, '$'))
+call setline(1, ['plain text', 'another line'])
+3,$delete _
+call cursor(1, 1)
+let before = getline(1, '$')
+call feedkeys('daf', 'xt')
+call assert_equal(before, getline(1, '$'))
+enew!
+setfiletype cpp
+call setline(1, ['int first() {', '  return 1;', '}', '', 'int second() {', '  return 2;', '}'])
+call cursor(2, 3)
+call feedkeys('dif', 'xt')
+call assert_equal(['int first() {', '}', '', 'int second() {', '  return 2;', '}'],
+      \ getline(1, '$'))
+''')
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

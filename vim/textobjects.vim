@@ -261,24 +261,34 @@ function! s:Object(kind, cursor) abort
   return s:CObject(a:kind, a:cursor)
 endfunction
 
-function! s:Select(kind, inner) abort
+function! s:Select(kind, inner, ...) abort
+  let operator = get(a:000, 0, 0)
   let object = s:Object(a:kind, line('.'))
   if empty(object)
-    normal! gv
+    if !operator
+      normal! gv
+    else
+      execute "normal! \<Esc>"
+    endif
     call s:Warn('no matching ' . a:kind . ' block')
     return
   endif
   let first = a:inner ? object[2] : object[0]
   let last = a:inner ? object[3] : object[1]
   if first > last
-    normal! gv
+    if !operator
+      normal! gv
+    else
+      execute "normal! \<Esc>"
+    endif
     call s:Warn('matching ' . a:kind . ' has no inner lines')
     return
   endif
   call setpos("'<", [0, first, 1, 0])
   call setpos("'>", [0, last, 1, 0])
-  normal! gv
+  call cursor(first, 1)
   normal! V
+  call cursor(last, 1)
 endfunction
 
 function! s:Enable() abort
@@ -288,6 +298,12 @@ function! s:Enable() abort
   xnoremap <silent><buffer> ic :<C-u>call <SID>Select('class', 1)<CR>
   xnoremap <silent><buffer> ab :<C-u>call <SID>Select('block', 0)<CR>
   xnoremap <silent><buffer> ib :<C-u>call <SID>Select('block', 1)<CR>
+  onoremap <silent><buffer> af :<C-u>call <SID>Select('function', 0, 1)<CR>
+  onoremap <silent><buffer> if :<C-u>call <SID>Select('function', 1, 1)<CR>
+  onoremap <silent><buffer> ac :<C-u>call <SID>Select('class', 0, 1)<CR>
+  onoremap <silent><buffer> ic :<C-u>call <SID>Select('class', 1, 1)<CR>
+  onoremap <silent><buffer> ab :<C-u>call <SID>Select('block', 0, 1)<CR>
+  onoremap <silent><buffer> ib :<C-u>call <SID>Select('block', 1, 1)<CR>
 endfunction
 
 augroup vimrc_lite_textobjects

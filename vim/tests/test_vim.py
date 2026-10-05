@@ -520,8 +520,8 @@ call assert_equal({}, maparg('af', 'x', 0, 1))
 
 edit flat.py
 normal! 1G
-normal vaf
-call assert_true(mode() =~# '^[vV]')
+normal vafy
+call assert_equal('a', getreg('"'))
 ''')
 
     def test_structural_objects_ignore_braces_and_preserve_view(self):
