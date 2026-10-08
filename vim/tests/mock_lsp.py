@@ -144,8 +144,10 @@ def main():
                            'newText': '# formatted\n'}]
             elif method == 'textDocument/documentSymbol':
                 uri = params['textDocument']['uri']
-                result = [{'name': 'target', 'kind': 12,
-                           'location': location(uri, documents[uri])}]
+                result = []
+                if 'target' in documents[uri]:
+                    result = [{'name': 'target', 'kind': 12,
+                               'location': location(uri, documents[uri])}]
             elif method == 'textDocument/codeAction':
                 uri = params['textDocument']['uri']
                 result = [{'title': 'Add comment', 'kind': 'quickfix', 'edit': {'changes': {

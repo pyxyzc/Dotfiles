@@ -1677,6 +1677,7 @@ function! s:RegisterInstance(name) abort
   let server = s:servers[a:name]
   let capabilities = lsp#default_get_supported_capabilities({'name': a:name})
   let capabilities.window.workDoneProgress = v:true
+  let capabilities.textDocument.documentSymbol.hierarchicalDocumentSymbolSupport = v:true
   let capabilities.workspace.workspaceEdit =
         \ {'documentChanges': v:true, 'failureHandling': 'transactional'}
   let capabilities.textDocument.codeAction.dataSupport = v:true

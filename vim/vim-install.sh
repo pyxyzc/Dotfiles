@@ -14,6 +14,7 @@ config_files=(
     tools.vim
     dashboard.vim
     lsp.vim
+    context.vim
     clipboard.vim
     tree.vim
     buffers.vim

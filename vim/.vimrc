@@ -195,6 +195,11 @@ if !s:SourceModule('lsp.vim')
   command! VimLspInfo VimLspStatus
 endif
 
+" 定义行滚出视野后，在各代码窗口顶部显示函数／类上下文。
+if !s:SourceModule('context.vim')
+  call s:Warn('missing context.vim; copy the complete vim directory')
+endif
+
 " buffer 栏与 buffer 管理模块。
 if !exists('g:vimrc_lite_buffer_slogans')
   let g:vimrc_lite_buffer_slogans = [

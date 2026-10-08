@@ -2524,7 +2524,7 @@ call assert_equal([], popup_list())
         config = self.work / 'fallback config'
         config.mkdir()
         for name in ('.vimrc', 'search.sh', 'search.awk', 'search-preview.awk', 'dashboard.vim', 'tree.vim',
-                     'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim',
+                     'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
                      'project.vim', 'tasks.vim', 'session.vim', 'tools.vim'):
             shutil.copyfile(ROOT / name, config / name)
         # Simulate a Vim without popup windows while exercising the actual split implementation.
@@ -3075,7 +3075,7 @@ class InstallerTests(unittest.TestCase):
         dashboard.write_text('" old dashboard\n')
         modules = [self.target / '.vim' / name for name in
                    ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim',
-                    'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim',
+                    'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim')]
         for module in modules:
             module.write_text('" old module\n')
@@ -3088,7 +3088,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
         for name in ('search.vim', 'search.sh', 'search.awk', 'search-preview.awk', 'lsp.vim', 'clipboard.vim',
                      'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim',
-                     'completion.vim', 'matchparen.vim', 'textobjects.vim',
+                     'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
                      'project.vim', 'tasks.vim', 'session.vim', 'tools.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), [])
