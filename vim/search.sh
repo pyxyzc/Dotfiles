@@ -53,7 +53,7 @@ query() {
 }
 
 preview() {
-    local encoded=$1 line=$2 offset=$3 display=$4 highlight=${5:-1} signature encoding='' syntax=''
+    local encoded=$1 line=$2 offset=$3 display=$4 highlight=${5:-1} pattern=${6:-} signature encoding='' syntax=''
     local start=0 content_start=0 by_line=0 header_rows=0
     display=${display:0:500}
     if [[ -z "$encoded" ]]; then printf '%s\n' "$display"; return; fi
@@ -103,10 +103,21 @@ preview() {
         else
             tail -c "+$((start + 1))" -- "$search_path" | head -c 65536
         fi
-    } | LC_ALL=C "$search_awk_bin" -v match_line="$line" -v syntax="$syntax" \
+    } | preview_matches "$pattern" | LC_ALL=C "$search_awk_bin" -v match_line="$line" -v syntax="$syntax" \
         -v target_offset="$((offset - start))" -v skip_first="$((start > content_start))" \
         -v by_line="$by_line" -v header_rows="$header_rows" \
         -f "${search_script%/*}/search-preview.awk" || :
+}
+
+preview_matches() {
+    if [[ -z "$1" ]]; then
+        cat
+    else
+        # Use the same regex engine and case rules as the result list. The renderer
+        # consumes these markers before applying syntax colors to the bounded input.
+        rg --no-config --text --passthru --color=always --smart-case \
+            --colors=match:fg:red --colors=match:style:nobold -- "$1" || :
+    fi
 }
 
 recent() {
@@ -159,14 +170,14 @@ run() {
     elif [[ "$mode" == grep ]]; then
         if [[ -f "$session/query" ]]; then initial=$(< "$session/query"); fi
         printf -v FZF_DEFAULT_COMMAND '%s query %q %q' "$command" "$session" "$initial"
-        printf -v preview_command '%s preview {s1} {2} {4} {5..} %q' "$command" "$highlight"
+        printf -v preview_command '%s preview {s1} {2} {4} {5..} %q {q}' "$command" "$highlight"
         preview_window='right,55%,<40(down,50%)'
         # Automatic layout is supported from 0.31.0; older versions pin the preview below
         # so it stays readable on narrow screens.
         if [[ "$capabilities" != *',layout'* ]]; then
             preview_window='down,50%'
         fi
-        options+=(--prompt='Live grep> ' --disabled --no-sort --query="$initial"
+        options+=(--prompt='Live grep> ' --disabled --no-sort --print-query --query="$initial"
             --bind="change:reload:$command query $(printf '%q' "$session") {q}"
             --preview="$preview_command" --preview-window="$preview_window"
             --bind='ctrl-u:preview-half-page-up,ctrl-d:preview-half-page-down')
@@ -199,6 +210,10 @@ run() {
     fi
     : > "$session/results"
     while IFS= read -r -d '' record; do
+        if [[ "$mode" == grep && ! -f "$session/accepted-query" ]]; then
+            printf '%s' "$record" > "$session/accepted-query"
+            continue
+        fi
         encoded=${record%%$'\t'*}
         rest=${record#*$'\t'}
         line=${rest%%$'\t'*}

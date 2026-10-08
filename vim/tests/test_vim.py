@@ -1998,6 +1998,8 @@ needle = os.environ.get('SEARCH_TEST_PICK', '').encode()
 records = [item for item in records if needle in item]
 if not records:
     sys.exit(1)
+if '--print-query' in sys.argv:
+    sys.stdout.buffer.write(os.environ['SEARCH_TEST_QUERY'].encode() + b'\0')
 sys.stdout.buffer.write(records[0] + b'\0')
 ''')
         path.chmod(0o755)
@@ -2093,6 +2095,33 @@ call assert_equal([], popup_list())
         target.write_text('return 42 # plain\n')
         self.assertNotIn(b'\x1b[38;2;', self.helper('preview', str(target), 1, 0, 'unknown'))
 
+    def test_preview_highlights_regex_matches_and_restores_syntax_colors(self):
+        self.require_backends()
+        target = self.project / 'src' / 'matches.py'
+        lines = ['# needle12 中文 needle34', 'return 42 # NEEDLE56 中文', '# not a match']
+        target.write_text('\n'.join(lines) + '\n')
+        offset = len((lines[0] + '\n').encode())
+        color = b'\x1b[1;38;2;26;27;38;48;2;224;175;104m'
+        for syntax in (0, 1):
+            with self.subTest(syntax=syntax):
+                output = self.helper('preview', str(target), 2, offset, 'matches', syntax,
+                                     r'needle\d+|中文')
+                self.assertEqual(self.preview_text(output), self.preview_text(
+                    self.helper('preview', str(target), 2, offset, 'matches', syntax)))
+                for word in ['needle12', 'needle34', 'NEEDLE56', '中文']:
+                    self.assertIn(color + word.encode(), output)
+                self.assertEqual(output.count(color), 5)
+                if syntax:
+                    self.assertIn(b'\x1b[38;2;86;95;137m ', output,
+                                  'comment color resumes after a highlighted word')
+        output = self.helper('preview', str(target), 2, offset, 'matches', 1, r'NEEDLE\d+')
+        self.assertEqual(output.count(color), 1, 'smart-case remains case sensitive')
+        target = self.project / 'plain.txt'
+        target.write_text("literal ' $(touch injected) 中文\n")
+        output = self.helper('preview', str(target), 1, 0, 'plain', 1, '中文')
+        self.assertIn(color + '中文'.encode(), output)
+        self.assertFalse((self.project / 'injected').exists())
+
     def test_preview_centers_match_with_context_and_pads_file_edges(self):
         target = self.project / 'context.cpp'
         source = [f'context {index} 中文\n' for index in range(1, 81)]
@@ -2122,7 +2151,8 @@ call assert_equal([], popup_list())
             stream.write(prefix + b'int deep_match = 42;\n// following context\n')
         self.env['FZF_PREVIEW_LINES'] = '20'
         rows = self.preview_text(
-            self.helper('preview', str(target), 9000000, offset, 'deep context')).splitlines()
+            self.helper('preview', str(target), 9000000, offset, 'deep context', 1,
+                        'deep_match|preceding')).splitlines()
         self.assertEqual(rows[9], '>9000000 int deep_match = 42;')
         self.assertEqual(rows[8], ' 8999999 // preceding 39 中文')
         self.assertEqual(rows[10], ' 9000001 // following context')
@@ -2225,9 +2255,9 @@ call assert_false(get(b:, 'vimrc_lite_large_file', 0))
                 target.write_bytes(data)
                 record = self.records(self.helper('query', self.session, 'needle'))[0]
                 path, line, column, offset, display = record
-                preview = self.helper('preview', path, line, offset, display).decode()
-                self.assertIn('xx needle', preview)
+                preview = self.helper('preview', path, line, offset, display, 1, 'needle').decode()
                 text_preview = self.preview_text(preview.encode())
+                self.assertIn('xx needle', text_preview)
                 self.assertIn('     1 first', text_preview)
                 self.assertIn('>     2 xx needle', text_preview)
                 if encoding == 'utf-8-sig':
@@ -2361,6 +2391,65 @@ call assert_equal(['keep this'], getbufline(original, 1, '$'))
 call assert_true(getbufvar(original, '&modified'))
 ''')
         self.assertFalse((self.project / 'injected').exists())
+
+    def test_project_search_highlight_navigation_regex_and_cancel(self):
+        self.fake_fzf()
+        target = self.project / 'src' / 'highlight.txt'
+        target.write_text('placeholder\n')
+        self.env['SEARCH_TEST_QUERY'] = 'placeholder'
+        self.terminal_vim(r'''
+execute 'edit ' . fnameescape(''' + quoted(target) + r''')
+let examples = [
+      \ ['needle', ['needle NEEDLE needle'], 3],
+      \ ['Needle', ['needle Needle NEEDLE'], 1],
+      \ ['中文', ['中文 word 中文'], 2],
+      \ ['foo[0-9]+|bar', ['foo12 bar foo34'], 3],
+      \ ['(?:foo|bar)+', ['foobar foo bar'], 3],
+      \ ['x%@&<>=~', ['x%@&<>=~ other x%@&<>=~'], 2],
+      \ ['a\.b', ['a.b axb a.b'], 2],
+      \ ['\bneedle\b', ['needles needle needle'], 2],
+      \ ['needle\d+', ['needle12 needle34'], 2],
+      \ ['needle\d*', ['needle12 needle'], 2],
+      \ ['(?i)needle', ['needle NEEDLE'], 2],
+      \ ['foo.*?bar', ['foo1bar foo2bar'], 2]]
+for example in examples
+  call setline(1, example[1])
+  write
+  call cursor(1, 1)
+  let $SEARCH_TEST_QUERY = example[0]
+  let @/ = 'previous-search'
+  let v:searchforward = 0
+  set noignorecase nosmartcase nomagic
+  nohlsearch
+  VimSearch
+''' + self.wait_search() + r'''
+  call feedkeys('', 'x')
+  call assert_equal(''' + quoted(target) + r''', expand('%:p'))
+  call assert_equal(1, v:hlsearch, example[0])
+  call assert_equal(1, v:searchforward)
+  let stats = searchcount({'recompute': 1, 'maxcount': 0})
+  call assert_equal(example[2], stats.total, example[0] . ': ' . @/)
+  call assert_equal(1, stats.current, example[0])
+  call assert_equal(@/, histget('search', -1))
+  if example[0] ==# 'needle\d*'
+    call assert_equal('needle12', matchstr(getline(1), @/), 'highlight the complete match')
+  endif
+  if example[2] > 1
+    call feedkeys('n', 'xt')
+    call assert_equal(2, searchcount({'recompute': 1}).current, example[0])
+    call feedkeys('N', 'xt')
+    call assert_equal(1, searchcount({'recompute': 1}).current, example[0])
+  endif
+  call feedkeys("\<Space>fh", 'xt')
+  call assert_equal(0, v:hlsearch, 'clear project search highlight')
+endfor
+let previous = @/
+let $SEARCH_TEST_CANCEL = '1'
+VimSearch
+''' + self.wait_search() + r'''
+call assert_equal(previous, @/, 'cancel preserves the previous search')
+call assert_equal(0, v:hlsearch, 'cancel does not reactivate hidden highlighting')
+''')
 
     def test_recent_selection_opens_file_from_viminfo(self):
         self.fake_fzf()
@@ -2889,6 +2978,7 @@ call assert_true(filereadable($XDG_STATE_HOME . '/vim-lite/search/grep.history')
                         '        time.sleep(.001)\n'
                         'while not release.exists(): time.sleep(.001)\n' +
                         f'path = {str(target)!r} if "--prompt=Recent> " in sys.argv else "src/中文.py"\n' +
+                        'if "--print-query" in sys.argv: os.write(1, b"needle\\0")\n' +
                         'os.write(1, (path + "\\t2\\t1\\t6\\t" + path + "\\0").encode())\n')
         fake.chmod(0o755)
         self.env['PATH'] = str(tools) + os.pathsep + self.env['PATH']
@@ -2948,6 +3038,7 @@ for attempt in range(200)
   if !empty(filter(copy(cells), 'v:val.chars ==# "4" && v:val.fg ==# "#ff9e64"'))
         \ && !empty(filter(copy(cells), 'v:val.chars ==# "r" && v:val.fg ==# "#bb9af7"'))
         \ && !empty(filter(copy(cells), 'v:val.chars ==# "#" && v:val.fg ==# "#565f89"'))
+        \ && !empty(filter(copy(cells), 'v:val.chars ==# "c" && v:val.bg ==# "#e0af68"'))
         \ && TerminalScreen(terminal) =~# 'colored_marker 中文' && TerminalScreen(terminal) =~# '函数前文'
     break
   endif
@@ -2955,6 +3046,7 @@ endfor
 call assert_false(empty(filter(copy(cells), 'v:val.chars ==# "4" && v:val.fg ==# "#ff9e64"')))
 call assert_false(empty(filter(copy(cells), 'v:val.chars ==# "r" && v:val.fg ==# "#bb9af7"')))
 call assert_false(empty(filter(copy(cells), 'v:val.chars ==# "#" && v:val.fg ==# "#565f89"')))
+call assert_false(empty(filter(copy(cells), 'v:val.chars ==# "c" && v:val.bg ==# "#e0af68"')))
 call assert_match('中文_preview.py', TerminalScreen(terminal))
 call assert_match('colored_marker 中文', TerminalScreen(terminal))
 call assert_match('函数前文', TerminalScreen(terminal))
@@ -2963,6 +3055,9 @@ call term_sendkeys(terminal, "\<C-u>\<C-d>\<CR>")
 ''' + self.wait_search() + r'''
 call assert_equal(''' + quoted(target) + r''', expand('%:p'))
 call assert_equal([2, 17], [line('.'), col('.')])
+call feedkeys('', 'x')
+call assert_equal(1, v:hlsearch)
+call assert_equal(1, searchcount({'recompute': 1}).total)
 let g:vimrc_lite_search_highlight = 0
 VimSearch
 ''' + self.wait_fzf('Live grep>') + r'''

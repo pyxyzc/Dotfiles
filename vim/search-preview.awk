@@ -9,6 +9,46 @@ function paint(text, color) {
     return color text reset
 }
 
+# Strip rg's private match markers while recording positions in the original text.
+# All other control characters still pass through the normal sanitization below.
+function strip_matches(text, output, position, end, i) {
+    delete matched
+    output = ""
+    while ((position = index(text, match_start))) {
+        output = output substr(text, 1, position - 1)
+        text = substr(text, position + length(match_start))
+        end = index(text, reset)
+        if (!end) end = length(text) + 1
+        for (i = 1; i < end; i++) matched[length(output) + i] = 1
+        output = output substr(text, 1, end - 1)
+        text = substr(text, end + length(reset))
+    }
+    return output text
+}
+
+# Overlay Search colors after syntax coloring, restoring the surrounding token color.
+function paint_matches(text, output, position, color, active, code, character) {
+    if (!length(matched)) return text
+    position = 1
+    while (length(text)) {
+        if (match(text, /^\033\[[0-9;]*m/)) {
+            code = substr(text, 1, RLENGTH)
+            color = code == reset ? "" : code
+            if (!active) output = output code
+            text = substr(text, RLENGTH + 1)
+        } else {
+            if (matched[position] && !active) output = output search_color
+            else if (!matched[position] && active) output = output reset color
+            active = matched[position]
+            character = substr(text, 1, 1)
+            output = output character
+            text = substr(text, 2)
+            position++
+        }
+    }
+    return output (active ? reset color : "")
+}
+
 # Find a closing quote, honoring backslash escapes and Vim's doubled single quotes.
 function quote_end(text, quote, start, position, i, escapes) {
     start = 1
@@ -90,6 +130,8 @@ BEGIN {
     if (before < 0) before = 0
     if (before > 99) before = 99
     reset = "\033[0m"
+    match_start = reset "\033[31m"
+    search_color = "\033[1;38;2;26;27;38;48;2;224;175;104m"
     # TokyoNight colors; Vim's terminal translates these for a 256-color outer terminal.
     keyword = "\033[38;2;187;154;247m"
     string = "\033[38;2;158;206;106m"
@@ -126,7 +168,7 @@ BEGIN {
 }
 
 function render(raw, line, hit, partial, text) {
-    text = raw
+    text = strip_matches(raw)
     gsub(/[[:cntrl:]]/, " ", text)
     if (length(text) > 500) {
         text = substr(text, 1, 500)
@@ -137,11 +179,11 @@ function render(raw, line, hit, partial, text) {
         sub(/[\300-\377][\200-\277]*$/, "", text)
     }
     if (syntax == "") {
-        if (hit) printf "\033[1;36m>%6d %s\033[0m\n", line, text
-        else printf " %6d %s\n", line, text
+        if (hit) printf "\033[1;36m>%6d %s\033[0m\n", line, paint_matches(text)
+        else printf " %6d %s\n", line, paint_matches(text)
     } else {
-        if (hit) printf "\033[1;36m>%6d\033[0m %s\n", line, highlight(text)
-        else printf "\033[38;2;86;95;137m %6d\033[0m %s\n", line, highlight(text)
+        if (hit) printf "\033[1;36m>%6d\033[0m %s\n", line, paint_matches(highlight(text))
+        else printf "\033[38;2;86;95;137m %6d\033[0m %s\n", line, paint_matches(highlight(text))
     }
     displayed++
     if (++source_lines == 1 || hit) fflush()
@@ -161,7 +203,7 @@ function render_context(count, i) {
 
 {
     record_start = bytes
-    bytes += length($0) + 1
+    bytes += length(strip_matches($0)) + 1
     raw = $0
     if (by_line && NR == 1) sub(/^\357\273\277/, "", raw)
     preceding = by_line ? NR < match_line : bytes <= target_offset

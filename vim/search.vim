@@ -240,6 +240,78 @@ function! s:Cleanup(state, ...) abort
   endif
 endfunction
 
+" 常用 rg 正则转为 Vim very-magic；不支持的语法交给 rg 提取实际命中文字。
+function! s:NativePattern(query) abort
+  let pattern = '\v' . (a:query =~# '\u' ? '\C' : '\c')
+  let chars = split(a:query, '\zs')
+  let index = 0
+  let in_class = 0
+  while index < len(chars)
+    let char = chars[index]
+    if char ==# '\'
+      let index += 1
+      if index >= len(chars)
+        return ''
+      endif
+      let char = chars[index]
+      if char ==# 'b' && !in_class
+        let pattern .= '(<|>)'
+      elseif char =~# '[a-zA-Z0-9]'
+        " Unicode 字符类、转义和边界的语义可能不同，避免错误转换。
+        return ''
+      else
+        let pattern .= '\' . char
+      endif
+    elseif !in_class && char ==# '(' && join(chars[index : index + 2], '') ==# '(?:'
+      let pattern .= '%('
+      let index += 2
+    elseif !in_class && ((char ==# '(' && get(chars, index + 1, '') ==# '?')
+          \ || (char ==# '?' && get(chars, index - 1, '') =~# '[*+?}]'))
+      return ''
+    else
+      if char ==# '['
+        let in_class = 1
+      elseif char ==# ']'
+        let in_class = 0
+      endif
+      let pattern .= !in_class && char =~# '[%&@<>=~]' ? '\' . char : char
+    endif
+    let index += 1
+  endwhile
+  return pattern
+endfunction
+
+function! s:HighlightQuery(query, path) abort
+  if empty(a:query)
+    return
+  endif
+  let pattern = s:NativePattern(a:query)
+  try
+    if !empty(pattern)
+      call match('', pattern)
+    endif
+  catch
+    let pattern = ''
+  endtry
+  if empty(pattern)
+    let command = join(map([exepath('rg'), '--no-config', '--only-matching',
+          \ '--no-filename', '--color=never', '--smart-case', '--', a:query, a:path],
+          \ 'shellescape(v:val)'), ' ')
+    let words = uniq(sort(systemlist(command)))
+    call filter(words, '!empty(v:val)')
+    if v:shell_error > 1 || empty(words)
+      return
+    endif
+    " 有共同前缀时先匹配长词，避免只高亮命中文字的一部分。
+    call sort(words, {left, right -> strlen(right) - strlen(left)})
+    let pattern = '\C\V' . join(map(words, 'escape(v:val, "\\")'), '\m\|\V')
+  endif
+  let @/ = pattern
+  call histadd('search', pattern)
+  " 函数退出会恢复高亮开关和搜索方向，必须在回调返回后执行。
+  call feedkeys(":\<C-u>set hlsearch\<CR>:\<C-u>let v:searchforward = 1\<CR>", 'in')
+endfunction
+
 function! s:Finish(state, status, timer) abort
   if get(a:state, 'done', 0)
     return
@@ -253,6 +325,9 @@ function! s:Finish(state, status, timer) abort
   let position = []
   let error = ''
   let results = []
+  let query = a:status == 0 && a:state.mode ==# 'grep'
+        \ && filereadable(a:state.directory . '/accepted-query')
+        \ ? join(readfile(a:state.directory . '/accepted-query', 'b'), "\n") : ''
   if a:status == 0 && filereadable(a:state.directory . '/export')
     for record in readfile(a:state.directory . '/results')
       let fields = split(record, "\t", 1)
@@ -280,6 +355,7 @@ function! s:Finish(state, status, timer) abort
   endif
   if !empty(results)
     call setqflist([], ' ', {'title': 'Search: ' . a:state.root, 'items': results})
+    call s:HighlightQuery(query, results[0].filename)
     if win_gotoid(a:state.origin)
       botright copen
     endif
@@ -304,6 +380,7 @@ function! s:Finish(state, status, timer) abort
     execute 'edit ' . fnameescape(path)
     call cursor(max([1, str2nr(position[0])]), max([1, str2nr(position[1])]))
     normal! zvzz
+    call s:HighlightQuery(query, path)
   catch
     call s:Warn(v:exception)
   endtry
