@@ -217,6 +217,11 @@ if !s:SourceModule('edit.vim')
   call s:Warn('missing edit.vim; copy the complete vim directory')
 endif
 
+" 持久化行级 pin，复用项目状态目录。
+if !s:SourceModule('pins.vim')
+  call s:Warn('missing pins.vim; copy the complete vim directory')
+endif
+
 if !s:SourceModule('completion.vim')
   call s:Warn('missing completion.vim; copy the complete vim directory')
 endif
@@ -303,6 +308,19 @@ nnoremap <silent> <leader>fr :VimRecent<CR>
 nnoremap <silent> <leader>fw :VimSearchWord<CR>
 xnoremap <silent> <leader>fw :<C-u>VimSearchSelection<CR>
 nnoremap <silent> <leader>fh :nohlsearch<CR>
+nnoremap <silent> <leader>pp :VimPinToggle<CR>
+xnoremap <silent> <leader>pp :VimPinToggle<CR>
+nnoremap <silent> <leader>pc :VimPinClear<CR>
+nnoremap <silent> <leader>pf :VimPinClearFile<CR>
+nnoremap <silent> <leader>pa :VimPinClearProject<CR>
+" 重载时移除旧 pin 按键，保留用户为 ]j/[j 设置的其他映射。
+for s:key in [']j', '[j']
+  if maparg(s:key, 'n') =~# '\<VimPin\%(Next\|Prev\)\>'
+    execute 'nunmap ' . s:key
+  endif
+endfor
+nnoremap <silent> ]p :<C-u>execute v:count1 . 'VimPinNext'<CR>
+nnoremap <silent> [p :<C-u>execute v:count1 . 'VimPinPrev'<CR>
 nnoremap <silent> [q :cprevious<CR>
 nnoremap <silent> ]q :cnext<CR>
 nnoremap <silent> <leader>xQ :call <SID>ToggleList(0)<CR>

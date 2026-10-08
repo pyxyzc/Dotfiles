@@ -2525,7 +2525,7 @@ call assert_equal([], popup_list())
         config.mkdir()
         for name in ('.vimrc', 'search.sh', 'search.awk', 'search-preview.awk', 'dashboard.vim', 'tree.vim',
                      'buffers.vim', 'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
-                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim'):
+                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim'):
             shutil.copyfile(ROOT / name, config / name)
         # Simulate a Vim without popup windows while exercising the actual split implementation.
         (config / 'search.vim').write_text((ROOT / 'search.vim').read_text().replace(
@@ -3076,7 +3076,7 @@ class InstallerTests(unittest.TestCase):
         modules = [self.target / '.vim' / name for name in
                    ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim',
                     'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
-                    'project.vim', 'tasks.vim', 'session.vim', 'tools.vim')]
+                    'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim')]
         for module in modules:
             module.write_text('" old module\n')
         (colors / "unrelated.vim").write_text('" leave alone\n')
@@ -3089,7 +3089,7 @@ class InstallerTests(unittest.TestCase):
         for name in ('search.vim', 'search.sh', 'search.awk', 'search-preview.awk', 'lsp.vim', 'clipboard.vim',
                      'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim',
                      'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
-                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim'):
+                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), [])
         for module in modules:
@@ -3108,7 +3108,7 @@ class InstallerTests(unittest.TestCase):
              '-c', 'if &filetype !=# "vimdashboard" | cquit | endif',
              '-c', f'if stridx(execute("scriptnames"), {quoted(dashboard)}) < 0 | cquit | endif',
              '-c', 'if !exists(":VimFind") || !exists(":VimSearch") || !exists(":Lexplore") | cquit | endif',
-             '-c', 'if !exists(":VimGit") || !exists(":VimTerminal") | cquit | endif',
+             '-c', 'if !exists(":VimGit") || !exists(":VimTerminal") || !exists(":VimPinToggle") || !exists(":VimPinNext") | cquit | endif',
              '-c', 'if !exists(":VimCopyPath") || !exists(":VimCopyContent") || !exists(":VimLspStatus") || !exists(":LspDefinition") | cquit | endif',
              '-c', 'VimConfig',
              '-c', f'if expand("%:p") !=# {quoted(self.target / ".vimrc")} | cquit | endif',

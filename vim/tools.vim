@@ -14,6 +14,12 @@ function! s:Keys(query) abort
         \ 'VimSearchWord': '搜索当前单词 / search word',
         \ 'VimSearchSelection': '搜索选区 / search selection',
         \ 'VimRecent': '最近文件 / recent files',
+        \ 'VimPinToggle': '切换行级 pin / toggle pin',
+        \ 'VimPinClear': '清除当前行 pin / clear pin',
+        \ 'VimPinClearFile': '清除当前文件 pins / clear file pins',
+        \ 'VimPinClearProject': '清除当前项目 pins / clear project pins',
+        \ 'VimPinNext': '下一个 pin / next pin',
+        \ 'VimPinPrev': '上一个 pin / previous pin',
         \ 'VimLspRename': '符号重命名 / rename',
         \ 'VimLspCodeAction': '代码操作 / code action',
         \ 'VimLspFormat': '格式化 / format',
@@ -99,6 +105,10 @@ function! s:Health() abort
         \ !empty($SSH_CONNECTION) || !empty($SSH_TTY)) ? 'OSC 52' : has('clipboard')
         \ ? 'local clipboard' : 'unnamed register fallback'))
   call add(lines, 'Undo: ' . (exists('+undofile') && &undofile ? &undodir : 'disabled'))
+  call add(lines, 'Pins: ' . (v:version >= 802 && has('textprop')
+        \ && exists('*listener_add') && exists('*prop_find')
+        \ && exists('*json_encode') && exists('*sha256') && exists('*timer_start')
+        \ ? 'persistent line pins available' : 'requires Vim 8.2/9 with +textprop/listeners'))
   if exists('g:vimrc_lite_undo_error') && !&undofile
     call add(lines, 'Undo error: ' . g:vimrc_lite_undo_error)
   endif

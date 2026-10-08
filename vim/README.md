@@ -11,6 +11,7 @@
 
 `.vimrc` 保留基础设置、通用功能和快捷键；`buffers.vim` 管理顶部 buffer 栏、
 buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等编辑辅助；
+`pins.vim` 提供随代码行移动、跨 Vim 重启恢复的持久 pin；
 `completion.vim` 分批扫描已加载 buffer，提供自动单词补全；
 `matchparen.vim` 为系统括号高亮增加光标附近的快速检查，避免无括号长行的重复扫描；
 `dashboard.vim` 管理首页，
@@ -73,6 +74,7 @@ bash ~/Dotfiles/vim/vim-clean.sh
 ~/.vim/tree.vim
 ~/.vim/buffers.vim
 ~/.vim/edit.vim
+~/.vim/pins.vim
 ~/.vim/completion.vim
 ~/.vim/matchparen.vim
 ~/.vim/textobjects.vim
@@ -255,6 +257,9 @@ slogan 不会挤掉原本能显示的 buffer 标签。
 | `<leader>fr` | fzf 筛选 Vim 保存的最近文件，只显示文件列表，回车打开 |
 | `<leader>fw` | 搜索当前单词；可视模式搜索单行选区，初始内容按字面值匹配 |
 | `<leader>fh` | 清除本次搜索高亮 |
+| `<leader>pp` | 切换当前行的 pin；可视模式逐行反转所选各行 |
+| `]p` / `[p` | 当前文件的下一个／上一个 pin，首尾循环；支持次数前缀 |
+| `<leader>pc` / `pf` / `pa` | 清除当前行／当前文件／当前项目全部 pins |
 | `[q` / `]q` | 上一个／下一个 quickfix 结果 |
 | `<leader>xQ` / `xL` | 开关 quickfix／location list |
 | `<leader>;` | 新标签页打开内置终端，使用 Vim 的 `shell` 设置，退出 shell 后关闭终端页 |
@@ -596,6 +601,41 @@ Esc 先向搜索终端发送 Ctrl-C；100 毫秒后作业仍未退出时，向�
 避免卡住的工具探测无限等待。仍待退出与通道关闭后清理，取消后不再打开迟到的选择结果。
 文件名及查询中的空格、中文、引号和 shell 特殊字符会作为数据处理。
 
+## 行级 pin
+
+`<leader>pp`（空格 `pp`）切换当前行的 pin；可视模式下，所选各行独立切换，
+已有 pin 的行取消，没有 pin 的行添加。字符、整行和块选区都按涉及的整行处理。
+也可用 `:VimPinToggle` 或 `:2,5VimPinToggle` 操作指定行。
+
+`]p` / `[p` 按行号跳到当前文件的下一个／上一个 pin，多个 pins 首尾循环。
+只有一个 pin 时，从其他行跳过去，已经在该行则保持光标和视图不动；没有 pin 时不动。
+`3]p` 等次数前缀和 `:3VimPinNext` / `:3VimPinPrev` 均可使用。
+跳转落在首个非空白字符，并展开目标位置的折叠，不改变原生搜索或复制寄存器。
+
+`<leader>pc` / `:VimPinClear` 清除当前行，`<leader>pf` / `:VimPinClearFile`
+清除当前文件，`<leader>pa` / `:VimPinClearProject` 清除当前项目，包括未打开文件
+和暂时无法定位的记录。项目范围沿用现有项目定位规则；不影响其他项目。
+
+pin 的亮薄荷青背景覆盖整行已有文字，包括缩进、注释及行尾空白，不铺满窗口右侧空白。
+空行可以设置 pin 并参与跳转，但没有文字背景可显示。选区使用热粉紫，搜索沿用原有配色；
+选区和搜索优先显示，取消后仍显示 pin。同一文件在多个窗口中的 pin 同步更新。
+
+pin 随上方插删行移动；替换该行文字仍保留 pin。删除整行时 pin 消失，撤销删行时恢复。
+显式清除的 pin 不会被代码撤销重新带回。设置 pin 不修改文件正文，也不使文件变为 modified。
+
+默认永久保存，状态位于 `${XDG_STATE_HOME:-~/.local/state}/vim-lite/pins/`，
+按项目根路径的 SHA-256 分开保存 JSON，不在项目目录创建文件，也不执行状态内容。
+标记和清除立即保存；代码编辑先更新内存位置，成功保存文件后更新持久定位。
+放弃未保存的编辑不会改写已有记录的磁盘位置；未保存新增内容若无法在重开后定位，保留待定位记录。
+
+重开文件时，内容未变则恢复原行号；外部修改后按行文本和前后上下文重新定位。
+重复内容无法消歧或原文字已不存在时，提示待定位并保留记录，不直接标记旧行号上的其他代码。
+状态损坏或写入失败时显示提示；损坏的 JSON 不被覆盖，当前进程中的 pin 操作仍可使用。
+
+需要 Vim 8.2/9 的 `+textprop`、buffer listener、JSON 和 SHA-256 支持。
+早期 Vim 仍能正常加载配置，使用 pin 命令时提示缺少支持；无名 buffer 需先保存，
+终端、帮助和列表等特殊 buffer 不支持设置 pin。
+
 ## 撤销、任务与会话
 
 普通文件默认启用持久撤销。保存文件后，退出再打开仍能使用 `u`、`Ctrl-r`、
@@ -726,6 +766,9 @@ OSC 52 要求本地终端允许应用写入剪贴板；tmux 内还需要 `set -g
 ```bash
 # 测试只使用 Python 标准库，配置运行时不依赖 Python。
 python3 ~/Dotfiles/vim/tests/test_vim.py
+
+# 行级 pin：持久化、编辑跟踪、跳转和真实终端高亮。
+python3 ~/Dotfiles/vim/tests/test_pins.py
 ```
 
 测试在临时目录执行，覆盖配置、主题、首页启动与交互、buffer、搜索、终端退出清理、

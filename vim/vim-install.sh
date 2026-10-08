@@ -19,6 +19,7 @@ config_files=(
     tree.vim
     buffers.vim
     edit.vim
+    pins.vim
     completion.vim
     matchparen.vim
     textobjects.vim
