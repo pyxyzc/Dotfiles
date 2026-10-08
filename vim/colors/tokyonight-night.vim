@@ -1,7 +1,7 @@
 " TokyoNight Night, exported by folke/tokyonight.nvim.
 " Upstream revision: cdc07ac78467a233fd62c493de29a17e0cf2b2b6
 " License: Apache-2.0; see LICENSE.tokyonight and README.md.
-" Local changes: static xterm-256 colors and optional transparent background.
+" Local changes: static xterm-256 colors, blue-violet chrome and optional transparency.
 " 256-color values use nearest RGB distance among xterm colors 16..255.
 set background=dark
 if exists('syntax_on')
@@ -229,14 +229,15 @@ hi StatusLine guibg=#16161e guifg=#a9b1d6 ctermfg=146 ctermbg=234
 hi StatusLineNC guibg=#16161e guifg=#3b4261 ctermfg=239 ctermbg=234
 hi String guibg=NONE guifg=#9ece6a ctermfg=149 ctermbg=NONE
 hi Substitute guibg=#f7768e guifg=#15161e ctermfg=234 ctermbg=210
-hi TabLine guibg=#16161e guifg=#3b4261 ctermfg=239 ctermbg=234
-hi TabLineFill guibg=#15161e ctermbg=234
+hi TabLine gui=NONE guibg=#3b4261 guifg=#a9b1d6 ctermfg=146 ctermbg=239 cterm=NONE term=NONE
+hi TabLineFill gui=NONE guibg=#3b4261 guifg=#bb9af7 ctermfg=141 ctermbg=239 cterm=NONE term=NONE
 hi TabLineSel guibg=#7aa2f7 guifg=#15161e ctermfg=234 ctermbg=111
 hi Title gui=bold guibg=NONE guifg=#7aa2f7 ctermfg=111 ctermbg=NONE cterm=bold
 hi Todo guibg=#e0af68 guifg=#1a1b26 ctermfg=234 ctermbg=179
 hi Type guibg=NONE guifg=#2ac3de ctermfg=38 ctermbg=NONE
 hi Underlined gui=underline guibg=NONE ctermbg=NONE cterm=underline
-hi VertSplit guibg=NONE guifg=#15161e ctermfg=234 ctermbg=NONE
+hi VertSplit gui=NONE guibg=NONE guifg=#7aa2f7 ctermfg=111 ctermbg=NONE cterm=NONE term=NONE
+hi VimContextHeader gui=NONE guibg=#3b4261 guifg=#7dcfff ctermfg=117 ctermbg=239 cterm=NONE term=NONE
 hi VimwikiHR guibg=NONE guifg=#e0af68 ctermfg=179 ctermbg=NONE
 hi VimwikiHeader1 gui=bold guibg=NONE guifg=#7aa2f7 ctermfg=111 ctermbg=NONE cterm=bold
 hi VimwikiHeader2 gui=bold guibg=NONE guifg=#e0af68 ctermfg=179 ctermbg=NONE cterm=bold
@@ -251,12 +252,12 @@ hi VimwikiLink guibg=NONE guifg=#7aa2f7 ctermfg=111 ctermbg=NONE
 hi VimwikiList guibg=NONE guifg=#ff9e64 ctermfg=215 ctermbg=NONE
 hi VimwikiMarkers guibg=NONE guifg=#7aa2f7 ctermfg=111 ctermbg=NONE
 hi VimwikiTag guibg=NONE guifg=#9ece6a ctermfg=149 ctermbg=NONE
-hi Visual guibg=#283457 ctermbg=237
-hi VisualNOS guibg=#283457 ctermbg=237
+hi Visual gui=NONE guibg=#ff6bcb guifg=#1a1b26 ctermbg=206 ctermfg=234 cterm=NONE
+hi VisualNOS gui=NONE guibg=#ff6bcb guifg=#1a1b26 ctermbg=206 ctermfg=234 cterm=NONE
 hi WarningMsg guibg=NONE guifg=#e0af68 ctermfg=179 ctermbg=NONE
 hi Whitespace guibg=NONE guifg=#3b4261 ctermfg=239 ctermbg=NONE
 hi WildMenu guibg=#283457 ctermbg=237
-hi WinSeparator gui=bold guibg=NONE guifg=#15161e ctermfg=234 ctermbg=NONE cterm=bold
+hi WinSeparator gui=NONE guibg=NONE guifg=#7aa2f7 ctermfg=111 ctermbg=NONE cterm=NONE term=NONE
 hi debugBreakpoint guibg=#192b38 guifg=#0db9d7 ctermfg=38 ctermbg=235
 hi debugPC guibg=#16161e ctermbg=234
 hi diffAdded guibg=#243e4a guifg=#449dab ctermfg=73 ctermbg=237
