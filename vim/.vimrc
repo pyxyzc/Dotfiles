@@ -111,9 +111,9 @@ endif
 highlight CursorLine gui=underline guibg=NONE
 highlight CursorLine cterm=underline ctermbg=NONE
 
-" 使用柔和的蓝色强调当前行号。
-highlight CursorLineNr gui=bold guifg=#7aa2f7 guibg=NONE
-highlight CursorLineNr cterm=bold ctermfg=111 ctermbg=NONE
+" 使用亮粉色强调当前行号，与亮青蓝的普通行号区分。
+highlight CursorLineNr gui=bold guifg=#ff6bcb guibg=NONE
+highlight CursorLineNr cterm=bold ctermfg=206 ctermbg=NONE
 
 augroup vimrc_lite
   autocmd!

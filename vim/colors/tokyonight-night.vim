@@ -40,7 +40,7 @@ hi Cursor guibg=#c0caf5 guifg=#1a1b26 ctermfg=234 ctermbg=153
 hi CursorColumn guibg=#292e42 ctermbg=236
 hi CursorIM guibg=#c0caf5 guifg=#1a1b26 ctermfg=234 ctermbg=153
 hi CursorLine guibg=#292e42 ctermbg=236
-hi CursorLineNr gui=bold guibg=NONE guifg=#ff9e64 ctermfg=215 ctermbg=NONE cterm=bold
+hi CursorLineNr gui=bold guibg=NONE guifg=#ff6bcb ctermfg=206 ctermbg=NONE cterm=bold
 hi Debug guibg=NONE guifg=#ff9e64 ctermfg=215 ctermbg=NONE
 hi DiagnosticError guibg=NONE guifg=#db4b4b ctermfg=167 ctermbg=NONE
 hi DiagnosticHint guibg=NONE guifg=#1abc9c ctermfg=37 ctermbg=NONE
@@ -97,9 +97,9 @@ hi IlluminatedWordWrite guibg=#3b4261 ctermbg=239
 hi IncSearch gui=bold guibg=#ff9e64 guifg=#15161e ctermfg=234 ctermbg=215 cterm=bold
 hi Italic gui=italic guibg=NONE guifg=#c0caf5 ctermfg=153 ctermbg=NONE cterm=italic
 hi Keyword gui=italic guibg=NONE guifg=#7dcfff ctermfg=117 ctermbg=NONE cterm=italic
-hi LineNr guibg=NONE guifg=#3b4261 ctermfg=239 ctermbg=NONE
-hi LineNrAbove guibg=NONE guifg=#3b4261 ctermfg=239 ctermbg=NONE
-hi LineNrBelow guibg=NONE guifg=#3b4261 ctermfg=239 ctermbg=NONE
+hi LineNr guibg=NONE guifg=#7dcfff ctermfg=117 ctermbg=NONE
+hi LineNrAbove guibg=NONE guifg=#7dcfff ctermfg=117 ctermbg=NONE
+hi LineNrBelow guibg=NONE guifg=#7dcfff ctermfg=117 ctermbg=NONE
 hi LspCodeLens guibg=NONE guifg=#565f89 ctermfg=60 ctermbg=NONE
 hi LspInfoBorder guibg=#16161e guifg=#27a1b9 ctermfg=37 ctermbg=234
 hi LspInlayHint guibg=#1d202d guifg=#545c7e ctermfg=60 ctermbg=235
@@ -336,4 +336,6 @@ if get(g:, 'vimrc_lite_transparent', 1)
   highlight Normal guibg=NONE ctermbg=NONE
   highlight NormalNC guibg=NONE ctermbg=NONE
   highlight EndOfBuffer guibg=NONE ctermbg=NONE
+  highlight SignColumn guibg=NONE ctermbg=NONE
+  highlight SignColumnSB guibg=NONE ctermbg=NONE
 endif
