@@ -76,6 +76,11 @@ function! s:Open(command) abort
     if !state.buf || job_status(term_getjob(state.buf)) ==# 'fail'
       throw 'could not start terminal: ' . command
     endif
+    if command ==# 'lazygit'
+      " Esc 立即传给 LazyGit，覆盖全局双 Esc 映射的等待与模式切换。
+      tnoremap <buffer> <Esc><Esc> <Esc><Esc>
+      tnoremap <nowait><buffer> <Esc> <Esc>
+    endif
     startinsert
   catch
     let error = v:exception

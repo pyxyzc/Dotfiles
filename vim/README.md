@@ -275,7 +275,7 @@ slogan 不会挤掉原本能显示的 buffer 标签。
 | `<leader>rs` / `ro` | 查看任务状态／输出 |
 | `<leader>ss` / `sl` | 保存／恢复当前项目的默认会话 |
 | `<leader>?` / `ch` | 查看快捷键／环境检查 |
-| 终端内双 `Esc` | 进入终端普通模式；按 `i` 返回输入 |
+| 终端内双 `Esc`（LazyGit 除外） | 进入终端普通模式；按 `i` 返回输入 |
 | `<leader>nh` / `<leader>q` | 查看消息历史／退出当前窗口；未保存时按 `s` 保存、`q` 放弃修改、`c` 或 `<Esc>` 取消 |
 | `<leader>gg` | 在新标签页的内置终端中打开 LazyGit，退出后自动关闭该标签页 |
 | 可视模式 `<` / `>` | 调整缩进后保留选区 |
@@ -320,7 +320,8 @@ Alt、Ctrl-方向键的传递取决于终端和 tmux 设置。
 LazyGit 使用当前 Vim 工作目录；从项目目录启动 Vim，按空格后再按 `gg` 即可。
 两个终端入口需要 Vim 支持 `+terminal` 和 `+timers`；LazyGit 还需要系统已有 `lazygit`。
 缺失时只提示，不自动下载。
-LazyGit 内使用它自己的按键，通常按 `q` 退出；不需要任何 Vim Git 插件。
+LazyGit 内 `Esc` 直接传给 LazyGit，不等待双击或切换 Vim 模式；按 `q` 退出，
+不需要任何 Vim Git 插件。
 从首页启动时，退出后回到原首页，不留下空 buffer；从文件启动时回到原编辑窗口。
 若已切到其他窗口则保留当前焦点，已有文件和未保存内容不会被清理。
 也可使用 `:VimGit` 或 `:VimTerminal [command]`；后者不带参数时使用 `shell` 设置，
