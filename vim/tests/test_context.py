@@ -138,6 +138,28 @@ call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured())
         self.assertEqual(len(self.messages('textDocument/documentSymbol')), 1)
 
+    def test_narrow_split_keeps_filename_and_context_visible(self):
+        self.terminal_vim(HELPERS + r'''
+call ContextView(25, 20)
+call AssertContext(':Parser:parse')
+vsplit
+call AssertContext(':Parser:parse')
+let window = getwininfo(win_getid())[0]
+let row = window.winrow + window.height
+let text = join(map(range(window.wincol, window.wincol + window.width - 1),
+      \ 'screenstring(row, v:val)'), '')
+call assert_true(stridx(text, 'main.py:Parser:parse') >= 0, text)
+call assert_notmatch('\[lang:', text)
+call assert_notmatch('\[lsp:', text)
+only
+redraw
+let text = join(map(range(1, &columns), 'screenstring(&lines - 1, v:val)'), '')
+call assert_match('main.py:Parser:parse', text)
+call assert_match('\[lang: python\]', text)
+call assert_match('\[lsp: pyright\]', text)
+call assert_equal([], popup_list())
+''', args=[str(self.source)], before=self.configured())
+
     def test_unicode_and_percent_names_are_literal_statusline_text(self):
         self.symbols[1]['name'] = '解析%{1+1}'
         self.symbols[1]['children'][0]['name'] = '处理'
@@ -310,6 +332,40 @@ call assert_equal('', ContextLabel(win_getid()))
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured() + ['let g:vimrc_lite_context = 0'])
         self.assertEqual([], self.messages('textDocument/documentSymbol'))
+
+    def test_pending_large_conversion_cancels_and_never_publishes_partial_scopes(self):
+        children = [symbol(f'method{index}', 6, 2 + index * 3, 8, 3 + index * 3)
+                    for index in range(2000)]
+        rows = ['class Parser:']
+        for index in range(2000):
+            rows += [f'    def method{index}():', '        pass', '']
+        self.source.write_text('\n'.join(rows) + '\n')
+        self.symbols = [symbol('Parser', 5, 1, 6, len(rows), children)]
+        replacement = [symbol('New', 5, 1, 6, len(rows), [children[0]])]
+        self.terminal_vim(HELPERS + r'''
+call cursor(3, 1)
+let g:context_sid = str2nr(matchstr(ScriptPrefix('/context.vim$'), '\d\+'))
+let g:source_buffer = bufnr('%')
+function! PendingContext() abort
+  let state = get(getscriptinfo({'sid': g:context_sid})[0].variables.cache,
+        \ g:source_buffer, {})
+  return !get(state, 'done', 1) && get(state, 'compile_timer', -1) > 0
+endfunction
+call WaitFor({-> PendingContext()})
+call assert_equal('', VimContextLabel(), 'partial conversion appeared in statusline')
+let state = getscriptinfo({'sid': g:context_sid})[0].variables.cache[source_buffer]
+let pending_timer = state.compile_timer
+VimContextToggle
+call assert_equal([], timer_info(pending_timer), 'conversion timer survived disabling context')
+call setline(1, 'class New:')
+call Configure({'results': {'textDocument/documentSymbol': ''' + json.dumps(replacement) + r'''}})
+VimContextToggle
+call AssertContext(':New:method0')
+sleep 100m
+call assert_equal(':New:method0', VimContextLabel(), 'cancelled conversion replaced new names')
+call assert_equal([], popup_list())
+call assert_equal('', v:errmsg)
+''', args=[str(self.source)], before=self.configured())
 
     def test_two_projects_keep_separate_cache_and_server_bindings(self):
         project = self.work / 'second project'

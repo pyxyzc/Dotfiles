@@ -50,6 +50,7 @@ def benchmark(config, functions=1000, length=50000, rounds=5):
         rows.append('};')
         source.write_text('\n'.join(rows) + '\n')
         root = node('Root', 5, 0, len(rows) - 1, methods)
+        root['range']['end']['character'] = len(rows[-1])
         root['selectionRange'] = {'start': {'line': 0, 'character': 6},
                                   'end': {'line': 0, 'character': 10}}
         responses = session.work / 'responses.json'
@@ -57,12 +58,23 @@ def benchmark(config, functions=1000, length=50000, rounds=5):
         command = session.command + ['--response-config', str(responses)]
         report = session.work / 'context-metrics.json'
         body = WAIT + r'''
+let initial_started = reltime()
 call lsp#enable()
 execute 'edit ' . fnameescape(''' + quoted(source) + r''')
 call cursor(3, 1)
+let g:heartbeat_last = reltime()
+let g:heartbeat_gaps = []
+function! ContextHeartbeat(timer) abort
+  call add(g:heartbeat_gaps, reltimefloat(reltime(g:heartbeat_last)) * 1000)
+  let g:heartbeat_last = reltime()
+endfunction
+let heartbeat = timer_start(2, function('ContextHeartbeat'), {'repeat': -1})
 call WaitFor({-> VimContextLabel() ==# ':Root:f00000'})
+sleep 10m
+call timer_stop(heartbeat)
+let initial_ready = reltimefloat(reltime(initial_started)) * 1000
 let positions = ''' + json.dumps(positions) + r'''
-let metrics = {}
+let metrics = {'initial_ready': [initial_ready], 'event_loop_pause': g:heartbeat_gaps}
 for [name, points] in items(positions)
   let samples = []
   let lookup_count = name =~# '^long_' ? 20 : 1000

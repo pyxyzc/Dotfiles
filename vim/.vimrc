@@ -68,8 +68,9 @@ set hidden autoread
 set noswapfile
 set number relativenumber cursorline
 set laststatus=2 showmode showcmd
+" 窄分屏优先显示文件名、作用域和位置；语言与服务器信息留给较宽窗口。
 let &statusline = '%n:%<%f%{exists("*VimContextLabel") ? VimContextLabel() : ""} %m%r%h%='
-      \ . '%{exists("*VimLspStatusLabel") ? VimLspStatusLabel() : '
+      \ . '%{winwidth(0) < 60 ? "" : exists("*VimLspStatusLabel") ? VimLspStatusLabel() : '
       \ . 'empty(&filetype) ? "" : "[lang: " . &filetype . "]"} %l:%c %p%%'
 set scrolloff=5 sidescrolloff=5 nowrap
 set splitbelow splitright
