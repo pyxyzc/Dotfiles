@@ -82,6 +82,7 @@ let g:first_server = lsp#get_allowed_servers()[0]
 execute 'vsplit ' . fnameescape(''' + quoted(source) + r''')
 call WaitFor({-> &omnifunc ==# 'lsp#complete'})
 let second = bufnr('%')
+let saved_omnifunc = b:vimrc_lite_lsp_saved.omnifunc
 let g:second_server = lsp#get_allowed_servers()[0]
 call assert_notequal(g:first_server, g:second_server)
 call assert_equal(''' + quoted(project.as_uri()) + r''', lsp#get_server_root_uri(g:second_server))
@@ -95,7 +96,7 @@ call assert_true(lsp#is_server_running(g:second_server), 'reload interrupted the
 let g:vimrc_lite_lsp_pyright_cmd = saved_command
 VimLspStop
 call WaitFor({-> !lsp#is_server_running(g:second_server)})
-call assert_equal('', &omnifunc)
+call assert_equal(saved_omnifunc, &omnifunc)
 call assert_equal('', maparg('gd', 'n'))
 execute 'buffer ' . first
 execute 'buffer ' . second
@@ -262,7 +263,7 @@ call assert_true(lsp#document_hover_preview_winid() > 0)
 call assert_match('first', join(getbufline(winbufnr(lsp#document_hover_preview_winid()), 1, '$')))
 call popup_clear()
 VimLspDiagnostics
-sleep 120m
+call WaitFor({-> empty(sign_getplaced(bufnr('%'), {'group': 'vim_lsp'})[0].signs)})
 call assert_equal([], sign_getplaced(bufnr('%'), {'group': 'vim_lsp'})[0].signs)
 VimLspDiagnosticList
 call assert_equal(2, len(getloclist(0)))
@@ -638,7 +639,14 @@ function! PickResolved(timer) abort
   let g:polls += 1
   if g:phase == 0 && pumvisible()
     call assert_equal('lsp', b:vimrc_lite_completion_owner)
-    call assert_equal(['target', 'targB'], map(complete_info(['items']).items, 'v:val.word'))
+    " complete_info() 的循环列表顺序可能与可见菜单不同，直接核对用户看到的第一项。
+    call assert_equal(['targB', 'target'],
+          \ sort(map(complete_info(['items']).items, 'v:val.word')))
+    redraw
+    let menu = pum_getpos()
+    let text = join(map(range(menu.col + 1, menu.col + menu.width),
+          \ 'screenstring(menu.row + 1, v:val)'), '')
+    call assert_match('^\s*target\s', text)
     call feedkeys("\<C-n>", 't')
     let g:phase = 1
   elseif g:phase == 1 && pumvisible()
