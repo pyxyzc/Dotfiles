@@ -6,14 +6,18 @@ let s:finders = get(s:, 'finders', {})
 let s:ordinal = get(s:, 'ordinal', {})
 let s:ordinal_cache = {}
 let s:ordinal_timer = get(s:, 'ordinal_timer', -1)
-let s:ordinal_supported = has('patch-9.0.0121') && has('textprop')
-      \ && exists('*searchcount') && has('timers')
+let s:ordinal_virtual_text = has('patch-9.0.0121')
+let s:ordinal_supported = has('textprop') && exists('*searchcount') && has('timers')
+      \ && (s:ordinal_virtual_text || (exists('*popup_create') && exists('*screenpos')))
 
-" /、?、n、N 使用原生搜索；只在当前匹配的行尾添加虚拟文字。
+" /、?、n、N 使用原生搜索；只在当前匹配的行尾显示序号。
 function! s:ClearOrdinal() abort
   if s:ordinal_timer != -1
     call timer_stop(s:ordinal_timer)
     let s:ordinal_timer = -1
+  endif
+  if get(s:ordinal, 'popup', 0)
+    call popup_close(s:ordinal.popup)
   endif
   if !empty(s:ordinal) && bufloaded(s:ordinal.buffer)
     let options = {'bufnr': s:ordinal.buffer, 'type': 'VimrcLiteSearchOrdinal', 'all': 1}
@@ -56,15 +60,40 @@ function! s:UpdateOrdinal(timer) abort
     return
   endif
   let text = printf(' [%d/%d]', stats.current, stats.total)
+  if !s:ordinal_virtual_text
+    let ending = screenpos(win_getid(), line('.'), col('$'))
+    let width = min([strlen(text), win_screenpos(0)[1] + winwidth(0) - ending.col])
+    if !ending.row || !ending.col || width <= 0 || foldclosed(line('.')) != -1
+      call s:ClearOrdinal()
+      return
+    endif
+  endif
   if get(s:ordinal, 'buffer', 0) == bufnr('%') && get(s:ordinal, 'line', 0) == line('.')
         \ && get(s:ordinal, 'text', '') ==# text && s:ordinal.tick == b:changedtick
+        \ && (s:ordinal_virtual_text || !empty(popup_getpos(get(s:ordinal, 'popup', 0))))
+    if !s:ordinal_virtual_text && get(s:ordinal, 'width', -1) != width
+      call popup_move(s:ordinal.popup, {'maxwidth': width})
+      let s:ordinal.width = width
+    endif
     return
   endif
   call s:ClearOrdinal()
-  call prop_add(line('.'), 0, {'type': 'VimrcLiteSearchOrdinal', 'text': text,
-        \ 'text_align': 'after'})
+  if s:ordinal_virtual_text
+    call prop_add(line('.'), 0, {'type': 'VimrcLiteSearchOrdinal', 'text': text,
+          \ 'text_align': 'after'})
+  else
+    " Vim 8 的普通文字属性锚定行尾；无边框弹窗随原行滚动，不写入文件。
+    call prop_add(line('.'), col('$'), {'type': 'VimrcLiteSearchOrdinal', 'length': 0})
+    let popup = popup_create(text, {'textprop': 'VimrcLiteSearchOrdinal', 'line': -1,
+          \ 'pos': 'topleft', 'posinvert': 0, 'fixed': 1, 'wrap': 0, 'maxwidth': width,
+          \ 'scrollbar': 0, 'zindex': 10, 'highlight': 'VimrcLiteSearchOrdinal'})
+  endif
   let s:ordinal = {'buffer': bufnr('%'), 'line': line('.'), 'tick': b:changedtick,
         \ 'text': text}
+  if !s:ordinal_virtual_text
+    let s:ordinal.popup = popup
+    let s:ordinal.width = width
+  endif
 endfunction
 
 function! s:QueueOrdinal(...) abort
@@ -622,6 +651,12 @@ augroup vimrc_lite_search_ordinal
     autocmd User VimrcLiteReload call s:ClearOrdinal()
     autocmd VimLeavePre * call s:ClearOrdinal()
     autocmd ColorScheme * highlight default link VimrcLiteSearchOrdinal Comment
+    if !s:ordinal_virtual_text
+      autocmd VimResized * call s:QueueOrdinal()
+      if exists('##WinScrolled')
+        autocmd WinScrolled * call s:QueueOrdinal()
+      endif
+    endif
   endif
 augroup END
 augroup vimrc_lite_search

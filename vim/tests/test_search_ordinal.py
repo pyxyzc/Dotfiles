@@ -8,18 +8,37 @@ from test_vim import ROOT, VIM, VimSession
 
 SUPPORTED = subprocess.run(
     [VIM, '-Nu', 'NONE', '-i', 'NONE', '-n', '-es', '-c',
-     'if !has("patch-9.0.0121") || !has("textprop") || !exists("*searchcount") | cquit | endif',
+     'if !has("textprop") || !exists("*searchcount") || !has("timers") '
+     '|| (!has("patch-9.0.0121") && (!exists("*popup_create") || !exists("*screenpos"))) '
+     '| cquit | endif',
+     '-c', 'qa!'], capture_output=True,
+).returncode == 0
+
+POPUP_SUPPORTED = SUPPORTED and subprocess.run(
+    [VIM, '-Nu', 'NONE', '-i', 'NONE', '-n', '-es', '-c',
+     'if !exists("*popup_create") || !exists("*screenpos") | cquit | endif',
      '-c', 'qa!'], capture_output=True,
 ).returncode == 0
 
 HELPERS = r'''
 function! OrdinalProperties() abort
-  return prop_list(1, {'types': ['VimrcLiteSearchOrdinal'], 'end_lnum': -1})
+  let properties = prop_list(1, {'types': ['VimrcLiteSearchOrdinal'], 'end_lnum': -1})
+  if !empty(properties) && !has_key(properties[0], 'text')
+    let popups = filter(popup_list(),
+          \ 'getwinvar(v:val, "&wincolor") ==# "VimrcLiteSearchOrdinal"')
+    call assert_equal(1, len(popups), 'one popup for the line-end anchor')
+    let text = empty(popups) ? '' : join(getbufline(winbufnr(popups[0]), 1, '$'), '')
+    for property in properties
+      let property.text = text
+    endfor
+  endif
+  return properties
 endfunction
 function! OrdinalText() abort
   return join(map(OrdinalProperties(), 'v:val.text'), '')
 endfunction
 function! RefreshOrdinal() abort
+  redraw
   doautocmd vimrc_lite_search_ordinal CursorMoved
   sleep 10m
   redraw
@@ -27,7 +46,7 @@ endfunction
 '''
 
 
-@unittest.skipUnless(SUPPORTED, 'Search virtual text needs Vim 9.0.0121+ and +textprop')
+@unittest.skipUnless(SUPPORTED, 'Search ordinals need text properties or anchored popups')
 class SearchOrdinalTests(VimSession):
     def test_native_search_navigation_same_line_and_display_only(self):
         self.terminal_vim(HELPERS + r'''
@@ -164,7 +183,7 @@ call assert_equal([], prop_list(1, {'bufnr': first,
 wincmd p
 call RefreshOrdinal()
 call assert_equal(' [1/3]', OrdinalText())
-source ''' + str(ROOT / '.vimrc') + r'''
+source ''' + str(getattr(self, 'config', ROOT / '.vimrc')) + r'''
 call RefreshOrdinal()
 call assert_equal(' [1/3]', OrdinalText())
 call assert_equal(1, len(OrdinalProperties()), 'reload duplicated mark')
@@ -197,6 +216,104 @@ call feedkeys('n', 'xt')
 call RefreshOrdinal()
 call assert_equal(1, col('.'))
 ''', before=['let g:vimrc_lite_search_ordinal = 0'])
+
+
+@unittest.skipUnless(POPUP_SUPPORTED, 'Anchored search ordinals need popup support')
+class SearchOrdinalPopupTests(SearchOrdinalTests):
+    """Exercise the Vim 8 popup renderer on newer test binaries as well."""
+
+    def setUp(self):
+        super().setUp()
+        config_dir = self.work / 'config'
+        config_dir.mkdir()
+        for source in ROOT.iterdir():
+            if source.name not in ('.vimrc', 'search.vim'):
+                (config_dir / source.name).symlink_to(source)
+        self.config = config_dir / '.vimrc'
+        self.config.write_text((ROOT / '.vimrc').read_text(), encoding='utf-8')
+        search = (ROOT / 'search.vim').read_text().replace(
+            "let s:ordinal_virtual_text = has('patch-9.0.0121')",
+            'let s:ordinal_virtual_text = 0',
+        )
+        (config_dir / 'search.vim').write_text(search, encoding='utf-8')
+
+    def terminal_vim(self, body, *args, **kwargs):
+        kwargs['config'] = self.config
+        return super().terminal_vim(body, *args, **kwargs)
+
+    def test_popup_clear_recovers_mark_without_editing_or_moving(self):
+        self.terminal_vim(HELPERS + r'''
+edit words.txt
+call setline(1, 'foo foo')
+let @/ = 'foo'
+call cursor(1, 1)
+call RefreshOrdinal()
+call assert_equal(' [1/2]', OrdinalText())
+let tick = b:changedtick
+let position = getpos('.')
+call popup_clear()
+call RefreshOrdinal()
+call assert_equal(' [1/2]', OrdinalText())
+call assert_equal(tick, b:changedtick)
+call assert_equal(position, getpos('.'))
+call assert_equal('foo foo', getline(1))
+call assert_equal('', v:errmsg)
+''')
+
+    def test_popup_anchor_follows_scrolling_and_unicode_line_end(self):
+        self.terminal_vim(HELPERS + r'''
+edit words.txt
+call setline(1, repeat(['before'], 10) + ["foo\t中文"] + repeat(['after'], 30))
+let @/ = 'foo'
+call cursor(11, 1)
+call RefreshOrdinal()
+call assert_equal(' [1/1]', OrdinalText())
+let popup = filter(popup_list(),
+      \ 'getwinvar(v:val, "&wincolor") ==# "VimrcLiteSearchOrdinal"')[0]
+let ending = screenpos(win_getid(), 11, col('$'))
+call assert_equal([ending.row, ending.col],
+      \ [popup_getpos(popup).line, popup_getpos(popup).col])
+call feedkeys("\<C-e>", 'xt')
+sleep 10m
+redraw
+let moved = screenpos(win_getid(), 11, col('$'))
+call assert_true(moved.row < ending.row)
+call assert_equal([moved.row, moved.col],
+      \ [popup_getpos(popup).line, popup_getpos(popup).col])
+let screen = join(map(range(1, &columns), 'screenstring(moved.row, v:val)'), '')
+call assert_match('中文 \[1/1\]', screen)
+''')
+
+    def test_popup_stays_inside_split_and_hides_when_line_end_is_offscreen(self):
+        self.terminal_vim(HELPERS + r'''
+edit left.txt
+call setline(1, 'foo' . repeat('x', 29))
+vnew right.txt
+call setline(1, 'neighbor stays visible')
+wincmd p
+vertical resize 40
+let @/ = 'foo'
+call cursor(1, 1)
+call RefreshOrdinal()
+call assert_equal(' [1/1]', OrdinalText())
+let popup = filter(popup_list(),
+      \ 'getwinvar(v:val, "&wincolor") ==# "VimrcLiteSearchOrdinal"')[0]
+let pos = popup_getpos(popup)
+call assert_true(pos.col + pos.width <= win_screenpos(0)[1] + winwidth(0))
+call assert_equal(0, pos.scrollbar)
+let row = screenpos(win_getid(), 1, 1).row
+let screen = join(map(range(1, &columns), 'screenstring(row, v:val)'), '')
+call assert_match('neighbor stays visible', screen)
+call setline(1, 'foo' . repeat('x', 200) . ' foo')
+call RefreshOrdinal()
+call assert_equal('', OrdinalText())
+call feedkeys('n', 'xt')
+call RefreshOrdinal()
+call assert_equal(' [2/2]', OrdinalText())
+let row = screenpos(win_getid(), 1, col('.')).row
+let screen = join(map(range(1, &columns), 'screenstring(row, v:val)'), '')
+call assert_match('\[2/2\]', screen)
+''')
 
 
 if __name__ == '__main__':
