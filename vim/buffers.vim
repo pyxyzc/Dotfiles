@@ -281,13 +281,43 @@ augroup vimrc_lite_buffers
   endif
 augroup END
 
+" 树内的数字切换使用 netrw 指定的编辑窗口；失效时在当前 tab 中寻找普通窗口。
+function! s:FocusEditor() abort
+  if &filetype !=# 'netrw'
+    return
+  endif
+  let windows = [get(g:, 'netrw_chgwin', -1), winnr('#')] + range(1, winnr('$'))
+  for window in windows
+    if window >= 1 && window <= winnr('$')
+          \ && getwinvar(window, '&filetype') !=# 'netrw'
+          \ && getwinvar(window, '&buftype') ==# ''
+      call win_gotoid(win_getid(window))
+      return
+    endif
+  endfor
+  " 直接打开目录、仅剩树窗口时，在右侧创建编辑区域，保留树。
+  rightbelow vsplit
+  setlocal nowinfixwidth
+endfunction
+
 function! s:GoBuffer(index) abort
   let buffers = s:ListedBuffers()
   if a:index <= len(buffers)
+    call s:FocusEditor()
     execute 'buffer ' . buffers[a:index - 1].bufnr
   else
     call s:Warn('no buffer at position ' . a:index)
   endif
+endfunction
+
+function! s:CycleBuffer(direction) abort
+  call s:FocusEditor()
+  execute a:direction < 0 ? 'bprevious' : 'bnext'
+endfunction
+
+function! s:NewBuffer() abort
+  call s:FocusEditor()
+  enew
 endfunction
 
 " 未保存修改的确认；保存动作在此完成，返回 'clean'、'discard' 或 'cancel'。
@@ -372,12 +402,12 @@ endfunction
 
 " H/L 与 <A-o>/<A-i> 前后切换，<leader>1-9 按顶部编号直达，<C-w> 关闭。
 nnoremap <silent> <C-w> :call <SID>CloseBuffer()<CR>
-nnoremap <silent> H :bprevious<CR>
-nnoremap <silent> L :bnext<CR>
-nnoremap <silent> <A-o> :bprevious<CR>
-nnoremap <silent> <A-i> :bnext<CR>
-nnoremap <silent> <leader>bn :enew<CR>
-nnoremap <leader>bp :ls<CR>:buffer<Space>
+nnoremap <silent> H :call <SID>CycleBuffer(-1)<CR>
+nnoremap <silent> L :call <SID>CycleBuffer(1)<CR>
+nnoremap <silent> <A-o> :call <SID>CycleBuffer(-1)<CR>
+nnoremap <silent> <A-i> :call <SID>CycleBuffer(1)<CR>
+nnoremap <silent> <leader>bn :call <SID>NewBuffer()<CR>
+nnoremap <leader>bp :call <SID>FocusEditor()<CR>:ls<CR>:buffer<Space>
 for s:index in range(1, 9)
   execute 'nnoremap <silent> <leader>' . s:index . ' :call <SID>GoBuffer(' . s:index . ')<CR>'
 endfor

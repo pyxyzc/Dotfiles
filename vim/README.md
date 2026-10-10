@@ -20,7 +20,7 @@ buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等�
 `search.vim`、`search.sh` 和 `search.awk` 连接 Vim 内置终端与 fd/ripgrep/fzf；
 `search-preview.awk` 为受限的预览片段提供语法颜色。
 `lsp.vim` 显式加载 `vendor/vim-lsp/`，提供 Python、C/C++ 的基础语言服务。
-`context.vim` 使用已有 LSP 的符号范围，在各代码窗口顶部吸附不可见的函数／类定义。
+`context.vim` 使用已有 LSP 的符号范围，在底部状态栏文件名后显示当前类／函数名称。
 `git.vim` 提供 Git hunk 跳转和 LazyGit 入口，`terminal.vim` 统一管理 LazyGit 和普通
 shell 的终端退出清理；`textobjects.vim` 为 Python、C/C++/CUDA 提供轻量结构文本对象。
 `project.vim` 提供项目定位和持久撤销目录，`tasks.vim` 异步运行项目任务，
@@ -155,8 +155,7 @@ vim --cmd 'let g:vimrc_lite_transparent = 0' -u ~/Dotfiles/vim/.vimrc
 | `g:vimrc_lite_netrw_fast_listing` | `1` | 对已核对的 netrw 实现启用本地树批量列举；设为 `0` 回退原生列举 |
 | `g:vimrc_lite_netrw_fast_tree` | `1` | 对已核对的 netrw 实现启用树批量渲染；设为 `0` 回退原生渲染 |
 | `g:vimrc_lite_lsp` | `1` | 根据文件类型自动启动已安装的语言服务器；设为 `0` 禁用 LSP |
-| `g:vimrc_lite_context` | `1` | 函数／类定义滚出视野后，在代码窗口顶部显示上下文 |
-| `g:vimrc_lite_context_max_lines` | `3` | 顶部上下文最多显示的层数；空间不足优先保留内层 |
+| `g:vimrc_lite_context` | `1` | 在底部状态栏文件名后显示当前类／函数名称 |
 | `g:vimrc_lite_lsp_pyright_cmd` | `['pyright-langserver', '--stdio']` | Python 服务器的命令参数列表 |
 | `g:vimrc_lite_lsp_clangd_cmd` | `['clangd', '--background-index']` | C/C++ 服务器的命令参数列表 |
 | `g:vimrc_lite_lsp_diagnostics` | `1` | 新 buffer 默认显示诊断标记及下划线；设为 `0` 仅缓存诊断 |
@@ -299,6 +298,8 @@ Unix 本地树按名称／扩展名排序时，会为已核对完整函数体的
 当前工作目录。文件树已打开时再次按 `<leader>e` 会关闭当前标签页的树，包括直接
 `vim 目录` 打开的树。若树占用唯一窗口，优先返回有效的备用编辑 buffer，否则保留空窗口；
 不会退出 Vim，也不会丢掉其他 buffer 中的未保存内容。
+在文件树内按 `<leader>1`～`9`，目标 buffer 会在当前标签页的主编辑窗口打开，
+焦点随之移到编辑区域，文件树保持展开；没有编辑窗口时在树右侧创建一个。
 
 具备 `+job` 和 `+timers` 时，文件树的复制粘贴在后台执行，期间可继续编辑。
 `:VimTreeCopyStatus` 查看活动复制，`:VimTreeCopyCancel` 取消本次 Vim 中的所有活动复制。
@@ -512,23 +513,22 @@ clangd 的跨文件跳转和补全可能不完整。首版不注册 CUDA 文件�
 原有预期失败已转为正常回归，并使用真实 clangd/Pyright 验证含这些字符的请求。
 补丁范围、回退实现及升级注意事项见 [SOURCE.md](vendor/vim-lsp/SOURCE.md)。
 
-## 顶部函数／类上下文
+## 状态栏函数／类上下文
 
-Python、C/C++ 文件默认开启顶部上下文，使用现有 Pyright／clangd 的层级符号范围。
-每个分屏跟随自己的光标，类、结构体、函数、方法和构造函数分别判断是否可见：
-定义行仍在视野里时不重复显示，滚出视野后才吸附到该代码窗口顶部。
-类开头不可见、方法开头仍可见时，只补类；两者都不可见时，从外到内显示。
-如果类提示遮住了方法定义，也会补上方法。`if`、循环和普通变量不作为上下文。
+Python、C/C++ 文件默认在底部状态栏文件名后显示当前类／函数名称，使用现有
+Pyright／clangd 的层级符号范围。例如 `main.py:Parser:parse`；嵌套函数显示为
+`main.py:Parser:parse:nested`。每个分屏跟随自己的光标，从外到内显示作用域。
+全局函数只追加函数名，类内尚未进入函数时只追加类名，作用域外不追加名称。
+类、结构体、函数、方法和构造函数参与显示；`if`、循环和普通变量不参与。
 
-多行参数合并为一行；从名称所在行提取源码，不补前面的装饰器或模板声明，
-不显示函数体和 C++ 构造函数初始化列表。长签名以 `…` 截断，默认最多三行，
-空间不足时优先保留内层，并始终留出光标所在行。顶部 buffer 栏及分屏布局不变。
-弹层不获取焦点、不拦截按键；可用 `:VimContextToggle` 开关，不另设快捷键。
-TokyoNight 下使用灰紫背景与浅青蓝文字，和顶部栏目、柔蓝分屏线保持协调。
+名称直接取自语言服务器，不扫描或拼接源码签名，也不绘制顶部浮窗。
+状态栏沿用 Vim 原生的更新与窄窗口截断；可用 `:VimContextToggle` 开关。
+原浮窗的 `g:vimrc_lite_context_max_lines` 已不再使用。
 
-符号缓存由同一文件的分屏共享，移动和滚动只查询缓存；编辑后立即隐藏过期提示，
-停止输入约 150 ms 后异步刷新。语言服务器未就绪、不支持完整符号范围、
-文件处于大文件模式或 Vim 缺少 popup 功能时不显示。文件树、终端和帮助窗口也不显示。
+符号缓存由同一文件的分屏共享，状态栏只读取缓存；移动和滚动不发送请求或启动
+上下文更新计时器。编辑后立即隐藏过期名称，停止输入约 150 ms 后异步刷新。
+语言服务器未就绪、不支持完整符号范围、文件处于大文件模式或 Vim 缺少计时器时
+不显示。文件树、终端和帮助窗口也不显示。
 仅依赖已有 LSP，不增加解析器或下载步骤。服务器已运行时升级配置，需
 `:VimLspRestart` 或重新打开 Vim，让新的层级符号能力参与服务器初始化。
 
@@ -782,7 +782,7 @@ LSP 测试用 Python 标准库实现的本地 stdio 协议服务，验证初始�
 引用、文档、手动补全、中文位置、配置重载、缺失依赖和插件安装升级，不访问网络。
 `tests/test_lsp_behaviors.py` 另外验证多项目实例、停止／重启、超时／乱序响应、
 诊断缓存与插入模式、字符选区、候选与代码操作解析，以及跨文件编辑的整体预检和撤销。
-`tests/test_context.py` 验证顶部上下文的可见性、分屏、滚动、编辑后刷新和过期响应，
+`tests/test_context.py` 验证状态栏上下文、分屏、滚动、编辑后刷新和过期响应，
 装有 Pyright／clangd 时还会运行真实服务器验收；运行命令为 `python3 tests/test_context.py`。
 非 BMP 位置问题已修复，回归覆盖 emoji、组合字符、UTF-16 增量同步与补全编辑。
 完整测试及性能基准命令见 [PERFORMANCE.md](PERFORMANCE.md)。

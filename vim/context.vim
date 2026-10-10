@@ -1,14 +1,28 @@
-" 顶部上下文：LSP 符号按 buffer 缓存，弹层按窗口管理。
-" 重载先释放旧请求、计时器与弹层；不修改源文件或窗口布局。
+" 状态栏上下文：LSP 符号按 buffer 缓存，名称按窗口光标位置查询。
+" 移动光标不启动请求或计时器；状态栏沿用 Vim 的原生重绘。
 if exists('s:cache')
   call s:Reset()
 endif
+" 安装副本与仓库文件的脚本 ID 不同，重载时也取消前一个模块的在途请求。
+if exists(':VimContextToggle') == 2
+  let s:previous = matchstr(execute('command VimContextToggle'), '<SNR>\d\+_\zeToggle()')
+  if !empty(s:previous) && exists('*' . s:previous . 'Reset')
+    call call(function(s:previous . 'Reset'), [])
+  endif
+endif
 let s:cache = {}
-let s:windows = {}
 let s:delays = {}
 let s:refresh = -1
-let s:supported = exists('*popup_create') && exists('*win_execute')
-      \ && exists('*screenpos') && has('timers')
+let s:supported = has('timers')
+
+" 从旧配置切换时仅清理遗留上下文浮窗；后续运行不创建任何浮窗。
+if exists('*popup_list')
+  for s:popup in popup_list()
+    if getbufvar(winbufnr(s:popup), 'vimrc_lite_context_popup', 0)
+      call popup_close(s:popup)
+    endif
+  endfor
+endif
 
 function! s:Enabled() abort
   return s:supported && get(g:, 'vimrc_lite_context', 1)
@@ -60,15 +74,6 @@ function! s:Cancel(state) abort
   endif
 endfunction
 
-function! s:CloseWindow(window) abort
-  if has_key(s:windows, a:window)
-    let display = remove(s:windows, a:window)
-    if !empty(popup_getpos(display.popup))
-      call popup_close(display.popup)
-    endif
-  endif
-endfunction
-
 function! s:Forget(buffer) abort
   if has_key(s:delays, a:buffer)
     call timer_stop(remove(s:delays, a:buffer))
@@ -76,11 +81,6 @@ function! s:Forget(buffer) abort
   if has_key(s:cache, a:buffer)
     call s:Cancel(remove(s:cache, a:buffer))
   endif
-  for [window, display] in items(copy(s:windows))
-    if display.buffer == a:buffer
-      call s:CloseWindow(window)
-    endif
-  endfor
 endfunction
 
 function! s:Reset() abort
@@ -91,9 +91,6 @@ function! s:Reset() abort
   let s:refresh = -1
   for buffer in keys(copy(s:delays)) + keys(copy(s:cache))
     call s:Forget(buffer)
-  endfor
-  for window in keys(copy(s:windows))
-    call s:CloseWindow(window)
   endfor
 endfunction
 
@@ -117,8 +114,9 @@ function! s:Order(left, right) abort
         \ : s:Before(a:right.start, a:left.start) ? 1 : 0
 endfunction
 
-function! s:Tree(symbols) abort
+function! s:Tree(symbols, ...) abort
   let nodes = []
+  let prefix = a:0 ? a:1 : ''
   if type(a:symbols) != v:t_list
     return nodes
   endif
@@ -130,14 +128,21 @@ function! s:Tree(symbols) abort
     endif
     let start = s:Position(get(symbol.range, 'start', {}))
     let end = s:Position(get(symbol.range, 'end', {}))
-    let name = s:Position(get(symbol.selectionRange, 'start', {}))
-    if empty(start) || empty(end) || empty(name) || !s:Before(start, end)
-          \ || s:Before(name, start) || !s:Before(name, end)
+    let selection = s:Position(get(symbol.selectionRange, 'start', {}))
+    let name = get(symbol, 'name', '')
+    if empty(start) || empty(end) || empty(selection) || !s:Before(start, end)
+          \ || s:Before(selection, start) || !s:Before(selection, end)
+          \ || type(name) != type('') || empty(name)
       continue
     endif
-    call add(nodes, {'start': start, 'end': end, 'name': name,
-          \ 'kind': get(symbol, 'kind', 0), 'header': v:null,
-          \ 'children': s:Tree(get(symbol, 'children', []))})
+    let label = prefix
+    if index([5, 6, 9, 12, 23], get(symbol, 'kind', 0)) >= 0
+      let label .= ':' . strtrans(name)
+    endif
+    let children = s:Tree(get(symbol, 'children', []), label)
+    if label !=# prefix || !empty(children)
+      call add(nodes, {'start': start, 'end': end, 'label': label, 'children': children})
+    endif
   endfor
   return sort(nodes, function('s:Order'))
 endfunction
@@ -225,204 +230,126 @@ function! s:State(buffer) abort
   return state
 endfunction
 
-function! s:Scopes(nodes, position) abort
-  " 有序兄弟节点二分定位；移动光标时不遍历整份文件的符号。
-  let low = 0
-  let high = len(a:nodes)
-  while low < high
-    let middle = (low + high) / 2
-    if s:Before(a:position, a:nodes[middle].start)
-      let high = middle
-    else
-      let low = middle + 1
-    endif
-  endwhile
-  if low == 0 || !s:Before(a:position, a:nodes[low - 1].end)
-    return []
+" 仅在作用域边界所在行比较列号；同一行沿用上次的 UTF-16 列，仅转换移动的片段。
+function! s:Character(position, cached) abort
+  let point = get(a:cached, 'point', {})
+  let row = a:position[0]
+  let column = a:position[1] - 1
+  if get(point, 'row', -1) != row
+    let point = {'row': row, 'column': 0, 'units': 0, 'text': getline(row)}
+    let a:cached.point = point
   endif
-  let node = a:nodes[low - 1]
-  let scopes = index([5, 6, 9, 12, 23], node.kind) >= 0 ? [node] : []
-  return scopes + s:Scopes(node.children, a:position)
+  let distance = column - point.column
+  if distance != 0
+    let text = strpart(point.text, min([column, point.column]), abs(distance))
+    let units = lsp#utils#utf16#length(text)
+    let point.units += distance > 0 ? units : -units
+    let point.column = column
+  endif
+  return point.units
 endfunction
 
-function! s:Header(node) abort
-  if a:node.header isnot v:null
-    return a:node.header
-  endif
-  " 只扫描需要展示的签名，并限制长度；跳过字符串和注释中的分隔符。
-  let lines = getbufline(bufnr('%'), a:node.name[0] + 1,
-        \ min([a:node.end[0] + 1, a:node.name[0] + 20]))
-  let python = &filetype ==# 'python'
-  let depth = 0
-  let quote = ''
-  let escaped = 0
-  let comment = 0
-  let parts = []
-  let length = 0
-  let finished = 0
-  for line in lines
-    let part = ''
-    let index = 0
-    while index < strlen(line) && length < 4096
-      let char = matchstr(strpart(line, index), '^.')
-      let next = strpart(line, index, 2)
-      if comment
-        if next ==# '*/'
-          let comment = 0
-          let index += 2
-          let part .= ' '
-          continue
-        endif
-      elseif !empty(quote)
-        let part .= char
-        if escaped
-          let escaped = 0
-        elseif char ==# '\'
-          let escaped = 1
-        elseif char ==# quote
-          let quote = ''
-        endif
-      elseif (python && char ==# '#') || (!python && next ==# '//')
-        break
-      elseif !python && next ==# '/*'
-        let comment = 1
-        let index += 2
-        continue
-      elseif char ==# '"' || char ==# "'"
-        let quote = char
-        let part .= char
-      elseif depth == 0 && ((python && char ==# ':')
-            \ || (!python && (char ==# '{' || char ==# ';'
-            \ || (char ==# ':' && next !=# '::' && strpart(line, index - 1, 1) !=# ':'))))
-        " C++ 构造函数的初始化列表不属于需要吸附的签名。
-        let part .= char ==# ':' && python ? ':' : char ==# '{' ? '{' : ''
-        let finished = 1
-        break
-      else
-        if char ==# '(' || char ==# '[' || char ==# '{'
-          let depth += 1
-        elseif char ==# ')' || char ==# ']' || char ==# '}'
-          let depth = max([0, depth - 1])
-        endif
-        let part .= char
+" 查询后记住名称不变的连续区间：包含当前节点，但不跨过子节点或相邻作用域边界。
+function! s:Lookup(nodes, position, cached) abort
+  let row = a:position[0] - 1
+  let character = -1
+  let nodes = a:nodes
+  let first = [-1, 0]
+  let last = [0x7fffffff, 0]
+  let label = ''
+  while !empty(nodes)
+    let low = 0
+    let high = len(nodes)
+    while low < high
+      let middle = (low + high) / 2
+      let bound = nodes[middle].start
+      if row == bound[0] && character < 0
+        let character = s:Character(a:position, a:cached)
       endif
-      let index += strlen(char)
-      let length += strlen(char)
+      if row < bound[0] || (row == bound[0] && character < bound[1])
+        let high = middle
+      else
+        let low = middle + 1
+      endif
     endwhile
-    call add(parts, substitute(substitute(part, '^\s\+', '', ''), '\s\+$', '', ''))
-    if finished || length >= 4096
+    if low < len(nodes) && s:Before(nodes[low].start, last)
+      let last = nodes[low].start
+    endif
+    if low == 0
       break
     endif
-  endfor
-  let indent = empty(lines) ? '' : repeat(' ', strdisplaywidth(matchstr(lines[0], '^\s*')))
-  let a:node.header = indent . join(filter(parts, '!empty(v:val)'), ' ')
-        \ . (finished ? '' : ' …')
-  return a:node.header
-endfunction
-
-function! s:Clip(text, width) abort
-  if strdisplaywidth(a:text) <= a:width
-    return a:text
-  endif
-  let low = 0
-  let high = strchars(a:text)
-  while low < high
-    let middle = (low + high + 1) / 2
-    if strdisplaywidth(strcharpart(a:text, 0, middle)) <= a:width - 1
-      let low = middle
-    else
-      let high = middle - 1
+    let node = nodes[low - 1]
+    if row == node.end[0] && character < 0
+      let character = s:Character(a:position, a:cached)
     endif
+    if row > node.end[0] || (row == node.end[0] && character >= node.end[1])
+      if s:Before(first, node.end)
+        let first = node.end
+      endif
+      break
+    endif
+    if s:Before(first, node.start)
+      let first = node.start
+    endif
+    if s:Before(node.end, last)
+      let last = node.end
+    endif
+    let label = node.label
+    let nodes = node.children
   endwhile
-  return strcharpart(a:text, 0, low) . '…'
+  let a:cached.first = first
+  let a:cached.last = last
+  let a:cached.label = label
 endfunction
 
-function! s:Visible(window, node, height) abort
-  let line = a:node.name[0] + 1
-  let folded = foldclosed(line)
-  if folded >= 0 && folded != line
-    return 0
+" 只读取已完成的符号缓存；%{} 结果是文字，名称中的 % 不作为状态栏格式执行。
+function! VimContextLabel() abort
+  if !s:Enabled() || &buftype !=# '' || get(b:, 'vimrc_lite_large_file', 0)
+    return ''
   endif
-  let column = lsp#utils#position#lsp_character_to_vim(bufnr('%'),
-        \ {'line': a:node.name[0], 'character': a:node.name[1]})
-  let position = screenpos(a:window.winid, line, column)
-  return position.row >= a:window.winrow + a:height && position.col > 0
-        \ && position.row < a:window.winrow + a:window.height
-endfunction
-
-function! s:Render(window) abort
-  let info = getwininfo(a:window)
-  if empty(info)
-    return
+  let state = get(s:cache, bufnr('%'), {})
+  if empty(state) || !state.done || state.tick != b:changedtick
+    return ''
   endif
-  let window = info[0]
-  let state = s:State(window.bufnr)
-  if empty(state) || !state.done
-    call s:CloseWindow(a:window)
-    return
-  endif
-  let cursor = screenpos(a:window, line('.'), col('.'))
-  let capacity = min([max([0, get(g:, 'vimrc_lite_context_max_lines', 3)]),
-        \ cursor.row - window.winrow, window.height - 1])
-  if capacity <= 0 || window.width <= window.textoff + 4
-    call s:CloseWindow(a:window)
-    return
-  endif
-  let position = lsp#utils#position#vim_to_lsp(window.bufnr, [line('.'), col('.')])
-  let scopes = s:Scopes(state.tree, [position.line, position.character])
-  let height = 0
-  " 将弹层遮住的定义一起吸附，直到高度稳定，避免边界处来回闪烁。
-  for iteration in range(capacity + 1)
-    let hidden = filter(copy(scopes), '!s:Visible(window, v:val, height)')
-    let hidden = len(hidden) > capacity ? hidden[-capacity :] : hidden
-    if len(hidden) == height
-      break
-    endif
-    let height = len(hidden)
-  endfor
-  if empty(hidden)
-    call s:CloseWindow(a:window)
-    return
-  endif
-  let lines = map(hidden, 's:Clip(repeat(" ", window.textoff) . s:Header(v:val), window.width)')
-  let options = {'line': window.winrow, 'col': window.wincol,
-        \ 'minwidth': window.width, 'maxwidth': window.width,
-        \ 'minheight': height, 'maxheight': height, 'wrap': 0, 'fixed': 1,
-        \ 'posinvert': 0, 'scrollbar': 0, 'mapping': 0, 'zindex': 10,
-        \ 'padding': [0, 0, 0, 0], 'border': [0, 0, 0, 0], 'highlight': 'VimContextHeader'}
-  let display = get(s:windows, a:window, {})
-  if empty(display) || empty(popup_getpos(display.popup))
-    let popup = popup_create(lines, options)
-    call setbufvar(winbufnr(popup), 'vimrc_lite_context_popup', a:window)
-    let s:windows[a:window] = {'popup': popup, 'buffer': window.bufnr,
-          \ 'lines': lines, 'options': options}
+  let position = [line('.'), col('.')]
+  let cached = get(w:, 'vimrc_lite_context_label', {})
+  if get(cached, 'state', {}) isnot state
+    let cached = {'state': state}
+    let w:vimrc_lite_context_label = cached
+  elseif cached.position == position
+    return cached.label
   else
-    if display.lines !=# lines
-      call popup_settext(display.popup, lines)
-      let display.lines = lines
-    endif
-    if display.options !=# options
-      call popup_setoptions(display.popup, options)
-      let display.options = options
+    let row = position[0] - 1
+    if row >= cached.first[0] && row <= cached.last[0]
+      if row > cached.first[0] && row < cached.last[0]
+        let cached.position = position
+        return cached.label
+      endif
+      let character = s:Character(position, cached)
+      if (row > cached.first[0] || character >= cached.first[1])
+            \ && (row < cached.last[0] || character < cached.last[1])
+        let cached.position = position
+        return cached.label
+      endif
     endif
   endif
+  call s:Lookup(state.tree, position, cached)
+  let cached.position = position
+  return cached.label
 endfunction
 
+" 请求只由进入窗口、文档变化及服务器事件排队，同一 buffer 的分屏共享一次请求。
 function! s:Update(timer) abort
   let s:refresh = -1
-  let visible = {}
+  let seen = {}
   for window in getwininfo()
-    if window.tabnr == tabpagenr() && s:Eligible(window.bufnr)
-      let visible[window.winid] = 1
-      call win_execute(window.winid, 'noautocmd call ' . expand('<SID>')
-            \ . 'Render(' . window.winid . ')')
+    if window.tabnr == tabpagenr() && !has_key(seen, window.bufnr)
+          \ && s:Eligible(window.bufnr)
+      let seen[window.bufnr] = 1
+      call s:State(window.bufnr)
     endif
   endfor
-  for window in keys(copy(s:windows))
-    if !has_key(visible, window)
-      call s:CloseWindow(window)
-    endif
-  endfor
+  redrawstatus
 endfunction
 
 function! s:Queue() abort
@@ -432,41 +359,36 @@ function! s:Queue() abort
 endfunction
 
 function! s:ServerChanged() abort
-  call s:Reset()
+  " 一个项目的服务器变化不清空其他项目的符号缓存。
+  for [buffer, state] in items(copy(s:cache))
+    if !s:Valid(state)
+      call s:Forget(buffer)
+    endif
+  endfor
   call s:Queue()
+  redrawstatus
 endfunction
 
 function! s:Toggle() abort
   let g:vimrc_lite_context = !get(g:, 'vimrc_lite_context', 1)
   call s:Reset()
   call s:Queue()
-endfunction
-
-function! s:Highlights() abort
-  highlight default link VimContextHeader Pmenu
+  redrawstatus
 endfunction
 
 command! VimContextToggle call <SID>Toggle()
 augroup vimrc_lite_context
   autocmd!
-  autocmd BufEnter,BufWinEnter,WinEnter,TabEnter,CursorMoved,CursorMovedI * call s:Queue()
-  autocmd VimEnter,VimResized,InsertLeave,CursorHold,CursorHoldI * call s:Queue()
+  autocmd BufEnter,BufWinEnter,WinEnter,TabEnter * call s:Queue()
+  autocmd VimEnter,InsertLeave * call s:Queue()
   autocmd TextChanged,TextChangedI * call s:Changed(bufnr('%'))
   autocmd BufUnload,BufWipeout,BufFilePre,FileType * call s:Forget(str2nr(expand('<abuf>')))
   autocmd BufFilePost,FileType * call s:Queue()
   autocmd User lsp_server_init,lsp_server_exit call s:ServerChanged()
   autocmd User lsp_buffer_enabled call s:Queue()
-  autocmd ColorScheme * call s:Highlights()
   autocmd VimLeavePre * call s:Reset()
   if exists('##TextChangedP')
     autocmd TextChangedP * call s:Changed(bufnr('%'))
   endif
-  if exists('##WinScrolled')
-    autocmd WinScrolled * call s:Queue()
-  endif
-  if exists('##WinClosed')
-    autocmd WinClosed * call s:CloseWindow(str2nr(expand('<amatch>')))
-  endif
 augroup END
-call s:Highlights()
 call s:Queue()

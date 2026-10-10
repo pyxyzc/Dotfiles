@@ -1,4 +1,4 @@
-"""Sticky context uses document ranges without changing native editor state."""
+"""Statusline scopes use cached document ranges without floating windows."""
 
 import json
 import shutil
@@ -10,14 +10,9 @@ from test_vim import ROOT, VimSession, quoted
 
 
 HELPERS = WAIT + CONFIGURE + r'''
-function! ContextPopup(window) abort
-  return get(filter(popup_list(),
-        \ 'getbufvar(winbufnr(v:val), "vimrc_lite_context_popup", 0) == a:window'), 0, 0)
-endfunction
-function! ContextLines(window) abort
-  let popup = ContextPopup(a:window)
-  return popup ? map(getbufline(winbufnr(popup), 1, '$'),
-        \ 'substitute(v:val, "^\\s\\+", "", "")') : []
+function! ContextLabel(window) abort
+  call win_execute(a:window, 'let w:context_test_label = VimContextLabel()')
+  return getwinvar(a:window, 'context_test_label', '')
 endfunction
 function! ContextView(cursor, top) abort
   setlocal scrolloff=0
@@ -26,20 +21,11 @@ function! ContextView(cursor, top) abort
   let view.topline = a:top
   call winrestview(view)
   redraw
-  doautocmd vimrc_lite_context CursorMoved
 endfunction
-function! AssertContext(lines) abort
-  call WaitFor({-> ContextLines(win_getid()) ==# a:lines})
+function! AssertContext(label) abort
+  call WaitFor({-> VimContextLabel() ==# a:label})
   redraw
-  let popup = ContextPopup(win_getid())
-  if popup
-    let position = popup_getpos(popup)
-    let window = getwininfo(win_getid())[0]
-    call assert_equal(window.winrow, position.line)
-    call assert_equal(window.wincol, position.col)
-    call assert_equal(window.width, position.width)
-    call assert_true(position.line + position.height <= window.winrow + winline() - 1)
-  endif
+  call assert_equal([], popup_list(), 'context created a floating window')
 endfunction
 '''
 
@@ -80,32 +66,30 @@ class ContextTests(LspFixture):
         return self.settings + ['let g:vimrc_lite_lsp_pyright_cmd = '
                                 + json.dumps(self.command + ['--response-config', str(self.responses)])]
 
-    def test_visibility_nesting_multiline_and_cursor_boundary(self):
+    def test_statusline_scope_nesting_and_cursor_boundary(self):
         self.terminal_vim(HELPERS + r'''
 call WaitFor({-> &omnifunc ==# 'lsp#complete'})
 call ContextView(25, 1)
 sleep 100m
-call assert_equal([], ContextLines(win_getid()), 'visible definitions must not be repeated')
+call AssertContext(':Parser:parse')
+let status = join(map(range(1, &columns), 'screenstring(&lines - 1, v:val)'), '')
+call assert_match('main.py:Parser:parse ', status)
 call ContextView(25, 4)
-call AssertContext(['class Parser:'])
+call AssertContext(':Parser:parse')
 call ContextView(25, 9)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 call ContextView(25, 20)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 call ContextView(60, 55)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):', 'def nested():'])
-let g:vimrc_lite_context_max_lines = 2
-doautocmd vimrc_lite_context CursorMoved
-call AssertContext(['def parse( self, text="a:{b}", ):', 'def nested():'])
-let g:vimrc_lite_context_max_lines = 3
+call AssertContext(':Parser:parse:nested')
 call ContextView(100, 95)
-call AssertContext(['class Other:'])
+call AssertContext(':Other')
 call ContextView(85, 80)
 sleep 30m
-call assert_equal([], ContextLines(win_getid()))
+call AssertContext(':Other')
 call ContextView(1, 1)
 sleep 30m
-call assert_equal([], ContextLines(win_getid()))
+call assert_equal('', ContextLabel(win_getid()))
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured())
         self.assertTrue(self.messages('initialize')[0]['params']['capabilities']
@@ -116,20 +100,20 @@ call assert_equal('', v:errmsg)
         self.terminal_vim(HELPERS + r'''
 call WaitFor({-> &omnifunc ==# 'lsp#complete'})
 call ContextView(25, 20)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 let first = win_getid()
 vsplit
 let second = win_getid()
 call ContextView(100, 95)
-call AssertContext(['class Other:'])
-call assert_equal(['class Parser:', 'def parse( self, text="a:{b}", ):'], ContextLines(first))
+call AssertContext(':Other')
+call assert_equal(':Parser:parse', ContextLabel(first))
 let @/ = 'native search'
 let @" = 'native register'
 let view = winsaveview()
 let jumps = getjumplist()
 let windows = map(getwininfo(), 'v:val.winid')
 for iteration in range(100)
-  doautocmd vimrc_lite_context CursorMoved
+  call VimContextLabel()
 endfor
 sleep 30m
 call assert_equal(view, winsaveview())
@@ -140,18 +124,81 @@ call assert_equal('native register', @")
 call assert_false(&modified)
 vertical resize 22
 redraw
-doautocmd vimrc_lite_context VimResized
-call WaitFor({-> popup_getpos(ContextPopup(win_getid())).width == 22})
+call AssertContext(':Other')
 call win_gotoid(first)
 close
 sleep 30m
-call assert_equal(0, ContextPopup(first))
-call AssertContext(['class Other:'])
+call assert_equal([], getwininfo(first))
+call AssertContext(':Other')
 normal! 5zl
 redraw
-doautocmd vimrc_lite_context WinScrolled
 sleep 30m
 call assert_equal(view.lnum, line('.'))
+call assert_equal('', v:errmsg)
+''', args=[str(self.source)], before=self.configured())
+        self.assertEqual(len(self.messages('textDocument/documentSymbol')), 1)
+
+    def test_unicode_and_percent_names_are_literal_statusline_text(self):
+        self.symbols[1]['name'] = '解析%{1+1}'
+        self.symbols[1]['children'][0]['name'] = '处理'
+        self.terminal_vim(HELPERS + r'''
+call ContextView(25, 20)
+call AssertContext(':解析%{1+1}:处理')
+let status = join(map(range(1, &columns), 'screenstring(&lines - 1, v:val)'), '')
+call assert_true(stridx(status, 'main.py:解析%{1+1}:处理') >= 0, status)
+for row in range(26, 35)
+  call cursor(row, 1)
+  redraw
+  call assert_equal(':解析%{1+1}:处理', VimContextLabel())
+endfor
+call assert_equal([], popup_list())
+call assert_false(exists('#vimrc_lite_context#CursorMoved'))
+call assert_false(exists('#vimrc_lite_context#CursorMovedI'))
+call assert_false(exists('#vimrc_lite_context#WinScrolled'))
+call assert_equal('', v:errmsg)
+''', args=[str(self.source)], before=self.configured())
+        self.assertEqual(len(self.messages('textDocument/documentSymbol')), 1)
+
+    def test_same_line_unicode_scope_boundaries_and_gaps(self):
+        prefix = '    # 中🙂e\u0301 '
+        first = 'first_body'
+        gap = '   '
+        second = 'second_body'
+        line = prefix + first + gap + second + ' tail'
+        self.source.write_text('class Parser:\n' + line + '\n    pass\n')
+
+        def units(text):
+            return len(text.encode('utf-16-le')) // 2
+
+        def child(name, start, end):
+            return {'name': name, 'kind': 6,
+                    'range': {'start': {'line': 1, 'character': start},
+                              'end': {'line': 1, 'character': end}},
+                    'selectionRange': {'start': {'line': 1, 'character': start},
+                                       'end': {'line': 1, 'character': start + 1}}}
+
+        first_start = units(prefix)
+        first_end = units(prefix + first)
+        second_start = units(prefix + first + gap)
+        second_end = units(prefix + first + gap + second)
+        self.symbols = [symbol('Parser', 5, 1, 6, 3, [
+            child('first', first_start, first_end),
+            child('second', second_start, second_end)])]
+        checks = [(1, ':Parser'), (len(prefix.encode()) + 1, ':Parser:first'),
+                  (len((prefix + first).encode()) + 1, ':Parser'),
+                  (len((prefix + first + gap).encode()) + 1, ':Parser:second'),
+                  (len((prefix + first + gap + second).encode()) + 1, ':Parser')]
+        self.terminal_vim(HELPERS + r'''
+call ContextView(2, 1)
+call AssertContext(':Parser')
+let checks = ''' + json.dumps(checks) + r'''
+for check in checks + reverse(copy(checks)) + checks
+  call cursor(2, check[0])
+  call assert_equal(check[1], VimContextLabel(), string(check))
+endfor
+call cursor(3, 1)
+call assert_equal(':Parser', VimContextLabel())
+call assert_equal([], popup_list())
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured())
         self.assertEqual(len(self.messages('textDocument/documentSymbol')), 1)
@@ -167,63 +214,64 @@ call assert_equal('', v:errmsg)
                 shift(node['children'])
 
         shift(shifted)
+        shifted[1]['name'] = 'New'
         update = {'results': {'textDocument/documentSymbol': shifted},
                   'delay_ms': {'textDocument/documentSymbol': 0}}
         self.terminal_vim(HELPERS + r'''
 call ContextView(25, 20)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 call Configure({'delay_ms': {'textDocument/documentSymbol': 350}})
 call setline(2, 'class Old:')
 doautocmd vimrc_lite_context TextChanged
-call assert_equal([], ContextLines(win_getid()), 'edit must hide stale coordinates immediately')
+call assert_equal('', ContextLabel(win_getid()), 'edit must hide stale coordinates immediately')
 sleep 200m
 call Configure(''' + json.dumps(update) + r''')
 call append(0, '# inserted')
 call setline(3, 'class New:')
 doautocmd vimrc_lite_context TextChanged
 call ContextView(26, 21)
-call assert_equal([], ContextLines(win_getid()))
-call AssertContext(['class New:', 'def parse( self, text="a:{b}", ):'])
+call assert_equal('', ContextLabel(win_getid()))
+call AssertContext(':New:parse')
 sleep 400m
-call assert_equal(['class New:', 'def parse( self, text="a:{b}", ):'], ContextLines(win_getid()),
+call assert_equal(':New:parse', ContextLabel(win_getid()),
       \ 'late response replaced current coordinates')
 call Configure({'results': {'textDocument/documentSymbol': ''' + json.dumps(self.symbols) + r'''}})
 undo
 doautocmd vimrc_lite_context TextChanged
 call ContextView(25, 20)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured())
         self.assertGreaterEqual(len(self.messages('$/cancelRequest')), 1)
 
-    def test_toggle_reload_popup_clear_tabs_and_restart(self):
+    def test_toggle_reload_tabs_and_restart(self):
         self.terminal_vim(HELPERS + r'''
 call ContextView(25, 20)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 VimContextToggle
-call assert_equal([], ContextLines(win_getid()))
+call assert_equal('', ContextLabel(win_getid()))
 VimContextToggle
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 source ''' + str(ROOT / '.vimrc') + r'''
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
-call assert_equal(1, len(filter(split(execute('autocmd vimrc_lite_context CursorMoved'), "\n"),
-      \ 'v:val =~# "Queue"')))
+call AssertContext(':Parser:parse')
+call assert_false(exists('#vimrc_lite_context#CursorMoved'))
+call assert_false(exists('#vimrc_lite_context#WinScrolled'))
 call popup_clear()
-doautocmd vimrc_lite_context CursorMoved
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
-let source_window = win_getid()
+redrawstatus
+call AssertContext(':Parser:parse')
 tabnew
 sleep 30m
-call assert_equal(0, ContextPopup(source_window))
+call assert_equal('', VimContextLabel())
+call assert_equal([], popup_list())
 tabclose
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 VimLspStop
 sleep 30m
-call assert_equal([], ContextLines(win_getid()))
+call assert_equal('', ContextLabel(win_getid()))
 VimLspStart
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 VimLspRestart
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured())
 
@@ -238,7 +286,7 @@ call assert_equal('', v:errmsg)
 call WaitFor({-> &omnifunc ==# 'lsp#complete'})
 call ContextView(25, 20)
 sleep 600m
-call assert_equal([], ContextLines(win_getid()))
+call assert_equal('', ContextLabel(win_getid()))
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured(**config)
                     + ['let g:vimrc_lite_lsp_request_timeout_ms = 50'])
@@ -249,7 +297,7 @@ call assert_equal('', v:errmsg)
 call WaitFor({-> &omnifunc ==# 'lsp#complete'})
 call ContextView(25, 20)
 sleep 100m
-call assert_equal([], ContextLines(win_getid()), 'name locations are not scope ranges')
+call assert_equal('', ContextLabel(win_getid()), 'name locations are not scope ranges')
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured())
 
@@ -258,7 +306,7 @@ call assert_equal('', v:errmsg)
 call WaitFor({-> &omnifunc ==# 'lsp#complete'})
 call ContextView(25, 20)
 sleep 100m
-call assert_equal([], ContextLines(win_getid()))
+call assert_equal('', ContextLabel(win_getid()))
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured() + ['let g:vimrc_lite_context = 0'])
         self.assertEqual([], self.messages('textDocument/documentSymbol'))
@@ -269,17 +317,23 @@ call assert_equal('', v:errmsg)
         (project / '.git').mkdir()
         source = project / 'second.py'
         source.write_text(self.source.read_text().replace('class Parser:', 'class Second:'))
+        second_symbols = json.loads(json.dumps(self.symbols))
+        second_symbols[1]['name'] = 'Second'
         self.terminal_vim(HELPERS + r'''
 call ContextView(25, 20)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 let first = win_getid()
 let g:first_server = lsp#get_allowed_servers()[0]
 execute 'vsplit ' . fnameescape(''' + quoted(source) + r''')
 call WaitFor({-> &omnifunc ==# 'lsp#complete'})
 call ContextView(25, 20)
-call AssertContext(['class Second:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
+call Configure({'results': {'textDocument/documentSymbol': ''' + json.dumps(second_symbols) + r'''}})
+call setline(2, 'class Second:')
+doautocmd vimrc_lite_context TextChanged
+call AssertContext(':Second:parse')
 call assert_notequal(g:first_server, lsp#get_allowed_servers()[0])
-call assert_equal(['class Parser:', 'def parse( self, text="a:{b}", ):'], ContextLines(first))
+call assert_equal(':Parser:parse', ContextLabel(first))
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured())
         roots = {message['_pid']: message['params']['rootUri']
@@ -291,40 +345,38 @@ call assert_equal('', v:errmsg)
     def test_scroll_only_fold_small_window_and_excluded_buffers(self):
         self.terminal_vim(HELPERS + r'''
 call ContextView(25, 4)
-call AssertContext(['class Parser:'])
+call AssertContext(':Parser:parse')
 let position = getpos('.')
 execute "normal! 10\<C-e>"
 redraw
-doautocmd vimrc_lite_context WinScrolled
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 call assert_equal(position, getpos('.'), 'scroll-only update moved the cursor')
 setlocal foldmethod=manual
 40,79fold
 call ContextView(80, 38)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 split
 resize 2
 redraw
-doautocmd vimrc_lite_context VimResized
 sleep 30m
-let popup = ContextPopup(win_getid())
-call assert_true(!popup || popup_getpos(popup).height <= 1)
+call assert_equal([], popup_list())
+call assert_equal(':Parser:parse', VimContextLabel())
 close
 call ContextView(25, 20)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 let b:vimrc_lite_large_file = 1
-doautocmd vimrc_lite_context CursorMoved
+redrawstatus
 sleep 30m
-call assert_equal([], ContextLines(win_getid()))
+call assert_equal('', ContextLabel(win_getid()))
 unlet b:vimrc_lite_large_file
-doautocmd vimrc_lite_context CursorMoved
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+redrawstatus
+call AssertContext(':Parser:parse')
 enew
 setlocal buftype=nofile filetype=python
 call setline(1, 'class Helper:')
-doautocmd vimrc_lite_context CursorMoved
+redrawstatus
 sleep 30m
-call assert_equal([], ContextLines(win_getid()))
+call assert_equal('', ContextLabel(win_getid()))
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.configured())
 
@@ -332,9 +384,9 @@ call assert_equal('', v:errmsg)
     def test_real_pyright_multiline_decorated_method_and_nested_function(self):
         self.terminal_vim(HELPERS + r'''
 call ContextView(25, 20)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):'])
+call AssertContext(':Parser:parse')
 call ContextView(60, 55)
-call AssertContext(['class Parser:', 'def parse( self, text="a:{b}", ):', 'def nested():'])
+call AssertContext(':Parser:parse:nested')
 call assert_equal('', v:errmsg)
 ''', args=[str(self.source)], before=self.settings + [
             'let g:vimrc_lite_lsp_pyright_cmd = '
@@ -356,12 +408,11 @@ call assert_equal('', v:errmsg)
         source.write_text('\n'.join(rows) + '\n')
         self.terminal_vim(HELPERS + r'''
 call ContextView(20, 15)
-call AssertContext(['class Parser {', 'Parser(int x)'])
+call AssertContext(':Parser:Parser')
 call ContextView(60, 55)
-call AssertContext(['class Parser {',
-      \ 'int parse( int text = 0, const char* message = "//:{") const noexcept {'])
+call AssertContext(':Parser:parse')
 call ContextView(90, 85)
-call AssertContext(['int standalone( int text) {'])
+call AssertContext(':standalone')
 call assert_equal('', v:errmsg)
 ''', args=[str(source)], before=self.settings + [
             "let g:vimrc_lite_lsp_pyright_cmd = ['/missing-vim-lite-pyright']",
@@ -369,27 +420,36 @@ call assert_equal('', v:errmsg)
             + json.dumps([shutil.which('clangd'), '--background-index=false'])])
 
 
-class ContextHeaderTests(VimSession):
-    def test_source_signature_strings_defaults_constructor_and_unicode(self):
-        self.vim(r'''
-let prefix = ScriptPrefix('/context.vim$')
-setfiletype cpp
-call setline(1, ['std::string Parser::parse(',
-      \ '    std::array<int, 2> values = {1, 2},',
-      \ '    const char* text = "//:{ignored}") const { return "body"; }'])
-let node = {'name': [0, 12], 'end': [2, 99], 'header': v:null}
-call assert_equal('std::string Parser::parse( std::array<int, 2> values = {1, 2},'
-      \ . ' const char* text = "//:{ignored}") const {',
-      \ call(function(prefix . 'Header'), [node]))
-call setline(1, 'Parser::Parser(int x) : value{x} { body(); }')
-let node = {'name': [0, 8], 'end': [0, 99], 'header': v:null}
-call assert_equal('Parser::Parser(int x)', call(function(prefix . 'Header'), [node]))
-setlocal filetype=python
-call setline(1, 'async def 解析(text="a:\"b", value={"x": 1}): return text')
-let node = {'name': [0, 10], 'end': [0, 99], 'header': v:null}
-call assert_equal('async def 解析(text="a:\"b", value={"x": 1}):',
-      \ call(function(prefix . 'Header'), [node]))
-call assert_equal('中文…', call(function(prefix . 'Clip'), ['中文字符', 5]))
+class ContextMigrationTests(VimSession):
+    def test_reload_closes_legacy_context_and_keeps_other_popups(self):
+        legacy_module = self.work / 'legacy-context.vim'
+        legacy_module.write_text(r'''
+function! s:LateResponse(timer) abort
+  let popup = popup_create(['class Late:'], {'line': 2, 'col': 1})
+  call setbufvar(winbufnr(popup), 'vimrc_lite_context_popup', win_getid())
+endfunction
+let s:timer = timer_start(80, function('s:LateResponse'))
+function! s:Reset() abort
+  call timer_stop(s:timer)
+endfunction
+function! s:Toggle() abort
+  call s:Reset()
+endfunction
+command! VimContextToggle call <SID>Toggle()
+''')
+        self.terminal_vim(r'''
+let legacy = popup_create(['class Old:'], {'line': 2, 'col': 1})
+call setbufvar(winbufnr(legacy), 'vimrc_lite_context_popup', win_getid())
+let other = popup_create(['other feature'], {'line': 4, 'col': 1})
+source ''' + str(legacy_module) + r'''
+source ''' + str(ROOT / 'context.vim') + r'''
+sleep 150m
+call assert_equal({}, popup_getpos(legacy))
+call assert_equal([other], popup_list(), 'old module recreated its context popup')
+call assert_false(empty(popup_getpos(other)))
+call popup_close(other)
+call assert_equal('', VimContextLabel())
+call assert_equal('', v:errmsg)
 ''')
 
 

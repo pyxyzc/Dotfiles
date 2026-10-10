@@ -30,6 +30,116 @@ call feedkeys('p', 'xt')
 
 
 class TreeTests(VimSession):
+    def test_numbered_buffers_open_in_editor_and_preserve_expanded_sidebar(self):
+        (self.work / 'sub').mkdir()
+        (self.work / 'sub' / 'nested.txt').touch()
+        self.terminal_vim(r'''
+edit first.txt
+call setline(1, 'unsaved draft')
+let first = bufnr('%')
+let editor = win_getid()
+badd removed.txt
+badd second.txt
+badd third.txt
+bwipeout removed.txt
+let buffers = map(getbufinfo({'buflisted': 1}), 'v:val.bufnr')
+call feedkeys(' e', 'xt')
+let tree = win_getid()
+let tree_buffer = bufnr('%')
+call assert_true(search('sub/', 'w') > 0)
+call feedkeys("\<CR>", 'xt')
+call assert_true(search('nested.txt', 'w') > 0)
+let lines = getline(1, '$')
+let view = winsaveview()
+let width = winwidth(0)
+let directory = b:netrw_curdir
+for index in [2, 3, 1]
+  call feedkeys(' ' . index, 'xt')
+  call assert_equal(editor, win_getid())
+  call assert_equal(buffers[index - 1], bufnr('%'))
+  call assert_equal(2, winnr('$'))
+  call win_gotoid(tree)
+  call assert_equal(tree_buffer, bufnr('%'))
+  call assert_equal('netrw', &filetype)
+  call assert_equal(lines, getline(1, '$'))
+  call assert_equal(view, winsaveview())
+  call assert_equal(width, winwidth(0))
+  call assert_equal(directory, b:netrw_curdir)
+endfor
+call assert_equal(['unsaved draft'], getbufline(first, 1, '$'))
+call assert_true(getbufvar(first, '&modified'))
+call feedkeys(' 9', 'xt')
+call assert_equal(tree, win_getid())
+call assert_match('no buffer at position 9', execute('messages'))
+source ''' + str(ROOT / '.vimrc') + r'''
+call feedkeys(' 2', 'xt')
+call assert_equal(editor, win_getid())
+call assert_equal(buffers[1], bufnr('%'))
+call feedkeys(' e', 'xt')
+call assert_equal(1, winnr('$'))
+call assert_equal(editor, win_getid())
+''')
+
+    def test_numbered_buffers_use_editor_target_and_skip_special_windows(self):
+        self.vim(r'''
+edit first.txt
+let first_editor = win_getid()
+vsplit second.txt
+let second_editor = win_getid()
+badd selected.txt
+let selected = bufnr('selected.txt')
+call feedkeys(' e', 'xt')
+let tree = win_getid()
+let g:netrw_chgwin = win_id2win(second_editor)
+call feedkeys(' 3', 'xt')
+call assert_equal(second_editor, win_getid())
+call assert_equal(selected, bufnr('%'))
+botright copen
+let quickfix = win_getid()
+call win_gotoid(tree)
+let g:netrw_chgwin = win_id2win(quickfix)
+call feedkeys(' 3', 'xt')
+call assert_equal(first_editor, win_getid())
+call assert_equal(selected, bufnr('%'))
+call assert_equal('quickfix', getbufvar(winbufnr(win_id2win(quickfix)), '&buftype'))
+call win_gotoid(tree)
+let g:netrw_chgwin = winnr('$') + 10
+call feedkeys(' 2', 'xt')
+call assert_equal(first_editor, win_getid())
+call assert_equal('second.txt', bufname('%'))
+call assert_equal(4, winnr('$'))
+" 在另一个标签页中切换，只改变该标签页的编辑窗口。
+tabnew other-tab.txt
+let other_editor = win_getid()
+call feedkeys(' e', 'xt')
+call feedkeys(' 3', 'xt')
+call assert_equal(other_editor, win_getid())
+call assert_equal(selected, bufnr('%'))
+tabprevious
+call assert_equal('second.txt', bufname(winbufnr(win_id2win(first_editor))))
+call assert_equal('netrw', getbufvar(winbufnr(win_id2win(tree)), '&filetype'))
+''')
+
+    def test_numbered_buffers_create_editor_when_only_directory_is_open(self):
+        directory = self.work / 'directory'
+        directory.mkdir()
+        self.terminal_vim(r'''
+call assert_equal('netrw', &filetype)
+let tree = win_getid()
+let tree_buffer = bufnr('%')
+badd selected.txt
+let buffers = map(getbufinfo({'buflisted': 1}), 'v:val.bufnr')
+let index = index(buffers, bufnr('selected.txt')) + 1
+call feedkeys(' ' . index, 'xt')
+call assert_equal('selected.txt', bufname('%'))
+call assert_equal('', &buftype)
+call assert_notequal(tree, win_getid())
+call assert_equal(2, winnr('$'))
+call assert_equal(tree_buffer, winbufnr(win_id2win(tree)))
+call assert_equal('netrw', getbufvar(tree_buffer, '&filetype'))
+call assert_equal(buffers, map(getbufinfo({'buflisted': 1}), 'v:val.bufnr'))
+''', args=[str(directory)])
+
     def test_modern_listing_leaves_unknown_implementation_untouched(self):
         self.vim(r'''
 let tree = ScriptPrefix('/tree.vim$')

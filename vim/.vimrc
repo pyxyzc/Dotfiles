@@ -68,7 +68,7 @@ set hidden autoread
 set noswapfile
 set number relativenumber cursorline
 set laststatus=2 showmode showcmd
-let &statusline = '%n:%f %m%r%h%='
+let &statusline = '%n:%<%f%{exists("*VimContextLabel") ? VimContextLabel() : ""} %m%r%h%='
       \ . '%{exists("*VimLspStatusLabel") ? VimLspStatusLabel() : '
       \ . 'empty(&filetype) ? "" : "[lang: " . &filetype . "]"} %l:%c %p%%'
 set scrolloff=5 sidescrolloff=5 nowrap
@@ -195,7 +195,7 @@ if !s:SourceModule('lsp.vim')
   command! VimLspInfo VimLspStatus
 endif
 
-" 定义行滚出视野后，在各代码窗口顶部显示函数／类上下文。
+" 在各代码窗口的状态栏文件名后显示当前函数／类上下文。
 if !s:SourceModule('context.vim')
   call s:Warn('missing context.vim; copy the complete vim directory')
 endif
