@@ -27,7 +27,7 @@ if !s:reloading
         \ 'clangd': {
         \   'cmd': deepcopy(get(g:, 'vimrc_lite_lsp_clangd_cmd',
         \         ['clangd', '--background-index'])),
-        \   'filetypes': ['c', 'cpp'],
+        \   'filetypes': ['c', 'cpp', 'cuda'],
         \   'markers': ['.clangd', 'compile_commands.json', 'CMakeLists.txt',
         \         'Makefile', '.git'],
         \   'root': '', 'reason': '',
@@ -1748,6 +1748,11 @@ function! s:ReloadSettings() abort
     for name in keys(s:instances)
       if s:Kind(name) ==# kind
         let s:servers[name].cmd = deepcopy(command)
+        let s:servers[name].filetypes = kind ==# 'clangd' ? ['c', 'cpp', 'cuda'] : ['python']
+        let info = lsp#get_server_info(name)
+        if !empty(info)
+          let info.allowlist = copy(s:servers[name].filetypes)
+        endif
         let s:servers[name].reason = reason
       endif
     endfor
