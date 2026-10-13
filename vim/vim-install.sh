@@ -5,6 +5,8 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 install_target="${HOME}"
 config_only=0
 staged=''
+rollback=''
+rollback_destination=''
 
 # Required files are registered only here; preflight, occupancy checks and install share the list.
 config_files=(
@@ -143,9 +145,27 @@ for destination in "$install_target/.vimrc" \
 done
 
 cleanup() {
+    local result=$?
+    if [[ -n "$rollback" ]]; then
+        if [[ ! -e "$rollback_destination" && ! -L "$rollback_destination" ]]; then
+            if ! mv -T -- "$rollback" "$rollback_destination"; then
+                printf '恢复失败，原配置保留在：%s\n' "$rollback" >&2
+                result=1
+            fi
+        elif [[ -e "$rollback" || -L "$rollback" ]]; then
+            if (( result != 0 )); then
+                printf '目标已发布，旧配置临时保留在：%s\n' "$rollback" >&2
+            else
+                rm -rf -- "$rollback"
+            fi
+        fi
+    fi
     [[ -z "$staged" ]] || rm -rf -- "$staged"
+    return "$result"
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Install one file or directory: skip when identical; otherwise stage and replace it.
 install_entry() {
@@ -169,13 +189,24 @@ install_entry() {
         cp -- "$source" "$staged"
         chmod 644 "$staged"
     fi
-    if [[ -e "$destination" || -L "$destination" ]]; then
-        rm -rf -- "$destination"
+    if [[ -d "$source" && ( -e "$destination" || -L "$destination" ) ]]; then
+        rollback="$(mktemp -d "${destination}.rollback.XXXXXX")"
+        rmdir -- "$rollback"
+        rollback_destination="$destination"
+        if ! mv -T -- "$destination" "$rollback"; then
+            rollback=''
+            die "无法暂存原配置：$destination"
+        fi
     fi
-    if ! mv -- "$staged" "$destination"; then
+    if ! mv -T -- "$staged" "$destination"; then
         die "无法安装：$destination"
     fi
     staged=''
+    if [[ -n "$rollback" ]]; then
+        rm -rf -- "$rollback"
+        rollback=''
+        rollback_destination=''
+    fi
     printf '已安装：%s\n' "$destination"
 }
 
