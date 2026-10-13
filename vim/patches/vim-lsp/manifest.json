@@ -1,0 +1,20 @@
+{
+  "commit": "bbffa60cb08a6a2d67e2086a89699ab00a084fe9",
+  "archive_sha256": "e7e0456fad60c39c72874d24891a28dff73734140b2bf8461436cbd4ad2b3956",
+  "paths": [
+    "autoload",
+    "plugin",
+    "ftplugin",
+    "syntax",
+    "doc",
+    "README.md",
+    "LICENSE",
+    "LICENSE-THIRD-PARTY"
+  ],
+  "patches": [
+    {
+      "path": "patches/vim-lsp/0001-vim-lite.patch",
+      "sha256": "04846b5ea737e1ecd6c324495ab8ed7dbd90e01ed05919a049b3d9d780dcff64"
+    }
+  ]
+}

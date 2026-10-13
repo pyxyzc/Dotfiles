@@ -94,14 +94,34 @@ Unicode 附加编辑、两个同名候选、取消、禁用编辑、错误候选
 多根目录与生命周期、延迟响应取消、超时、选区、文档、诊断及编辑预检；
 `tests/test_lsp.py` 保留真实普通模式按键及 Unicode、未保存内容、旧版回退回归。
 
-## 人工升级
+## 可复现重建与升级
 
-1. 确定新的完整提交号，下载该提交的源码归档并检查上游变更和许可证。
-2. 整体替换上面列出的目录及文件，避免保留旧提交中已删除的文件；不要加入 `.git`、上游 CI 或测试工具依赖。
-3. 对照本地补丁清单重新应用仍需保留的修复；若上游已修复，先验证等价性再删除本地补丁。
-   更新本文件的提交号、归档地址、校验值、收录范围及补丁清单。
-4. 在 `vim/` 目录运行 `PYTHONPATH=tests python3 -m unittest test_vim test_tree test_completion test_clipboard test_edit test_matchparen test_lsp test_lsp_behaviors test_lsp_diff test_vim_style`，
-   再运行 `python3 tests/lsp_latency.py --rounds 5 --unicode` 验证真实 Pyright、clangd。
-5. 将源码快照和适配变更一起提交。安装脚本仅复制此快照，不访问上游。
+所有本地源码改动保存在 `../../patches/vim-lsp/0001-vim-lite.patch`，
+固定提交、归档 SHA-256、收录范围和补丁 SHA-256 位于同目录的 `manifest.json`。
+`../../scripts/vendor_lsp.py` 只读取显式提供的归档，不自动下载依赖。
+在 `vim/` 目录执行：
 
-回退源码时恢复此前的整个快照及对应适配配置；回退安装时恢复安装脚本生成的插件目录和配置文件备份。
+```bash
+# 验证归档、补丁以及完整的已安装源码快照；忽略根目录的 SOURCE.md 说明文件。
+python3 scripts/vendor_lsp.py verify --archive /path/to/vim-lsp.tar.gz
+
+# 在新目录重放补丁，用于检查上游变更或处理冲突。
+python3 scripts/vendor_lsp.py stage --archive /path/to/vim-lsp.tar.gz --output /tmp/lsp-stage
+
+# 新提交必须同时提供完整提交号和归档校验值。
+python3 scripts/vendor_lsp.py upgrade --archive /path/to/new-vim-lsp.tar.gz \
+    --commit FULL_40_CHARACTER_COMMIT --sha256 FULL_64_CHARACTER_SHA256
+```
+
+`upgrade` 在临时配置副本中重放补丁、运行完整 Vim 回归，再使用真实 Pyright 和
+clangd 各执行五轮 Unicode 跳转、引用、文档和语义补全性能验收。
+热操作中位数不得超过 `max(100 ms, 当前快照中位数 × 2)`；初始化单独记录。
+只有全部通过后才整体替换源码快照，并更新 manifest 及本文的固定提交和归档校验信息。
+替换阶段保留同文件系统的临时旧目录，异常时恢复，成功后删除；不会留下旧提交的残留文件。
+归档不匹配、补丁被改动、补丁冲突、测试失败或缺少性能验收用服务器都会在发布前退出。
+
+升级前检查上游变更和许可证。若上游已修复某项问题，验证等价性后移除相应补丁段并
+更新 manifest 的补丁 SHA-256；不要用忽略补丁冲突的方式强行升级。
+维护源码时同时更新快照、补丁、manifest 和补丁说明，再用 `verify` 检查重建结果。
+源码升级通过后运行 `bash vim-install.sh --config-only` 更新用户安装副本。
+回退时从版本控制恢复此前的完整快照、补丁、manifest 和适配配置，再重新安装。
