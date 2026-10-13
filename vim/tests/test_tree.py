@@ -30,6 +30,75 @@ call feedkeys('p', 'xt')
 
 
 class TreeTests(VimSession):
+    def test_ctrl_window_navigation_preserves_expanded_sidebar(self):
+        (self.work / 'sub').mkdir()
+        (self.work / 'sub' / 'nested.txt').touch()
+        self.terminal_vim(r'''
+edit draft.txt
+call setline(1, 'unsaved draft')
+let draft = bufnr('%')
+let editor = win_getid()
+call feedkeys(' e', 'xt')
+let tree = win_getid()
+call assert_true(search('sub/', 'w') > 0)
+call feedkeys("\<CR>", 'xt')
+call assert_true(search('nested.txt', 'w') > 0)
+for action in ['', 'R', 'H', 'H', 'reload']
+  if action ==# 'reload'
+    source ''' + str(ROOT / '.vimrc') + r'''
+  else
+    call feedkeys(action, 'xt')
+  endif
+  let tree_buffer = bufnr('%')
+  let lines = getline(1, '$')
+  let view = winsaveview()
+  let directory = b:netrw_curdir
+  let mapping = maparg("\<C-l>", 'n', 0, 1)
+  call assert_equal(1, get(mapping, 'buffer', 0))
+  call assert_equal(1, get(mapping, 'noremap', 0))
+  call feedkeys("\<C-l>", 'xt')
+  call assert_equal(editor, win_getid())
+  call assert_equal(draft, bufnr('%'))
+  call feedkeys("\<C-h>", 'xt')
+  call assert_equal(tree, win_getid())
+  call assert_equal('netrw', &filetype)
+  call assert_equal(tree_buffer, bufnr('%'))
+  call assert_equal(lines, getline(1, '$'))
+  call assert_equal(view, winsaveview())
+  call assert_equal(directory, b:netrw_curdir)
+  call assert_equal(2, winnr('$'))
+  call assert_true(search('nested.txt', 'nw') > 0)
+endfor
+call assert_equal(['unsaved draft'], getbufline(draft, 1, '$'))
+call assert_true(getbufvar(draft, '&modified'))
+call feedkeys(' e e', 'xt')
+call feedkeys("\<C-l>", 'xt')
+call assert_equal(editor, win_getid())
+call feedkeys("\<C-h>", 'xt')
+call assert_equal('netrw', &filetype)
+call assert_equal(2, winnr('$'))
+''')
+
+    def test_ctrl_l_navigation_after_direct_directory_startup(self):
+        directory = self.work / 'directory'
+        directory.mkdir()
+        self.terminal_vim(r'''
+call assert_equal('netrw', &filetype)
+let tree = win_getid()
+call feedkeys("\<C-l>", 'xt')
+call assert_equal(tree, win_getid())
+call assert_equal(1, winnr('$'))
+rightbelow vsplit draft.txt
+let editor = win_getid()
+call feedkeys("\<C-h>", 'xt')
+call assert_equal(tree, win_getid())
+call assert_equal('netrw', &filetype)
+call feedkeys("\<C-l>", 'xt')
+call assert_equal(editor, win_getid())
+call assert_equal('draft.txt', bufname('%'))
+call assert_equal(2, winnr('$'))
+''', args=[str(directory)])
+
     def test_numbered_buffers_open_in_editor_and_preserve_expanded_sidebar(self):
         (self.work / 'sub').mkdir()
         (self.work / 'sub' / 'nested.txt').touch()
@@ -517,7 +586,7 @@ call writefile([], root . '/sub/.hidden-new')
 call writefile([], root . '/sub/deep/after.txt')
 call delete(root . '/sub/deep/before.txt')
 call mkdir(root . '/sub/new-dir')
-for key in ['R', "\<C-l>", 'R', 'H', 'H']
+for key in ['R', 'R', 'R', 'H', 'H']
   call feedkeys(key, 'xt')
   if key ==# 'H' | let hidden = !hidden | endif
   call assert_equal(tree_window, win_getid())
@@ -558,7 +627,7 @@ call assert_true(search('sub/', 'w') > 0)
 call feedkeys("\<CR>", 'xt')
 call assert_true(search('nested.txt', 'nw') > 0)
 let hidden = search('\.hidden', 'nw') > 0
-for key in ['H', 'H', 'R', "\<C-l>"]
+for key in ['H', 'H', 'R', 'R']
   call feedkeys(key, 'xt')
   if key ==# 'H' | let hidden = !hidden | endif
   call assert_equal(hidden, search('\.hidden', 'nw') > 0)

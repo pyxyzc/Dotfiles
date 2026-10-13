@@ -1491,7 +1491,7 @@ call feedkeys("\<CR>", 'xt')
 call search('nested.txt', 'w')
 call feedkeys("r\<C-u>deep.txt\<CR>", 'xt')
 " 回到树根，新建目录，再把 keep.txt 复制、cut.txt 剪切进去。
-call feedkeys("\<C-l>", 'xt')
+call feedkeys('R', 'xt')
 call cursor(1, 1)
 call feedkeys("anewdir/\<CR>", 'xt')
 call search('keep.txt', 'w')

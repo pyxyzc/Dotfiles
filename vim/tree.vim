@@ -1057,6 +1057,11 @@ function! s:Refresh(islocal) abort
   return a:islocal ? s:RefreshDirectory(get(w:, 'netrw_treetop', b:netrw_curdir)) : 'refresh'
 endfunction
 
+" 用 UserMaps 覆盖 netrw 的局部刷新映射，保持 Ctrl-l 与全局窗口导航一致。
+function! s:FocusRight(islocal) abort
+  return 'wincmd l'
+endfunction
+
 function! s:Hidden(islocal) abort
   if !a:islocal
     return ''
@@ -1089,6 +1094,6 @@ let g:Netrw_UserMaps = [
       \ ['y', s:sid . 'YankName'],
       \ ['Y', s:sid . 'YankPath'],
       \ ['R', s:sid . 'Refresh'],
-      \ ['<C-l>', s:sid . 'Refresh'],
+      \ ['<C-l>', s:sid . 'FocusRight'],
       \ ['H', s:sid . 'Hidden'],
       \ ]
