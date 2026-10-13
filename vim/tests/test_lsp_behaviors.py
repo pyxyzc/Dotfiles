@@ -400,6 +400,7 @@ call assert_equal(-1, foldclosed(20))
 call AssertDiagnosticPopup('')
 split
 resize 8
+setlocal scrolloff=0
 VimLspDiagnosticDetails
 call AssertDiagnosticPopup('')
 call cursor(55, 1)

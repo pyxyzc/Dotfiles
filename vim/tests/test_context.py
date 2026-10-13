@@ -344,17 +344,18 @@ call assert_equal('', v:errmsg)
         replacement = [symbol('New', 5, 1, 6, len(rows), [children[0]])]
         self.terminal_vim(HELPERS + r'''
 call cursor(3, 1)
-let g:context_sid = str2nr(matchstr(ScriptPrefix('/context.vim$'), '\d\+'))
-let g:source_buffer = bufnr('%')
+let g:context_prefix = ScriptPrefix('/context.vim$')
 function! PendingContext() abort
-  let state = get(getscriptinfo({'sid': g:context_sid})[0].variables.cache,
-        \ g:source_buffer, {})
-  return !get(state, 'done', 1) && get(state, 'compile_timer', -1) > 0
+  for timer in timer_info()
+    if stridx(string(timer.callback), g:context_prefix . 'Compile') >= 0
+      return timer.id
+    endif
+  endfor
+  return 0
 endfunction
 call WaitFor({-> PendingContext()})
 call assert_equal('', VimContextLabel(), 'partial conversion appeared in statusline')
-let state = getscriptinfo({'sid': g:context_sid})[0].variables.cache[source_buffer]
-let pending_timer = state.compile_timer
+let pending_timer = PendingContext()
 VimContextToggle
 call assert_equal([], timer_info(pending_timer), 'conversion timer survived disabling context')
 call setline(1, 'class New:')

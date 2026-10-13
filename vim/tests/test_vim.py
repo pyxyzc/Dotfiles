@@ -2011,6 +2011,7 @@ sys.stdout.buffer.write(records[0] + b'\0')
 let terminals = filter(getbufinfo(), 'getbufvar(v:val.bufnr, "&buftype") ==# "terminal"')
 call assert_equal(1, len(terminals))
 let terminal = terminals[0].bufnr
+let search_popups = filter(popup_list(), 'winbufnr(v:val) == terminal')
 let search_job = term_getjob(terminal)
 let temporary = job_info(search_job).cmd[4]
 for attempt in range(400)
@@ -2020,7 +2021,12 @@ endfor
 call assert_false(bufexists(terminal), 'search job: ' . string(job_info(search_job))
       \ . '; channel: ' . string(ch_info(job_getchannel(search_job))))
 call assert_false(isdirectory(temporary))
-call assert_equal([], popup_list())
+" 搜索序号在旧 Vim 中使用独立弹窗；只检查搜索终端窗口是否全部关闭。
+for popup in search_popups
+  call assert_equal({}, popup_getpos(popup), 'search terminal popup survived cleanup')
+endfor
+call assert_equal([], filter(popup_list(),
+      \ 'getbufvar(winbufnr(v:val), "&buftype") ==# "terminal"'))
 '''
 
     def test_backend_scope_ignore_case_and_regular_expressions(self):
