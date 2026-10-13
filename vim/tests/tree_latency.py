@@ -9,7 +9,7 @@ from test_vim import ROOT, VimSession, quoted
 
 
 def benchmark(config, files, direct=False, profile=None, child_files=1, native_listing=False,
-              native_tree=False):
+              native_tree=False, synchronous=False):
     session = VimSession()
     session.setUp()
     try:
@@ -28,6 +28,8 @@ def benchmark(config, files, direct=False, profile=None, child_files=1, native_l
             before += ['let g:vimrc_lite_netrw_fast_listing = 0']
         if native_tree:
             before += ['let g:vimrc_lite_netrw_fast_tree = 0']
+        if synchronous:
+            before += ['let g:vimrc_lite_tree_async = 0']
         if profile:
             before += ['profile start ' + str(profile), 'profile func *', 'profile file *']
         body = r'''
@@ -38,11 +40,22 @@ function! Measure(name, keys) abort
   call feedkeys(a:keys, 'xt')
   redraw
   let g:metrics[a:name] = reltimefloat(reltime(started)) * 1000
+  while exists(':VimTreeListStatus') && execute('VimTreeListStatus') !~# 'no listings running'
+    if reltimefloat(reltime(started)) > 5
+      call assert_report('background listing did not finish')
+      break
+    endif
+    sleep 1m
+  endwhile
+  let g:metrics[substitute(a:name, '_ms$', '_ready_ms', '')] =
+        \ reltimefloat(reltime(started)) * 1000
 endfunction
 '''
         if not direct:
             body += 'execute "cd " . fnameescape(' + quoted(directory) + ')\n'
             body += "call Measure('first_open_ms', ' e')\n"
+        else:
+            body += "call Measure('direct_listing_ms', '')\n"
         body += r'''
 call assert_equal('netrw', &filetype)
 ''' + f"call assert_true(search('file_{files - 1:06d}.txt', 'w') > 0)\n" + r'''
@@ -79,10 +92,12 @@ if __name__ == '__main__':
     parser.add_argument('--child-files', type=int, default=1)
     parser.add_argument('--native-listing', action='store_true')
     parser.add_argument('--native-tree', action='store_true')
+    parser.add_argument('--sync', action='store_true', help='compare synchronous metadata listing')
     parser.add_argument('--direct', action='store_true')
     parser.add_argument('--profile', type=Path)
     args = parser.parse_args()
     if args.files < 1 or args.child_files < 1:
         parser.error('files and child-files must be positive')
     print(json.dumps(benchmark(args.config.resolve(), args.files, args.direct, args.profile,
-                               args.child_files, args.native_listing, args.native_tree), indent=2))
+                               args.child_files, args.native_listing, args.native_tree,
+                               args.sync), indent=2))

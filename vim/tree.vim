@@ -42,6 +42,13 @@ endfunction
 
 " 早期 Vim 8 的 expand('<SID>') 为空；从真实函数引用解析一次脚本前缀。
 let s:sid = matchstr(string(function('s:Warn')), '<SNR>\d\+_')
+let g:vimrc_lite_tree_collect = s:sid . 'ListingFiles'
+let g:vimrc_lite_tree_refresh = s:sid . 'RefreshDirectory'
+let g:vimrc_lite_tree_collect_ready = 0
+let s:async_module = fnamemodify(resolve(expand('<sfile>:p')), ':h') . '/tree-async.vim'
+if filereadable(s:async_module)
+  execute 'source ' . fnameescape(s:async_module)
+endif
 
 " 不让 netrw 把历史写到 runtimepath 首项（隔离插件后它是 Vim 的系统目录）。
 if !exists('g:netrw_home')
@@ -189,22 +196,28 @@ function! s:FastListing() abort
     return
   endif
   " 保留原生 glob，仍遵循 wildignore、suffixes、隐藏文件及失效链接规则。
-  let files = call(s:NativeGlob, [directory, '*', 0])
-        \ + call(s:NativeGlob, [directory, '.*', 0])
-  if !empty(filter(copy(files), 'v:val =~# "[\r\n]"'))
-    call call(s:NativeListing, [])
-    return
+  let lines = exists('*VimTreeSnapshot') ? VimTreeSnapshot(directory) : -1
+  if type(lines) != type([])
+    let lines = []
+    if !exists('*VimTreeQueueListing') || !VimTreeQueueListing(directory, [])
+      let files = s:ListingFiles(directory)
+      if join(files, '') =~# '[\r\n]'
+        call call(s:NativeListing, [])
+        return
+      endif
+      let offset = strlen(directory)
+      let suffixes = {'link': '@', 'socket': '=', 'fifo': '|', 'dir': '/'}
+      for filename in files
+        " 每项只查一次文件类型；绝对路径不再反复经过树路径解析和 isdirectory()。
+        let kind = getftype(filename)
+        let suffix = has_key(suffixes, kind) ? suffixes[kind] : executable(filename) ? '*' : ''
+        let name = substitute(strpart(filename, offset), '^[/\\]', '', '')
+        if !exists('*VimTreeEntryIgnored') || !VimTreeEntryIgnored(name, kind ==# 'dir')
+          call add(lines, name . suffix)
+        endif
+      endfor
+    endif
   endif
-  let offset = strlen(directory)
-  let suffixes = {'link': '@', 'socket': '=', 'fifo': '|', 'dir': '/'}
-  let lines = []
-  for filename in files
-    " 每项只查一次文件类型；绝对路径不再反复经过树路径解析和 isdirectory()。
-    let kind = getftype(filename)
-    let suffix = has_key(suffixes, kind) ? suffixes[kind] : executable(filename) ? '*' : ''
-    let name = substitute(strpart(filename, offset), '^[/\\]', '', '')
-    call add(lines, name . suffix)
-  endfor
   " 替代每项 :put；后续排序、隐藏、树形渲染仍交给 netrw。
   let position = line('.')
   call append(position, lines)
@@ -333,6 +346,13 @@ function! s:FastListingList(directory, dynamic) abort
         \ || !exists('b:netrw_curdir') || b:netrw_curdir =~# '://'
     return call(s:NativeListingList, [a:directory, a:dynamic])
   endif
+  let lines = exists('*VimTreeSnapshot') ? VimTreeSnapshot(a:directory) : -1
+  if type(lines) == type([])
+    return lines
+  endif
+  if exists('*VimTreeQueueListing') && VimTreeQueueListing(a:directory, [])
+    return []
+  endif
   let directory = a:directory =~# '/$' ? a:directory : a:directory . '/'
   let suffixes = {'link': '@', 'socket': '=', 'fifo': '|', 'dir': '/'}
   let lines = []
@@ -340,9 +360,20 @@ function! s:FastListingList(directory, dynamic) abort
     let filename = directory . name
     let kind = getftype(filename)
     let suffix = has_key(suffixes, kind) ? suffixes[kind] : executable(filename) ? '*' : ''
-    call add(lines, name . suffix)
+    if !exists('*VimTreeEntryIgnored') || !VimTreeEntryIgnored(name, kind ==# 'dir')
+      call add(lines, name . suffix)
+    endif
   endfor
   return lines
+endfunction
+
+function! s:ListingFiles(directory) abort
+  if exists('s:NativeGlob')
+    return call(s:NativeGlob, [a:directory, '*', 0])
+          \ + call(s:NativeGlob, [a:directory, '.*', 0])
+  endif
+  let directory = a:directory =~# '/$' ? a:directory : a:directory . '/'
+  return map(['.', '..'] + readdir(a:directory), 'directory . v:val')
 endfunction
 
 function! s:InstallListingList(prefix) abort
@@ -373,6 +404,10 @@ function! s:InstallFastListing() abort
   let prefix = '<SNR>' . matchstr(scripts[0], '^\s*\zs\d\+\ze:') . '_'
   call s:InstallFastTree(prefix)
   call s:InstallListingList(prefix)
+  let g:vimrc_lite_tree_collect_ready = get(s:, 'listing_list_prefix', '') ==# prefix
+        \ || get(s:, 'fast_listing_prefix', '') ==# prefix
+  let g:vimrc_lite_tree_listing_backend = get(s:, 'listing_list_prefix', '') ==# prefix
+        \ ? 'readdir' : 'glob'
   if get(s:, 'fast_listing_prefix', '') ==# prefix
         \ || !exists('*' . prefix . 'LocalListing') || !exists('*' . prefix . 'NetrwGlob')
     return
@@ -393,6 +428,7 @@ function! s:InstallFastListing() abort
   execute 'function! ' . prefix . "LocalListing() abort\n"
         \ . 'call ' . s:sid . "FastListing()\nendfunction"
   let s:fast_listing_prefix = prefix
+  let g:vimrc_lite_tree_collect_ready = 1
 endfunction
 
 function! s:PrepareDirectory() abort
@@ -458,6 +494,9 @@ function! s:NetrwCall(name, ...) abort
 endfunction
 
 function! s:CloseTree() abort
+  if exists('*VimTreeCancelListing')
+    call VimTreeCancelListing(bufnr('%'))
+  endif
   let focus = win_getid()
   try
     " 常规侧栏仍由 Lexplore 保存宽度和视图；直接打开的目录没有此标记。
@@ -614,6 +653,9 @@ function! s:BaseDir() abort
 endfunction
 
 function! s:RefreshDirectory(directory) abort
+  if exists('*VimTreeAsyncRefresh') && VimTreeAsyncRefresh(a:directory)
+    return ''
+  endif
   if get(w:, 'netrw_liststyle', -1) == 3 && len(get(w:, 'netrw_treedict', {})) > 1
     " 旧版不更新子树；较新版只收集裸文件名，丢掉类型后缀及多层展开。
     " 每个已展开目录沿用完整的原生列举、排序、隐藏规则，最后重建树根。
@@ -1097,3 +1139,7 @@ let g:Netrw_UserMaps = [
       \ ['<C-l>', s:sid . 'FocusRight'],
       \ ['H', s:sid . 'Hidden'],
       \ ]
+
+if exists('g:loaded_netrw')
+  call s:InstallFastListing()
+endif

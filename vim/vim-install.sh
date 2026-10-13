@@ -17,6 +17,8 @@ config_files=(
     context.vim
     clipboard.vim
     tree.vim
+    tree-async.vim
+    tree-list.vim
     buffers.vim
     edit.vim
     pins.vim

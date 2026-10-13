@@ -9,6 +9,9 @@ endif
 if exists('#vimrc_lite_search#User#VimrcLiteReload')
   doautocmd <nomodeline> vimrc_lite_search User VimrcLiteReload
 endif
+if exists('#vimrc_lite_tree_listing#User#VimrcLiteReload')
+  doautocmd <nomodeline> vimrc_lite_tree_listing User VimrcLiteReload
+endif
 let s:vimrc_path = expand('<sfile>:p')
 let s:config_dir = fnamemodify(resolve(s:vimrc_path), ':h')
 
@@ -83,6 +86,7 @@ set number relativenumber cursorline
 set laststatus=2 showmode showcmd
 " 窄分屏优先显示文件名、作用域和位置；语言与服务器信息留给较宽窗口。
 let &statusline = '%n:%<%f%{exists("*VimContextLabel") ? VimContextLabel() : ""} %m%r%h%='
+      \ . '%{exists("*VimTreeStatusLabel") ? VimTreeStatusLabel() : ""}'
       \ . '%{winwidth(0) < 60 ? "" : exists("*VimLspStatusLabel") ? VimLspStatusLabel() : '
       \ . 'empty(&filetype) ? "" : "[lang: " . &filetype . "]"} %l:%c %p%%'
 set scrolloff=5 sidescrolloff=5 nowrap

@@ -776,16 +776,28 @@ call assert_equal('/fallback/renamed/target.txt', TreeCall('Entry', []).path)
         target = nested / 'target.txt'
         target.write_text('preserve content\n')
         self.vim(r'''
+function! WaitForTreeListing() abort
+  let started = reltime()
+  while execute('VimTreeListStatus') !~# 'no listings running'
+    if reltimefloat(reltime(started)) > 5
+      call assert_report('background listing timed out')
+      return
+    endif
+    sleep 1m
+  endwhile
+endfunction
 call feedkeys(' e', 'xt')
 call assert_true(search('nested 中文/', 'w') > 0)
 call feedkeys("\<CR>", 'xt')
 call assert_true(search('sibling/', 'w') > 0)
 call feedkeys("\<CR>", 'xt')
+call WaitForTreeListing()
 call assert_true(search('file_0999.txt', 'w') > 0)
 call assert_true(search('target.txt', 'w') > 0)
 call feedkeys('Y', 'xt')
 call assert_equal('nested 中文/target.txt', @")
 call feedkeys("r\<C-u>renamed.txt\<CR>", 'xt')
+call WaitForTreeListing()
 call assert_false(filereadable('nested 中文/target.txt'))
 call assert_equal(['preserve content'], readfile('nested 中文/renamed.txt'))
 call assert_true(search('renamed.txt', 'w') > 0)
