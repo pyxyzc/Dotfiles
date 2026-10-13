@@ -117,21 +117,7 @@ function! s:Warn(message) abort
 endfunction
 
 function! s:ProjectRoot() abort
-  let directory = &buftype ==# '' && !empty(bufname('%')) && !isdirectory(expand('%:p'))
-        \ ? expand('%:p:h') : getcwd()
-  while 1
-    for marker in ['.git', '_darcs', '.hg', '.bzr', '.svn', 'Makefile', 'package.json', 'pom.xml']
-      let path = directory . '/' . marker
-      if isdirectory(path) || filereadable(path)
-        return directory
-      endif
-    endfor
-    let parent = fnamemodify(directory, ':h')
-    if parent ==# directory
-      return getcwd()
-    endif
-    let directory = parent
-  endwhile
+  return VimLiteProjectRoot({'purpose': 'search'})
 endfunction
 
 function! s:Geometry() abort

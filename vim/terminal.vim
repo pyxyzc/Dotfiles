@@ -123,7 +123,7 @@ function! s:Toggle() abort
     call s:Warn('requires Vim +terminal and +timers')
     return
   endif
-  let root = get(b:, 'vimrc_lite_terminal_root', VimLiteProjectRoot())
+  let root = get(b:, 'vimrc_lite_terminal_root', VimLiteProjectRoot({'purpose': 'terminal'}))
   let state = get(s:reusable, root, {})
   if !empty(state) && bufexists(state.buf) && !state.done
         \ && job_status(term_getjob(state.buf)) ==# 'run'

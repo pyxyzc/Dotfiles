@@ -34,6 +34,19 @@ function! s:SourceModule(name) abort
   return 1
 endfunction
 
+" 个人参数先于模块加载；个人键位最后加载，安装器不覆盖这两个文件。
+function! s:SourceLocalConfig(kind) abort
+  if !get(g:, 'vimrc_lite_local_config', 1)
+    return
+  endif
+  let path = get(g:, 'vimrc_lite_' . a:kind . '_file', expand('~/.vim/' . a:kind . '.vim'))
+  if type(path) == type('') && filereadable(expand(path))
+    execute 'source ' . fnameescape(expand(path))
+  endif
+endfunction
+
+call s:SourceLocalConfig('settings')
+
 " 隔离已有 pack 插件并关闭 plugin 脚本自动加载；注册本地主题目录。
 set noloadplugins
 let &runtimepath = escape($VIMRUNTIME, ',')
@@ -358,3 +371,6 @@ nnoremap <silent> <leader>ch :VimHealth<CR>
 if has('terminal')
   tnoremap <Esc><Esc> <C-w>N
 endif
+
+call s:SourceLocalConfig('mappings')
+silent doautocmd <nomodeline> User VimrcLiteReady

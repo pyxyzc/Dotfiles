@@ -49,6 +49,11 @@ function! s:Keys(query) abort
         \ 'wall': '保存全部 / save all',
         \ }
   let rows = []
+  let sources = {}
+  for script in split(execute('scriptnames'), "\n")
+    let number = matchstr(script, '^\s*\zs\d\+')
+    let sources[number] = substitute(script, '^\s*\d\+:\s*', '', '')
+  endfor
   let key_labels = {'af': '函数整体 / entire function', 'if': '函数体 / function body',
         \ 'ac': '类整体 / entire class', 'ic': '类体 / class body',
         \ 'ab': '控制块整体 / entire block', 'ib': '控制块内容 / block body',
@@ -63,7 +68,14 @@ function! s:Keys(query) abort
         \ ' bp': '选择 buffer / select buffer', ' bD': '清空 buffer 或选区 / clear',
         \ ' bw': '去除行尾空白 / trim whitespace', ' fh': '清除搜索高亮',
         \ ' nh': '查看消息 / messages', 'q': '普通模式禁用宏录制；辅助窗口关闭',
+        \ '<C-H>': '左侧窗口 / focus left', '<C-J>': '下方窗口 / focus down',
+        \ '<C-K>': '上方窗口 / focus up', '<C-L>': '右侧窗口 / focus right',
         \ }
+  let tree_labels = {'Create': '新建文件或目录 / create', 'Rename': '重命名 / rename',
+        \ 'Delete': '删除 / delete', 'Copy': '复制 / copy', 'Cut': '剪切 / cut',
+        \ 'Paste': '粘贴 / paste', 'YankName': '复制文件名 / copy name',
+        \ 'YankPath': '复制相对路径 / copy relative path', 'Refresh': '刷新文件树 / refresh',
+        \ 'Hidden': '显示隐藏文件 / hidden files', 'FocusRight': '右侧窗口 / focus right'}
   if exists('*maplist')
     for mapping in maplist()
       if mapping.lhs =~? '^<Plug>' || mapping.rhs =~# '^<Plug>'
@@ -72,15 +84,26 @@ function! s:Keys(query) abort
       endif
       let command = matchstr(mapping.rhs, '\<\%(Vim[A-Za-z]*\|wall\)\>')
       let description = get(key_labels, mapping.lhs, get(labels, command, mapping.rhs))
+      if get(mapping, 'buffer', 0) && &filetype ==# 'netrw'
+        let action = matchstr(mapping.rhs, '_\zs[A-Za-z]\+\ze'')')
+        let description = get(tree_labels, action, mapping.rhs)
+      endif
       let key = substitute(mapping.lhs, '^ ', '<Space>', '')
-      let row = printf('%-4s %-22s %s', mapping.mode, key, description)
+      let mode = mapping.mode ==# ' ' ? 'n' : mapping.mode[0]
+      let effective = maparg(mapping.lhs, mode, 0, 1)
+      let local = get(mapping, 'buffer', 0)
+      let active = !empty(effective) && get(effective, 'buffer', 0) == local
+      let source = get(sources, string(get(mapping, 'sid', 0)), '(interactive)')
+      let source = fnamemodify(source, ':~') . ':' . get(mapping, 'lnum', 0)
+      let row = printf('%-4s %-22s [%s %s] %s source=%s', mapping.mode, key,
+            \ local ? 'buffer' : 'global', active ? 'active' : 'overridden', description, source)
       if empty(a:query) || stridx(tolower(row), tolower(a:query)) >= 0
         call add(rows, row)
       endif
     endfor
     call sort(rows)
   else
-    let rows = split(execute('map') . "\n" . execute('tmap'), "\n")
+    let rows = split(execute('verbose map') . "\n" . execute('verbose tmap'), "\n")
     call filter(rows, 'empty(a:query) || stridx(tolower(v:val), tolower(a:query)) >= 0')
   endif
   call s:Show('快捷键 / :VimKeys [搜索词] / q 关闭', rows)
@@ -89,6 +112,8 @@ endfunction
 function! s:Health() abort
   let lines = ['Vim: ' . matchstr(execute('version'), 'VIM[^\n]*'),
         \ 'Project: ' . VimLiteProjectRoot(), '']
+  call add(lines, 'Search root: ' . VimLiteProjectRoot({'purpose': 'search'}))
+  call add(lines, 'Tasks root: ' . VimLiteProjectRoot({'purpose': 'tasks'}))
   for feature in ['terminal', 'job', 'channel', 'timers', 'clipboard', 'persistent_undo']
     call add(lines, (has(feature) ? '[ok] ' : '[missing] ') . '+' . feature)
   endfor
@@ -112,7 +137,7 @@ function! s:Health() abort
   if exists('g:vimrc_lite_undo_error') && !&undofile
     call add(lines, 'Undo error: ' . g:vimrc_lite_undo_error)
   endif
-  let tasks = VimLiteProjectRoot() . '/.vim-lite-tasks.json'
+  let tasks = VimLiteProjectRoot({'purpose': 'tasks'}) . '/.vim-lite-tasks.json'
   call add(lines, 'Tasks: ' . (filereadable(tasks) ? tasks : 'no project task file'))
   if exists(':VimLspStatus')
     let lines += [''] + split(execute('VimLspStatus'), "\n")

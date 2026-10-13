@@ -9,7 +9,8 @@ function! s:Directory() abort
   if !exists('*sha256') || !exists('*json_encode') || !exists('*win_execute')
     throw 'requires Vim JSON, sha256 and win_execute support'
   endif
-  let directory = VimLiteStateDir('sessions') . '/' . sha256(VimLiteProjectRoot())
+  let directory = VimLiteStateDir('sessions') . '/' . sha256(
+        \ VimLiteProjectRoot({'purpose': 'session'}))
   if !isdirectory(directory)
     call mkdir(directory, 'p', 0700)
   endif
@@ -67,7 +68,8 @@ function! s:Save(name) abort
     let buffers = map(filter(getbufinfo({'buflisted': 1}),
           \ 'getbufvar(v:val.bufnr, "&buftype") ==# "" && !empty(v:val.name)'
           \ . ' && filereadable(v:val.name)'), 'fnamemodify(v:val.name, ":p")')
-    let data = {'version': 1, 'root': VimLiteProjectRoot(), 'tabs': tabs, 'buffers': buffers}
+    let data = {'version': 1, 'root': VimLiteProjectRoot({'purpose': 'session'}),
+          \ 'tabs': tabs, 'buffers': buffers}
     let temporary = path . '.tmp.' . getpid()
     call writefile([json_encode(data)], temporary)
     call setfperm(temporary, 'rw-------')
@@ -148,7 +150,7 @@ function! s:Load(name) abort
     let path = s:Path(a:name)
     let data = json_decode(join(readfile(path), "\n"))
     if type(data) != type({}) || get(data, 'version', 0) != 1
-          \ || get(data, 'root', '') !=# VimLiteProjectRoot()
+          \ || get(data, 'root', '') !=# VimLiteProjectRoot({'purpose': 'session'})
           \ || type(get(data, 'tabs', 0)) != type([])
           \ || empty(data.tabs) || len(data.tabs) > 30
       throw 'invalid session or project root mismatch'

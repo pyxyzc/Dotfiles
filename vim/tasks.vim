@@ -26,7 +26,7 @@ endfunction
 
 function! s:Complete(lead, line, pos) abort
   try
-    return filter(sort(keys(s:Config(VimLiteProjectRoot()))),
+    return filter(sort(keys(s:Config(VimLiteProjectRoot({'purpose': 'tasks'})))),
           \ 'stridx(v:val, a:lead) == 0')
   catch
     return []
@@ -104,7 +104,7 @@ function! s:Run(name) abort
     return
   endif
   try
-    let root = VimLiteProjectRoot()
+    let root = VimLiteProjectRoot({'purpose': 'tasks'})
     let tasks = s:Config(root)
     let name = a:name
     if empty(name)

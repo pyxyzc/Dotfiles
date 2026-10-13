@@ -1629,20 +1629,8 @@ function! s:Kind(name) abort
 endfunction
 
 function! s:ProjectRoot(name, buffer) abort
-  let start = fnamemodify(resolve(fnamemodify(bufname(a:buffer), ':p')), ':h')
-  let directory = start
-  while 1
-    for marker in s:servers[a:name].markers
-      if isdirectory(directory . '/' . marker) || filereadable(directory . '/' . marker)
-        return directory
-      endif
-    endfor
-    let parent = fnamemodify(directory, ':h')
-    if parent ==# directory
-      return start
-    endif
-    let directory = parent
-  endwhile
+  return VimLiteProjectRoot({'buffer': a:buffer, 'purpose': s:Kind(a:name),
+        \ 'markers': s:servers[a:name].markers})
 endfunction
 
 function! s:RootUri(name, info) abort
@@ -1702,7 +1690,9 @@ function! s:PrepareBuffer(buffer) abort
     return
   endif
   let filetype = getbufvar(a:buffer, '&filetype')
-  let key = [bufname(a:buffer), filetype]
+  let key = [bufname(a:buffer), filetype,
+        \ string(getbufvar(a:buffer, 'vimrc_lite_project_root',
+        \ get(g:, 'vimrc_lite_project_root', ''))), string(get(g:, 'vimrc_lite_root_markers', {}))]
   if getbufvar(a:buffer, 'vimrc_lite_lsp_binding_key', []) ==# key
     return
   endif
