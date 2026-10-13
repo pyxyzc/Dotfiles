@@ -1,6 +1,7 @@
 # 离线极简 Vim
 
-面向 Linux 上的完整 Vim 8/9，主要用于 Python、C/C++。配置与 TokyoNight Night
+面向 Linux 上的完整 Vim 8/9，主要用于 Python、C/C++，也为 CUDA 文件启用 clangd。
+配置与 TokyoNight Night
 主题全部在本目录，随配置保存一个固定版本的第三方插件 `vim-lsp`。
 没有插件管理器或自动下载；语言服务器 Pyright、clangd 及其运行环境由用户自行安装。
 主题默认透明背景，不需要特殊字体。
@@ -17,6 +18,7 @@ buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等�
 `dashboard.vim` 管理首页，
 `clipboard.vim` 管理 OSC 52 远程剪贴板与复制粘贴回退，
 `tree.vim` 集中管理 netrw 侧边文件树的加载、选项和快捷键；
+`tree-async.vim` 管理大目录后台列举，`tree-list.vim` 是不加载用户配置的 Vim 工作进程；
 `search.vim`、`search.sh` 和 `search.awk` 连接 Vim 内置终端与 fd/ripgrep/fzf；
 `search-preview.awk` 为受限的预览片段提供语法颜色。
 `lsp.vim` 显式加载 `vendor/vim-lsp/`，提供 Python、C/C++ 的基础语言服务。
@@ -72,6 +74,8 @@ bash ~/Dotfiles/vim/vim-clean.sh
 ~/.vim/tools.vim
 ~/.vim/clipboard.vim
 ~/.vim/tree.vim
+~/.vim/tree-async.vim
+~/.vim/tree-list.vim
 ~/.vim/buffers.vim
 ~/.vim/edit.vim
 ~/.vim/pins.vim
@@ -112,13 +116,31 @@ sudo apt install fd-find ripgrep fzf gawk
 不需要建立 `fd` 到 `fdfind` 的链接，也不需要安装 fzf.vim、bat 或 Python；
 预览语法颜色由已有 gawk 提供。
 
-已有同名文件会直接替换，不保留备份；内容相同的普通文件跳过。插件目录整体暂存后
-替换，升级不会残留旧文件。符号链接本身会被替换，不会改写它指向的文件。其他主题和旧插件
+已有同名文件在同目录暂存后原子替换，不保留永久备份；内容相同的普通文件跳过。
+插件目录先暂存新版本，再临时移开旧目录；替换失败时恢复旧目录。
+INT/TERM 中断会执行清理：目标尚未发布时恢复旧目录，已发布时报告临时旧副本的位置。
+成功后清除临时旧副本，升级不会残留旧文件。符号链接本身会被替换，不会改写其目标。
+如果恢复步骤也失败，脚本报告保留旧配置的位置。其他主题和旧插件
 文件保留在原处；此配置清空 `packpath` 并关闭 `plugin` 脚本的自动加载，
 所以已有的插件包不会自动加载。运行时仅加入 Vim 自带目录、本地主题所在目录和
 随配置保存的 vim-lsp；新版 Vim 的内置 netrw 若以可选包提供，也会显式加入。
 加载 netrw 时临时将 `packpath` 限定为 `$VIMRUNTIME`，完成后恢复，兼容新旧布局。
 目录内容相同则跳过。安装不修改 Neovim、shell 或 tmux 配置。
+
+个人参数放在 `~/.vim/settings.vim`，在主题和各模块之前加载；个人键位放在
+`~/.vim/mappings.vim`，在默认映射之后加载。安装和重复升级均保留这两个文件。
+可用 `g:vimrc_lite_settings_file`、`g:vimrc_lite_mappings_file` 指定其他位置，
+或用 `g:vimrc_lite_local_config = 0` 关闭个人配置加载。
+映射文件也可注册 `User VimrcLiteReady` 自动命令，在配置初次加载及重载完成后执行。
+
+```vim
+" ~/.vim/settings.vim：参数先于模块生效。
+let g:vimrc_lite_buffer_slogans = []
+let g:vimrc_lite_tree_ignore = ['.git/', 'build/', 'node_modules/']
+
+" ~/.vim/mappings.vim：覆盖默认按键。
+nnoremap <leader>u :VimHealth<CR>
+```
 
 `vim-clean.sh` 默认清理当前 `$HOME` 下的 `.vim`、`.vimrc`、`.gvimrc`、Vim 信息文件，
 以及 `vim-lite` 状态目录。它会先显示清理目标并询问确认；可用 `--yes` 跳过确认，
@@ -154,6 +176,9 @@ vim --cmd 'let g:vimrc_lite_transparent = 0' -u ~/Dotfiles/vim/.vimrc
 | `g:vimrc_lite_search_ordinal` | `1` | 当前文件搜索的行尾序号；设为 `0` 隐藏 |
 | `g:vimrc_lite_netrw_fast_listing` | `1` | 对已核对的 netrw 实现启用本地树批量列举；设为 `0` 回退原生列举 |
 | `g:vimrc_lite_netrw_fast_tree` | `1` | 对已核对的 netrw 实现启用树批量渲染；设为 `0` 回退原生渲染 |
+| `g:vimrc_lite_tree_async` | `1` | 已适配的本地树使用后台 Vim 列举大目录 |
+| `g:vimrc_lite_tree_async_threshold` | `1000` | 根目录及已展开目录的总条目数达到此值时后台列举 |
+| `g:vimrc_lite_tree_ignore` | `[]` | 按条目原始名称匹配 glob；以 `/` 结尾的模式仅隐藏目录 |
 | `g:vimrc_lite_lsp` | `1` | 根据文件类型自动启动已安装的语言服务器；设为 `0` 禁用 LSP |
 | `g:vimrc_lite_context` | `1` | 在底部状态栏文件名后显示当前类／函数名称 |
 | `g:vimrc_lite_lsp_pyright_cmd` | `['pyright-langserver', '--stdio']` | Python 服务器的命令参数列表 |
@@ -163,6 +188,29 @@ vim --cmd 'let g:vimrc_lite_transparent = 0' -u ~/Dotfiles/vim/.vimrc
 
 重载 vimrc 会更新函数、界面设置及服务器命令配置，保留已有进程。
 修改服务器命令后用 `:VimLspRestart` 应用到当前项目；全局 LSP 开关建议在启动前设置。
+
+## 项目根与搜索范围
+
+搜索、任务、终端、会话和语言服务共用 `VimLiteProjectRoot()` 的定位逻辑。
+从当前普通文件所在目录向上寻找最近的项目标记；直接打开目录时从该目录开始，
+特殊 buffer 使用当前工作目录。无标记时使用文件所在目录。
+通用标记包含 Git/Hg/SVN、`pyproject.toml`、`CMakeLists.txt`、编译数据库和任务文件；
+语言服务保留各自的标记列表，以识别仓库中的 Python 或 C/C++ 子工程。
+
+`g:vimrc_lite_project_root` 可设为一个路径，或按用途指定路径的字典；
+`b:vimrc_lite_project_root` 优先于全局配置，相对路径以当前文件所在目录为基准。
+字典支持 `default`、`search`、`tasks`、`terminal`、`session`、`pyright`、`clangd`。
+也可用 `g:vimrc_lite_root_markers` 为指定用途配置标记列表。
+
+```vim
+" 搜索整个仓库，语言服务仍按子工程定位。
+let g:vimrc_lite_root_markers = {'search': ['.git']}
+
+" 显式限定一个项目的任务和搜索范围。
+let b:vimrc_lite_project_root = '/path/to/project'
+```
+
+`VimHealth` 同时显示通用根、搜索根和任务根，`VimLspInfo` 显示实际语言服务根。
 
 ## 首页
 
@@ -285,6 +333,15 @@ slogan 不会挤掉原本能显示的 buffer 标签。
 操作后由 netrw 自动刷新。打开目录仍用 `<CR>`，返回上级用 `-`，`%` 新建文件、
 `D` 删除、`gx` 用系统程序打开等 netrw 原生按键保持不变；`a`、`r`、`d`、`c`、
 `x`、`p`、`R`、`H` 会覆盖 netrw 的同名默认行为。
+文件树中 `Ctrl-h/j/k/l` 同样用于切换窗口，`Ctrl-l` 可返回右侧编辑窗口；刷新请按 `R`。
+
+大目录以独立 Vim 进程列举文件和查询类型，不依赖 Python。主进程每批接收 256 项，
+每次处理队列最多约 4 ms；收到完整快照后沿用 netrw 排序、隐藏及树形渲染。
+首次打开时状态栏显示 `[tree: loading]`，期间仍能切窗；刷新保留旧列表直到快照就绪。
+`VimTreeListStatus` 查看后台列举，`VimTreeListCancel` 取消；取消首次列举后按 `R` 重试。
+关闭树会取消对应工作，重载配置会恢复尚未完成的列举。后台失败时提示并回退同步列举。
+未识别的 netrw 实现、其他布局、大小／时间排序、动态列宽及特殊换行文件名沿用原路径。
+`g:vimrc_lite_tree_ignore` 应用于已适配的本地列举，不改变磁盘内容；空列表显示完整条目。
 
 Unix 本地树按名称／扩展名排序时，会为已核对完整函数体的 netrw 运行时启用批量列举，
 减少重复文件属性查询和逐行写入。未知运行时、其他列表布局、大小／时间排序、
@@ -720,6 +777,9 @@ pin 随上方插删行移动；替换该行文字仍保留 pin。删除整行时
 `<leader>?` / `:VimKeys` 查看实际映射；`:VimKeys rename`、`:VimKeys 搜索` 可按
 按键、功能或命令过滤。支持对应功能时，还显示当前 buffer 的结构文本对象映射。
 查询窗口内 `q` 关闭。旧 Vim 没有 `maplist()` 时使用原生映射列表。
+新版列表显示 `[global active]`、`[buffer active]` 或 `[global overridden]`，
+并附来源文件及行号；在文件树中执行 `:VimKeys <C-l>` 可同时看到局部和全局映射。
+旧 Vim 的回退列表使用 `:verbose map` 提供原生来源信息。
 
 `<leader>ch` / `:VimHealth` 查看 Vim 功能、项目根目录、搜索工具路径、
 剪贴板方式、撤销目录、任务配置路径和 LSP 状态。检查只展示环境，不安装工具。
@@ -776,11 +836,24 @@ OSC 52 要求本地终端允许应用写入剪贴板；tmux 内还需要 `set -g
 
 ```bash
 # 测试只使用 Python 标准库，配置运行时不依赖 Python。
-python3 ~/Dotfiles/vim/tests/test_vim.py
+python3 ~/Dotfiles/vim/tests/run.py
+
+# Dotfiles 统一入口；tmux、LazyGit 测试分别位于各自目录。
+python3 ~/Dotfiles/tests/run.py
+
+# 只运行 Vim，或指定一组用例。
+python3 ~/Dotfiles/tests/run.py --suite vim test_project test_tree_async
 
 # 行级 pin：持久化、编辑跟踪、跳转和真实终端高亮。
 python3 ~/Dotfiles/vim/tests/test_pins.py
 ```
+
+CUDA 验收覆盖模拟协议路由和真实 clangd 的 `.cu` 定义跳转／返回，使用 host-only
+编译数据库及 `-nocudainc -nocudalib`，无需 CUDA SDK；真实 CUDA 工程还需提供自己的
+`compile_commands.json` 和 CUDA 路径。[clangd CUDA 配置说明](https://clangd.llvm.org/faq#does-clangd-support-cuda)。
+
+维护者升级固定的 vim-lsp 时使用 `scripts/vendor_lsp.py`，归档和补丁校验信息在
+`patches/vim-lsp/manifest.json`。流程和命令见 [SOURCE.md](vendor/vim-lsp/SOURCE.md)。
 
 测试在临时目录执行，覆盖配置、主题、首页启动与交互、buffer、搜索、终端退出清理、
 剪贴板（含通过伪终端验证 OSC 52 到达终端）、复制及安装脚本。
