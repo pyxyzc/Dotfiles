@@ -1162,3 +1162,101 @@ CUDA 重载专项验证已运行的 clangd 注册信息会更新 allowlist，且
 已执行 --config-only 同步 /root/.vimrc 和 /root/.vim，真实安装副本的启动、项目定位、
 后台树、Ctrl-h/l 导航、映射来源、重载及健康面板专项通过；逐文件核对运行时和完整
 vim-lsp 快照与仓库一致。Shell 语法和 git diff --check 通过。
+
+## 2026-10-14：Markdown 模块
+
+`markdown.vim` 提供 TokyoNight 原生阅读、列表续写、任务勾选、中文表格、模板、标题导航与
+目录；`markdown/` 提供 Python 标准库预览服务和固定版本离线渲染资源。普通代码编辑不会
+启动预览进程或创建 Markdown 更新计时器。原生围栏使用 buffer 内语法区域，不向 LSP
+文档窗口传播语言配置；系统 sh.vim 已处理的临时命令删除提示不会污染 `v:errmsg`。
+
+结构操作使用 changedtick 缓存标题与围栏范围，代码保护读取当前文本，避免尚未重绘的
+语法缓存误判。打开目录后，光标移动不会重复写入内容未变的目录 buffer。
+预览更新默认合并 150 ms；仅 changedtick 变化时向 stdin 发送全文，移动光标仅发送行号。
+浏览器可见时每 250 ms 检查状态，隐藏时降为 1500 ms；无变更返回 204，只有光标变化时
+不重复返回全文。停止、关闭源 buffer、重载或退出 Vim 会清理后台服务。
+
+验证结果：系统 Vim 9.1 的完整 320 项全部通过，包含真实 Chrome 的渲染、未保存同步、
+本地图片、公式、代码复制、滚动、窄屏与 PDF 导出；Vim 8.2.5172 另通过 Markdown 编辑
+专项 13 项。实际安装副本的编辑和预览通过，模块及全部离线资源已逐文件核对一致。
+KaTeX 字体引用及第三方资源 SHA-256 校验通过；运行时无 CDN、pip、Node 或 npm 请求。
+浏览器截图与 PDF 也使用实际安装的服务生成。
+
+当前 PTY 启动样本（3 轮、100 个项目文件）：首页中位 28.34 ms，Python 30.58 ms，
+大文件 39.35 ms。目录场景仍记录 `E121: Undefined variable: s:netrwgray`；使用改动前
+`.vimrc` 的同机对照也出现该错误，未计为 Markdown 回归。
+
+```bash
+python3 tests/run.py
+python3 tests/run.py test_markdown
+VIM_TEST_BINARY=/path/to/vim8 VIMRUNTIME=/path/to/runtime python3 tests/run.py test_markdown.MarkdownTests
+VIM_MARKDOWN_BROWSER_TEST=1 VIM_MARKDOWN_CHROME=/path/to/chrome python tests/run.py test_markdown
+python3 tests/startup_latency.py --rounds 3 --files 100
+```
+
+浏览器专项需要在测试环境安装 Playwright；字体由浏览器所在系统提供。原生 Vim 编辑
+不依赖 Python，预览服务仅依赖 Python 3 标准库。接口、SSH 转发和按键详见 README。
+
+### 原生阅读视图增强
+
+新增 `markdown-view.vim`，参考 render-markdown.nvim 与 markview.nvim 的块布局。
+支持虚拟文本的 Vim 显示自动对齐的圆角表格、标题层级、任务徽标及完成删除线、
+提示块、代码语言卡片、链接／图片标签和注释隐藏。显示层不改变 buffer 文本、
+changedtick、撤销或保存内容；光标行和选区显示源码，插入模式撤下显示层。
+阅读状态按文档保存，同文档多个窗口同步，其他文档不继承该状态。
+
+渲染计划按 changedtick 与窗口宽度缓存。光标移动只撤下／恢复相关行的虚拟文本与
+match，不重建其他行的 match ID；源码模式不会重扫整篇文档。
+1200 行混合标题、表格、任务、引用及注释的样本：首次规划和应用 267.8 ms，
+120 次光标刷新中位 0.196 ms、p95 0.242 ms。此结果不包含物理终端显示与网络传输。
+
+真实终端检查覆盖表格中文对齐、边框、表头实际 RGB、完成项实际删除线、源码切换、
+插入与重新排版、行内代码字面量、代码中注释保留、注释中伪围栏／任务保护、分屏一致性
+和保存后的逐字内容；Vim 8.2 另验证不依赖虚拟文本的边框、任务徽标及链接文字。
+兼容模式保留已有列宽，完整表格排版与卡片使用虚拟文本。截图从终端单元格采集，
+包含阅读和源码两个实际状态。
+最终完整回归 326 项全部通过（包含真实 Chrome）；Vim 8.2 专项 19 项中 18 项通过，
+完整虚拟文本界面专项因该版本缺少虚拟文本而明确跳过。实际安装副本的表格、源码切换和
+阅读恢复通过，`.vimrc` 与两个 Markdown 模块已逐文件核对一致。
+
+```bash
+python3 tests/run.py test_markdown_view
+VIM_MARKDOWN_NATIVE_CAPTURE=/tmp/markdown-cells.json python3 tests/run.py test_markdown_view
+```
+
+### 2026-10-15：Markdown 文件栏开关延迟
+
+`Space e` 的 netrw 分屏先短暂复制当前 Markdown 窗口，再切成文件栏。原阅读层在
+`WinEnter` 按这个临时窄窗口重建整篇计划、虚拟文本和窗口 match；关闭侧栏又全文重建。
+侧栏仍聚焦时，旧计划甚至保留了临时宽度 24，实际 Markdown 可用宽度已经是 68。
+
+窗口事件现在合并为一次零延迟计时器，在分屏完成后读取最终宽度；支持 `WinResized`
+的 Vim 也会在调整侧栏宽度后更新阅读窗口。文档内容解析只随 changedtick 变化，
+宽度变化只计算标题、提示框、代码卡片和分隔线布局，逐行更新实际改变的虚拟文本。
+表格、任务、链接以及窗口 match 保持缓存；普通代码窗口不创建阅读刷新计时器。
+源码模式、插入模式、光标行、分屏同步和所有原有样式继续保留。
+
+本机 Vim 9.1、100×30 PTY、1200 行混合文档、五轮真实 `Space e` 对照，均启用函数
+profile。测量包含零延迟计时器执行、目录后台列表完成和最终重绘；不包含网络传输。
+
+| 操作 | 修复前 | 修复后 |
+| --- | ---: | ---: |
+| 首次打开（包含 netrw 初始化） | 446.9 ms | 120.1 ms |
+| 再次打开（四轮中位） | 377.4 ms | 37.4 ms |
+| 关闭（五轮中位） | 337.0 ms | 34.3 ms |
+
+五次开关中的阅读刷新合计 35.7 ms，其中宽度布局合计 34.5 ms；没有调用全文 Build。
+侧栏聚焦时最终阅读宽度与实际窗口一致。另测仓库 991 行 README，三轮中的再次打开
+中位 46.6 ms，关闭中位 36.3 ms。
+
+新增回归检查覆盖真实快捷键连续开关、解析对象复用、表格 match ID 和虚拟文本不变、
+后台 Markdown 窗口使用最终宽度，以及标题、提示框、代码卡片、分隔线缩放和恢复。
+最终完整回归 328 项，325 项通过，3 项需额外浏览器环境的测试跳过；Markdown 编辑与
+阅读视图专项 21 项通过。已同步实际安装副本，并验证配置重载后侧栏开关、解析复用、
+表格装饰保留及源码和 changedtick 不变；安装的两个 Markdown 模块与仓库逐文件一致。
+
+```bash
+python3 tests/markdown_tree_latency.py --rounds 5 --profile /tmp/markdown-tree.profile
+python3 tests/markdown_tree_latency.py --document README.md --rounds 3
+python3 tests/run.py test_markdown_view
+```

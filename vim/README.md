@@ -5,6 +5,7 @@
 主题全部在本目录，随配置保存一个固定版本的第三方插件 `vim-lsp`。
 没有插件管理器或自动下载；语言服务器 Pyright、clangd 及其运行环境由用户自行安装。
 主题默认透明背景，不需要特殊字体。
+Markdown 模块提供原生阅读视图和 TokyoNight 浏览器实时预览；渲染库随配置保存，离线可用。
 
 全项目性能审查、实测对照、复测命令和未完成项见 [PERFORMANCE.md](PERFORMANCE.md)。
 终端转义序列等待默认 30 ms，普通组合映射仍使用 Vim 的 `timeoutlen`。
@@ -12,6 +13,7 @@
 
 `.vimrc` 保留基础设置、通用功能和快捷键；`buffers.vim` 管理顶部 buffer 栏、
 buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等编辑辅助；
+`markdown.vim`、`markdown-view.vim` 与 `markdown/` 提供 Markdown 写作、原生阅读、导航和预览；
 `pins.vim` 提供随代码行移动、跨 Vim 重启恢复的持久 pin；
 `completion.vim` 分批扫描已加载 buffer，提供自动单词补全；
 `matchparen.vim` 为系统括号高亮增加光标附近的快速检查，避免无括号长行的重复扫描；
@@ -78,6 +80,9 @@ bash ~/Dotfiles/vim/vim-clean.sh
 ~/.vim/tree-list.vim
 ~/.vim/buffers.vim
 ~/.vim/edit.vim
+~/.vim/markdown.vim
+~/.vim/markdown-view.vim
+~/.vim/markdown/
 ~/.vim/pins.vim
 ~/.vim/completion.vim
 ~/.vim/matchparen.vim
@@ -389,6 +394,97 @@ LazyGit 内 `Esc` 直接传给 LazyGit，不等待双击或切换 Vim 模式；�
 buffer 尚未保存时也会按内存内容计算。未跟踪且未被 ignore 的非空文件视为一个完整 hunk。
 在 Vim diff 窗口中，这两个按键保留 Vim 自带的 diff 跳转行为。没有 hunk 或当前文件不在
 Git 仓库中时只显示提示，不修改 buffer。
+
+## Markdown 写作与预览
+
+直接试用示例，或安装后打开任意 `.md` / `.markdown` 文件：
+
+```bash
+vim -Nu ~/Dotfiles/vim/.vimrc ~/Dotfiles/vim/markdown/example.md
+```
+
+原生阅读视图采用 TokyoNight 的蓝紫、青色和深色卡片，不需要 Nerd Font。Vim 支持虚拟
+文本时，表格自动按中文显示宽度对齐，显示完整圆角边框、表头底色及左／居中／右对齐；
+这些显示字符不会写入文档，不改变 changedtick、撤销或保存内容。
+
+- 标题显示层级标签和颜色条；代码块显示语言标题、上下边框和底色。
+- checkbox 显示状态徽标：`[ ]` 未完成、`[x]` 完成、`[-]` 进行中、`[!]` 阻塞。
+  完成项的文字变暗并加删除线，`<leader>mx` 将非完成状态标为完成，再按一次取消。
+- NOTE、TIP、IMPORTANT、WARNING、CAUTION 各有独立颜色和标题框，引用显示竖向引导线。
+- HTML 注释正文隐藏，整行注释显示灰色标签；代码块及行内代码中的注释标记保留。
+- 链接和图片显示图标与文字，隐藏长 URL；分隔线显示为横线。
+
+光标所在行和选区显示源码，插入模式暂时撤下阅读装饰，退出后恢复。`<leader>mr` 切换整个
+文档的阅读／源码状态，同一文档的多个窗口同步，状态栏显示 `[MD:read]` / `[MD:source]`。
+无虚拟文本支持的 Vim 8 保留边框符号、颜色、任务状态、注释隐藏及链接文字；表格的完整
+自动排版和卡片使用支持虚拟文本的 Vim（当前 Vim 9.1 已验证）。
+打开文件栏或调整分屏宽度时，阅读视图在窗口布局稳定后只重排受宽度影响的卡片；
+表格、任务和链接沿用解析缓存，不因侧栏开关重建全文装饰。
+Python、C/C++、Shell、JSON、Vim 围栏启用 Vim 自带语法，可通过
+`g:vimrc_lite_markdown_fenced_languages`
+调整语言列表。
+长行软换行，`j` / `k` 按屏幕行移动；`gj` / `gk` 和 `:normal! j` 仍可用。
+不自动折叠章节、不强制改写行宽；Markdown 的两个尾随空格换行仍由用户控制。
+
+以下键位只在 Markdown 文件中启用，`<leader>` 是空格：
+
+| 快捷键 | 命令 | 作用 |
+| --- | --- | --- |
+| `<leader>mp` | `VimMarkdownPreview` | 打开或复用浏览器实时预览 |
+| `<leader>ms` | `VimMarkdownStop` | 停止预览服务 |
+| `<leader>mo` | `VimMarkdownOutline` | 左侧标题目录，Enter 跳转，q 关闭 |
+| `<leader>mr` | `VimMarkdownRender` | 切换阅读与完整源码视图 |
+| `<leader>mf` | `VimMarkdownFocus` | 开关行号、标记栏、光标线的专注模式 |
+| `<leader>mx` | `[range]VimMarkdownTask` | 添加任务框、勾选或取消，支持选区 |
+| `<leader>mt` | `VimMarkdownTable` | 对齐光标所在表格，支持中文、转义竖线和代码 span |
+| `<leader>mi` | `VimMarkdownInsert [模板]` | 选择代码、表格、链接、图片、提示或公式模板 |
+| `<leader>ml` | `VimMarkdownLink` | 打开光标下的行内链接或跳到标题锚点 |
+| `<leader>mh` | `VimMarkdownHelp` | 简短操作提示 |
+| `[h` / `]h` | — | 上一个／下一个标题，支持计数，忽略代码与 front matter |
+| 选区 `<leader>mb` / `mi` / `mc` | `[range]VimMarkdownWrap bold/italic/code` | 添加粗体、斜体或行内代码标记 |
+
+插入模式 Enter 延续无序列表、有序列表、任务列表和引用；任务的新条目始终未勾选。
+空条目再按 Enter 结束列表。代码块内保持普通 Enter，补全菜单的 Enter 行为沿用全局设置。
+例如 `:VimMarkdownInsert code python` 插入 Python 围栏并将光标放在内部。
+表格整理不会修改内容不变的表格；选区任务勾选可一次撤销。
+专注模式离开当前 buffer 后归还窗口设置。
+
+浏览器与终端共用 TokyoNight 配色，支持 CommonMark、表格、删除线、任务、常见语言代码
+高亮、相对图片、GitHub 风格 NOTE/TIP/IMPORTANT/WARNING/CAUTION 提示，以及 `$...$` / `$$...$$`
+KaTeX 公式。顶部可关闭「跟随光标」独立阅读，左侧目录可折叠；代码可以复制，支持打印／
+保存为 PDF。原始 HTML 作为文字显示；Mermaid、PlantUML 等图表围栏目前作为代码显示。
+图片路径相对文档解析，`/image.png` 相对项目根解析；目录外图片与跨目录符号链接不提供。
+浏览器中的本地文档链接会提示用 Vim 的 `<leader>ml` 打开。
+
+原生编辑与阅读无需 Python；浏览器预览需要 `python3` 和 Vim `+job +channel +timers`，
+无需 pip、Node、npm、Pandoc 或联网。未保存文档通过 stdin 发送，不创建 Markdown 临时文件。
+一个 Vim 实例复用一个预览页面，再次从另一个 Markdown buffer 调用命令即可切换文档。
+关闭源 buffer、退出 Vim 或重载配置时停止服务。`:VimMarkdownPreview!` 只输出地址，
+不尝试启动浏览器。`:VimHealth` 显示预览依赖状态，`:VimKeys Markdown` 查询实际生效的键位。
+
+服务仅监听 `127.0.0.1` 随机端口，地址带随机访问令牌。SSH 环境显示 URL，使用端口转发
+在本地打开；例如 URL 的端口为 45678 时，在本地另一个终端执行：
+
+```bash
+ssh -N -L 45678:127.0.0.1:45678 your-host
+```
+
+本地浏览器打开 Vim 显示的完整 URL。桌面环境默认用 `xdg-open`；可在 `~/.vim/settings.vim`
+设置以下参数，浏览器命令使用参数数组，不经过 shell：
+
+```vim
+let g:vimrc_lite_markdown_render = 1
+let g:vimrc_lite_markdown_lists = 1
+let g:vimrc_lite_markdown_debounce = 150
+let g:vimrc_lite_markdown_browser = ['firefox', '--new-tab']
+```
+
+设计参考 [render-markdown.nvim](https://github.com/MeanderingProgrammer/render-markdown.nvim)
+的表格、checkbox、提示块与模式化视图，以及
+[markview.nvim](https://github.com/OXY2DEV/markview.nvim) 的块排版和源码切换；
+[vim-markdown](https://github.com/preservim/vim-markdown) 提供编辑与导航方面的参考，
+以及 [markdown-preview.nvim](https://github.com/iamcco/markdown-preview.nvim) 的未保存实时预览
+和滚动同步。具体版本、许可证与离线资源校验见 [SOURCE.md](markdown/vendor/SOURCE.md)。
 
 ## Python / C++ 工作流
 
@@ -835,7 +931,7 @@ OSC 52 要求本地终端允许应用写入剪贴板；tmux 内还需要 `set -g
 ## 验证
 
 ```bash
-# 测试只使用 Python 标准库，配置运行时不依赖 Python。
+# 常规测试只使用 Python 标准库；Markdown 浏览器预览运行时需要 Python。
 python3 ~/Dotfiles/vim/tests/run.py
 
 # Dotfiles 统一入口；tmux、LazyGit 测试分别位于各自目录。
@@ -846,7 +942,18 @@ python3 ~/Dotfiles/tests/run.py --suite vim test_project test_tree_async
 
 # 行级 pin：持久化、编辑跟踪、跳转和真实终端高亮。
 python3 ~/Dotfiles/vim/tests/test_pins.py
+
+# Markdown：原生编辑、实时同步、本地图片、生命周期与资源完整性。
+python3 ~/Dotfiles/vim/tests/test_markdown.py
+
+# 原生阅读层：真实终端表格、状态徽标、注释、源码／插入切换及文件保存。
+python3 ~/Dotfiles/vim/tests/test_markdown_view.py
 ```
+
+Markdown 另有可选真实 Chrome 测试：在测试用虚拟环境中安装 `playwright`，设置
+`VIM_MARKDOWN_BROWSER_TEST=1` 与 `VIM_MARKDOWN_CHROME=/path/to/chrome`，再运行
+`python tests/run.py test_markdown`。浏览器测试覆盖公式、代码、任务、提示块、图片、
+未保存更新、复制、滚动跟随、目录与窄屏布局，运行时渲染资源全部来自本地。
 
 CUDA 验收覆盖模拟协议路由和真实 clangd 的 `.cu` 定义跳转／返回，使用 host-only
 编译数据库及 `-nocudainc -nocudalib`，无需 CUDA SDK；真实 CUDA 工程还需提供自己的
