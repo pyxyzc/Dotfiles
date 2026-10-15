@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Markdown · TokyoNight</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="vendor/katex.min.css">
+  <link rel="stylesheet" href="preview.css">
+  <script defer src="vendor/markdown-it.min.js"></script>
+  <script defer src="vendor/highlight.min.js"></script>
+  <script defer src="vendor/katex.min.js"></script>
+  <script defer src="preview.js"></script>
+</head>
+<body>
+  <header class="toolbar">
+    <button id="outline-toggle" title="切换目录" aria-label="切换目录" aria-expanded="true">☰</button>
+    <span class="brand">M<span>↓</span></span>
+    <div class="document-title"><strong id="filename">Markdown</strong><span>TokyoNight · 阅读预览</span></div>
+    <span id="connection" role="status"><i></i>连接中</span>
+    <button id="follow" aria-pressed="true" title="跟随 Vim 光标；关闭后自由阅读">跟随光标</button>
+    <button id="print" title="打印或保存为 PDF">打印 / PDF</button>
+  </header>
+  <aside id="sidebar" aria-label="文档目录">
+    <div class="sidebar-title">文档目录 <span id="heading-count">0</span></div>
+    <nav id="outline"></nav>
+    <p class="sidebar-hint">在 Vim 中编辑，预览自动更新。<br>关闭「跟随光标」可独立阅读。</p>
+  </aside>
+  <main id="reading-pane">
+    <article id="document"><div class="empty-state">开始写作<br><small>等待 Vim 中的 Markdown 文档…</small></div></article>
+    <footer><span id="statistics"></span><span>MARKDOWN / TOKYONIGHT</span></footer>
+  </main>
+</body>
+</html>
