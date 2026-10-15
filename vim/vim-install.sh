@@ -23,6 +23,8 @@ config_files=(
     tree-list.vim
     buffers.vim
     edit.vim
+    markdown.vim
+    markdown-view.vim
     pins.vim
     completion.vim
     matchparen.vim
@@ -46,6 +48,21 @@ plugin_files=(
     vendor/vim-lsp/LICENSE-THIRD-PARTY
     vendor/vim-lsp/SOURCE.md
 )
+markdown_files=(
+    markdown/preview.py
+    markdown/index.html
+    markdown/preview.js
+    markdown/preview.css
+    markdown/vendor/markdown-it.min.js
+    markdown/vendor/highlight.min.js
+    markdown/vendor/katex.min.js
+    markdown/vendor/katex.min.css
+    markdown/vendor/LICENSE.markdown-it
+    markdown/vendor/LICENSE.highlight.js
+    markdown/vendor/LICENSE.katex
+    markdown/vendor/manifest.json
+    markdown/vendor/fonts/KaTeX_Main-Regular.woff2
+)
 
 usage() {
     cat <<'EOF'
@@ -60,6 +77,7 @@ usage() {
 支持 apt-get、dnf、yum、apk、pacman、zypper，不下载任何 Vim 插件。
 搜索需要 fd/fdfind、ripgrep、gawk 和 fzf 0.29.0+；缺少时只提示，不自动安装。
 LSP 使用本目录保存的 vim-lsp；Pyright/clangd 由用户自行安装，缺失时只提示。
+Markdown 的浏览器预览需要 python3；离线渲染资源随配置复制，原生阅读与编辑不依赖 Python。
 EOF
 }
 
@@ -79,7 +97,8 @@ while (( $# )); do
 done
 
 [[ -f "$script_dir/.vimrc" ]] || die '缺少 .vimrc，请复制完整的 vim 目录'
-for required in "${config_files[@]}" "${color_files[@]}" "${plugin_files[@]}"; do
+for required in "${config_files[@]}" "${color_files[@]}" "${plugin_files[@]}" \
+    "${markdown_files[@]}"; do
     [[ -f "$script_dir/$required" ]] || die "缺少 $required，请复制完整的 vim 目录"
 done
 [[ ! -e "$install_target" || -d "$install_target" ]] || die "不是目录：$install_target"
@@ -134,6 +153,9 @@ if (( ! config_only )); then
     command -v clangd >/dev/null 2>&1 || missing_lsp+=(clangd)
     if (( ${#missing_lsp[@]} )); then
         printf 'LSP 服务器缺失：%s；请手动安装或配置命令路径，不影响基础编辑和配置复制。\n' "${missing_lsp[*]}"
+    fi
+    if ! command -v python3 >/dev/null 2>&1; then
+        printf 'Markdown 浏览器预览需要 python3；原生阅读和编辑仍可用。\n'
     fi
 fi
 
@@ -211,6 +233,7 @@ install_entry() {
 }
 
 install_entry "$script_dir/vendor/vim-lsp" "$install_target/.vim/vendor/vim-lsp"
+install_entry "$script_dir/markdown" "$install_target/.vim/markdown"
 install_entry "$script_dir/.vimrc" "$install_target/.vimrc"
 for name in "${config_files[@]}"; do
     install_entry "$script_dir/$name" "$install_target/.vim/$name"
