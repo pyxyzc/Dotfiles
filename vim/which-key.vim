@@ -1,5 +1,5 @@
-" 前缀提示只绘制 UI；原映射、计数、寄存器和超时仍由 Vim 解析。
-" SafeState 用于在原映射结束后恢复钩子；旧 Vim 保留 :VimKeys 查询。
+" 快速输入沿用 Vim 的原生映射；面板展开后暂停映射超时，等候用户选择。
+" 完成或取消时恢复输入选项和钩子；旧 Vim 保留 :VimKeys 查询。
 let s:supported = exists('*popup_create') && exists('*timer_start')
       \ && exists('*maplist') && exists('##SafeState')
 let s:buffers = get(s:, 'buffers', {})
@@ -11,6 +11,10 @@ let s:timer = get(s:, 'timer', -1)
 let s:escape_timer = get(s:, 'escape_timer', -1)
 let s:popup = get(s:, 'popup', 0)
 let s:manual = 0
+let s:controls = get(s:, 'controls', [])
+let s:timeout = get(s:, 'timeout', -1)
+let s:panel_rows = 0
+let s:geometry = {}
 let s:key_names = get(s:, 'key_names', {' ': '<Space>', '<': '<lt>', '|': '<Bar>'})
 let s:script_id = str2nr(matchstr(expand('<SID>'), '\d\+'))
 
@@ -79,8 +83,9 @@ function! s:Hide() abort
     let s:timer = -1
   endif
   if s:popup
-    call popup_close(s:popup)
+    let popup = s:popup
     let s:popup = 0
+    call popup_close(popup)
   endif
 endfunction
 
@@ -103,6 +108,18 @@ function! s:Finish() abort
     endif
   endfor
   let s:cancels = []
+  for control in s:controls
+    if control.buffer == bufnr('%') && s:OwnControl(maparg(control.lhs, control.mode, 0, 1))
+      execute control.mode . 'unmap <buffer> ' . control.lhs
+    endif
+  endfor
+  let s:controls = []
+  if s:timeout != -1
+    let &timeout = s:timeout
+    let s:timeout = -1
+  endif
+  let s:panel_rows = 0
+  let s:geometry = {}
   for hook in sort(s:suspended, {left, right -> strlen(right.key) - strlen(left.key)})
     if hook.buffer == bufnr('%') && empty(maparg(s:Name(hook.key), hook.mode, 0, 1))
       call s:Hook(hook.mode, hook.key)
@@ -213,7 +230,6 @@ function! s:EscapeReady(mode, prefix, buffer, timer) abort
 endfunction
 
 function! s:Escape(lhs, mode) abort
-  call s:Hide()
   let prefix = s:Raw(a:lhs)
   execute a:mode . 'unmap <buffer> ' . s:Name(prefix . "\<Esc>")
   let delay = &ttimeout && &ttimeoutlen >= 0 ? &ttimeoutlen : &timeoutlen
@@ -259,7 +275,8 @@ function! s:Prefix(lhs, mode) abort
   if s:timer != -1
     call timer_stop(s:timer)
   endif
-  let s:pending = {'key': key, 'mode': a:mode, 'buffer': bufnr('%'), 'window': win_getid()}
+  let s:pending = {'key': key, 'mode': a:mode, 'buffer': bufnr('%'),
+        \ 'window': win_getid(), 'page': 0}
   let delay = shown || s:manual ? 0 : max([0, get(g:, 'vimrc_lite_which_key_delay', 200)])
   let s:manual = 0
   " 宏中的回放只经过原生映射路径，不绘制提示、不启动计时器。
@@ -270,11 +287,92 @@ function! s:Prefix(lhs, mode) abort
   return "\<Ignore>" . key
 endfunction
 
+function! s:Highlights() abort
+  highlight default VimrcLiteWhichKeyNormal guifg=#c0caf5 guibg=#1f2335
+        \ ctermfg=153 ctermbg=235
+  highlight default VimrcLiteWhichKeyBorder guifg=#3b4261 guibg=#1f2335
+        \ ctermfg=60 ctermbg=235
+  highlight default VimrcLiteWhichKeyTitle guifg=#7aa2f7 gui=bold ctermfg=111 cterm=bold
+  highlight default VimrcLiteWhichKeyKey guifg=#7dcfff gui=bold ctermfg=117 cterm=bold
+  highlight default VimrcLiteWhichKeyGroup guifg=#bb9af7 ctermfg=141
+  highlight default VimrcLiteWhichKeyMuted guifg=#737aa2 ctermfg=103
+  if exists('*prop_type_add')
+    for name in ['Title', 'Key', 'Group', 'Muted']
+      let type = 'VimrcLiteWhichKey' . name
+      if empty(prop_type_get(type))
+        call prop_type_add(type, {'highlight': type, 'combine': 1})
+      endif
+    endfor
+  endif
+endfunction
+
+function! s:OwnControl(mapping) abort
+  return get(a:mapping, 'sid', -1) == s:script_id
+        \ && get(a:mapping, 'rhs', '') =~# '\%(Resume(\|Page(\)'
+endfunction
+
+function! s:Control(suffix, rhs) abort
+  let pending = s:pending
+  let key = pending.key . a:suffix
+  let state = s:buffers[pending.buffer]
+  if has_key(state.maps[pending.mode], key) || has_key(state.ancestors[pending.mode], key)
+    return 0
+  endif
+  let lhs = s:Name(key)
+  let mapping = maparg(lhs, pending.mode, 0, 1)
+  if !empty(mapping)
+    return s:OwnControl(mapping)
+  endif
+  execute pending.mode . 'map <special><silent><buffer><nowait><expr> ' . lhs . ' ' . a:rhs
+  call add(s:controls, {'lhs': lhs, 'mode': pending.mode, 'buffer': pending.buffer})
+  return 1
+endfunction
+
+function! s:Resume(lhs) abort
+  let lhs = s:Name(s:Raw(a:lhs) . s:Raw('<Plug>') . '(VimLiteWhichKeyHold)')
+  if s:OwnControl(maparg(lhs, s:pending.mode, 0, 1))
+    execute s:pending.mode . 'unmap <buffer> ' . lhs
+  endif
+  return "\<Ignore>" . s:Raw(a:lhs)
+endfunction
+
+function! s:Hold() abort
+  if s:timeout != -1
+    return
+  endif
+  let s:timeout = &timeout
+  set notimeout
+  " 已在等待的原生映射不会因选项改变自动醒来；只在面板首次出现时重入一次。
+  " 仍由 Vim 解析按键，不使用读取循环，也不延长快速连按的路径。
+  let signal = s:Raw('<Plug>') . '(VimLiteWhichKeyHold)'
+  if s:Control(signal, expand('<SID>') . 'Resume(' . string(s:Name(s:pending.key)) . ')')
+    call feedkeys(signal, 'm')
+  endif
+endfunction
+
+function! s:Page(direction) abort
+  let s:pending.page = max([0, s:pending.page + a:direction])
+  call s:QueueRender()
+  return "\<Ignore>" . s:pending.key
+endfunction
+
+function! s:QueueRender() abort
+  if !empty(s:pending) && s:popup
+    if s:timer != -1
+      call timer_stop(s:timer)
+    endif
+    let s:timer = timer_start(0, function('s:Render'))
+  endif
+endfunction
+
 function! s:Description(mapping) abort
   let custom = get(g:, 'vimrc_lite_which_key_labels', {})
   let key = s:Name(get(a:mapping, 'lhsraw', s:Raw(a:mapping.lhs)))
   let description = get(custom, key, exists('*VimKeyDescription')
         \ ? VimKeyDescription(a:mapping) : a:mapping.rhs)
+  if description ==# a:mapping.rhs
+    let description = '自定义映射'
+  endif
   return substitute(get(split(description, ' / '), 0, ''), '[\r\n\t]', ' ', 'g')
 endfunction
 
@@ -303,29 +401,105 @@ function! s:Menu(state, mode, prefix) abort
   let groups = {'a': '标签页', 'b': 'Buffer', 'c': '代码 / LSP', 'f': '搜索',
         \ 'g': 'Git', 'm': 'Markdown', 'n': '消息', 'p': 'Pin', 'r': '重命名 / 任务',
         \ 's': '会话', 't': '终端', 'x': '结果列表'}
-  let rows = []
+  let menu = []
   for key in sort(keys(entries))
     let entry = entries[key]
-    let label = empty(entry.label) ? get(groups, key, '更多按键') : entry.label
-    call add(rows, printf('%-7s %s%s', entry.key, label,
-          \ entry.group ? ' + (' . entry.count . ')' : ''))
+    let entry.label = empty(entry.label) ? get(groups, key, '更多按键') : entry.label
+    call add(menu, entry)
   endfor
-  let a:state.menus[cache] = rows
-  return rows
+  let a:state.menus[cache] = menu
+  return menu
 endfunction
 
-function! s:Filter(id, key) abort
-  if a:key ==# "\<Ignore>"
-    return 0
+function! s:Clip(text, width) abort
+  if strdisplaywidth(a:text) <= a:width
+    return a:text
   endif
-  " 只关闭提示，不消费任何按键；mapping=1 保留原生映射解析。
-  call s:Hide()
-  return 0
+  let text = strcharpart(a:text, 0, max([0, a:width - 1]))
+  while strdisplaywidth(text) > a:width - 1
+    let text = strcharpart(text, 0, strchars(text) - 1)
+  endwhile
+  return text . '…'
+endfunction
+
+function! s:Property(row, column, length, name) abort
+  if a:length > 0 && exists('*prop_type_add')
+    call add(a:row.props, {'col': a:column, 'length': a:length,
+          \ 'type': 'VimrcLiteWhichKey' . a:name})
+  endif
+endfunction
+
+function! s:Bar(left, right, width, style) abort
+  let right = s:Clip(a:right, a:width / 2)
+  let left = s:Clip(a:left, max([1, a:width - strdisplaywidth(right) - 2]))
+  let row = {'text': left . repeat(' ', a:width - strdisplaywidth(left)
+        \ - strdisplaywidth(right)) . right, 'props': []}
+  call s:Property(row, 1, strlen(left), a:style)
+  call s:Property(row, strlen(row.text) - strlen(right) + 1, strlen(right), 'Muted')
+  return row
+endfunction
+
+function! s:Layout(menu, width) abort
+  let columns = min([6, len(a:menu), max([1, a:width / 24])])
+  let rows = (len(a:menu) + columns - 1) / columns
+  let columns = (len(a:menu) + rows - 1) / rows
+  let compact = &lines - &cmdheight < 8
+  let limit = max([1, (&lines - &cmdheight) * 2 / 3 - (compact ? 2 : 4)])
+  let s:panel_rows = min([limit, max([s:panel_rows, 4, rows])])
+  let capacity = columns * s:panel_rows
+  let pages = (len(a:menu) + capacity - 1) / capacity
+  let s:pending.page = min([s:pending.page, pages - 1])
+  let start = s:pending.page * capacity
+  let visible = min([capacity, len(a:menu) - start])
+  let used_rows = (visible + columns - 1) / columns
+  let label = substitute(s:Name(s:pending.key), '<Space>', 'SPC ', 'g')
+  let label = substitute(label, '\s\+$', '', '')
+  let mode = s:pending.mode ==# 'n' ? '普通模式' : '选区模式'
+  let lines = [s:Bar(label . '  /  快捷键', mode . ' · ' . len(a:menu) . ' 项', a:width, 'Title')]
+  if !compact
+    call add(lines, {'text': '', 'props': []})
+  endif
+  for row in range(s:panel_rows)
+    let line = {'text': '', 'props': []}
+    for column in range(columns)
+      let cell = column == columns - 1 ? a:width - column * (a:width / columns)
+            \ : a:width / columns
+      let index = start + column * used_rows + row
+      let text = ''
+      if row < used_rows && index < len(a:menu)
+        let entry = a:menu[index]
+        let key = s:Clip(entry.key, min([7, cell / 3]))
+        let key .= repeat(' ', max([0, 2 - strdisplaywidth(key)]))
+        let description = (entry.group ? '+ ' : '') . entry.label
+        let description = s:Clip(description, max([1, cell - strdisplaywidth(key) - 5]))
+        let offset = strlen(line.text)
+        let text = key . ' → ' . description
+        call s:Property(line, offset + 1, strlen(key), 'Key')
+        call s:Property(line, offset + strlen(key) + 1, strlen(' → '), 'Muted')
+        if entry.group
+          call s:Property(line, offset + strlen(key . ' → ') + 1, strlen(description), 'Group')
+        endif
+      endif
+      let line.text .= text . repeat(' ', max([0, cell - strdisplaywidth(text)]))
+    endfor
+    call add(lines, line)
+  endfor
+  if !compact
+    call add(lines, {'text': '', 'props': []})
+  endif
+  let help = '按键选择   Esc 取消'
+  if pages > 1
+    let help = a:width < 40 ? 'Esc  ^D/^U' : help . '   Ctrl-D / Ctrl-U 翻页'
+  endif
+  call add(lines, s:Bar(help, pages > 1 ? (s:pending.page + 1) . '/' . pages : '',
+        \ a:width, 'Muted'))
+  return lines
 endfunction
 
 function! s:Closed(id, result) abort
   if s:popup == a:id
     let s:popup = 0
+    call s:Finish()
   endif
 endfunction
 
@@ -339,43 +513,32 @@ function! s:Render(timer) abort
         \ || mode(1) !~# '^[nvV\x16]$' || !empty(reg_executing()) || !empty(reg_recording())
     return
   endif
-  let rows = s:Menu(s:buffers[pending.buffer], pending.mode, pending.key)
-  if empty(rows) || &columns < 12 || &lines < 6
+  let menu = s:Menu(s:buffers[pending.buffer], pending.mode, pending.key)
+  if empty(menu) || &columns < 12 || &lines < 6
     return
   endif
-  let width = min([&columns - 4, 100])
-  let columns = max([1, width / 32])
-  let cell = width / columns
-  let height = (len(rows) + columns - 1) / columns
-  let lines = []
-  for row in range(height)
-    let line = ''
-    for column in range(columns)
-      let index = column * height + row
-      if index < len(rows)
-        let text = strcharpart(rows[index], 0, cell - 2)
-        while strdisplaywidth(text) > cell - 2
-          let text = strcharpart(text, 0, strchars(text) - 1)
-        endwhile
-        let line .= text . repeat(' ', cell - strdisplaywidth(text))
-      endif
-    endfor
-    call add(lines, line)
-  endfor
-  let options = {'pos': 'botleft', 'line': &lines - &cmdheight - 1, 'col': 2,
-        \ 'minwidth': width, 'maxwidth': width, 'maxheight': max([1, &lines / 2 - 3]),
-        \ 'padding': [0, 1, 0, 1], 'border': [], 'borderchars': ['─', '│', '─', '│'],
-        \ 'title': ' 按键 ' . s:Name(pending.key) . ' · '
-        \ . (pending.mode ==# 'n' ? '普通' : '选区') . ' · Esc 取消 ',
-        \ 'mapping': 1, 'filter': function('s:Filter'), 'filtermode': 'nx',
-        \ 'callback': function('s:Closed'), 'highlight': 'Pmenu', 'borderhighlight': ['Comment'],
-        \ 'scrollbar': 1, 'zindex': 90, 'drag': 0}
+  let width = &columns - 4
+  let lines = s:Layout(menu, width)
+  let options = {'pos': 'botleft', 'line': &lines - &cmdheight, 'col': 1,
+        \ 'minwidth': width, 'maxwidth': width, 'minheight': len(lines), 'maxheight': len(lines),
+        \ 'padding': [0, 2, 0, 2], 'border': [1, 0, 0, 0], 'borderchars': ['─'],
+        \ 'mapping': 1, 'callback': function('s:Closed'), 'wrap': 0,
+        \ 'highlight': 'VimrcLiteWhichKeyNormal', 'borderhighlight': ['VimrcLiteWhichKeyBorder'],
+        \ 'scrollbar': 0, 'zindex': 90, 'drag': 0}
+  let geometry = {'line': options.line, 'col': 1, 'minwidth': width, 'maxwidth': width,
+        \ 'minheight': len(lines), 'maxheight': len(lines)}
   if s:popup && !empty(popup_getpos(s:popup))
     call popup_settext(s:popup, lines)
-    call popup_setoptions(s:popup, options)
+    if geometry != s:geometry
+      call popup_move(s:popup, geometry)
+    endif
   else
     let s:popup = popup_create(lines, options)
   endif
+  let s:geometry = geometry
+  call s:Hold()
+  call s:Control("\<C-d>", expand('<SID>') . 'Page(1)')
+  call s:Control("\<C-u>", expand('<SID>') . 'Page(-1)')
 endfunction
 
 function! s:Forget(buffer) abort
@@ -422,10 +585,12 @@ function! VimWhichKeyStatus() abort
   endif
   return {'supported': s:supported, 'enabled': get(g:, 'vimrc_lite_which_key', 1),
         \ 'timer': s:timer, 'escape_timer': s:escape_timer,
-        \ 'popup': s:popup, 'pending': !empty(s:pending)}
+        \ 'popup': s:popup, 'pending': !empty(s:pending), 'held': s:timeout != -1,
+        \ 'prefix': empty(s:pending) ? '' : s:Name(s:pending.key)}
 endfunction
 
 call s:Finish()
+call s:Highlights()
 command! -nargs=? VimWhichKey call <SID>Manual(<q-args>)
 command! VimWhichKeyRefresh call <SID>Refresh()
 command! VimWhichKeyEnable call <SID>Enable(1)
@@ -436,5 +601,7 @@ augroup vimrc_lite_which_key
   autocmd VimEnter * call s:Setup(0)
   autocmd BufEnter * call s:Setup(0)
   autocmd FileType * call s:Setup(0)
+  autocmd ColorScheme * call s:Highlights()
+  autocmd VimResized * call s:QueueRender()
   autocmd BufWipeout * call s:Forget(expand('<abuf>'))
 augroup END

@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import signal
 import socket
 import statistics
 import struct
@@ -20,10 +21,17 @@ import time
 from test_vim import ROOT, VIM, quoted
 
 
+def menu_shown(state, prefix):
+    label = prefix.replace('<Space>', 'SPC ').rstrip()
+    return (state['keys']['popup'] > 0 and state['keys']['prefix'] == prefix
+            and state['popup_title'].startswith(label + '  /'))
+
+
 class KeySession:
     """A test-only 2 ms observer; the editor feature itself never polls."""
 
-    def __init__(self, enabled=True, delay=100, timeoutlen=1000, config=None, before=()):
+    def __init__(self, enabled=True, delay=100, timeoutlen=1000, config=None, before=(),
+                 columns=100, rows=30):
         self.temp = tempfile.TemporaryDirectory(prefix='vim-which-key-')
         self.work = Path(self.temp.name)
         self.listener = socket.socket()
@@ -68,7 +76,10 @@ function! KeyProbe(timer) abort
   let value = json_encode({'mode': mode(1), 'hits': g:key_hits, 'register': g:key_register,
         \ 'expression': g:key_expression, 'command': g:key_command, 'keys': status,
         \ 'popup_lines': popup ? getbufline(winbufnr(popup), 1, '$') : [],
-        \ 'popup_title': popup ? get(popup_getoptions(popup), 'title', '') : '',
+        \ 'popup_title': popup ? get(getbufline(winbufnr(popup), 1), 0, '') : '',
+        \ 'popup_position': popup ? popup_getpos(popup) : {},
+        \ 'timeout': [&timeout, &timeoutlen, &ttimeout, &ttimeoutlen],
+        \ 'screen_size': [&columns, &lines],
         \ 'lnum': line('.'), 'col': col('.'), 'lines': getline(1, '$'),
         \ 'filetype': &filetype, 'buffer': bufnr('%'), 'windows': winnr('$'),
         \ 'error': v:errmsg})
@@ -81,7 +92,7 @@ VimWhichKeyRefresh
 call timer_start(2, function('KeyProbe'), {'repeat': -1})
 ''')
         self.master, slave = pty.openpty()
-        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', rows, columns, 0, 0))
         command = [VIM, '-Nu', str(config or ROOT / '.vimrc'), '-i', 'NONE', '-n',
                    '--cmd', 'let g:vimrc_lite_local_config = 0',
                    '--cmd', 'let g:vimrc_lite_lsp = 0',
@@ -132,6 +143,11 @@ call timer_start(2, function('KeyProbe'), {'repeat': -1})
         while time.perf_counter() < deadline:
             self._read(min(.002, max(0, deadline - time.perf_counter())))
 
+    def resize(self, columns, rows):
+        fcntl.ioctl(self.master, termios.TIOCSWINSZ, struct.pack('HHHH', rows, columns, 0, 0))
+        self.process.send_signal(signal.SIGWINCH)
+        self.wait(lambda state: state['screen_size'] == [columns, rows])
+
     def send(self, keys):
         os.write(self.master, keys.encode() if isinstance(keys, str) else keys)
 
@@ -170,7 +186,8 @@ call timer_start(2, function('KeyProbe'), {'repeat': -1})
 
 
 def summary(values):
-    return {'median_ms': round(statistics.median(values), 3),
+    return {'first_ms': round(values[0], 3),
+            'median_ms': round(statistics.median(values), 3),
             'p95_ms': round(sorted(values)[math.ceil(len(values) * .95) - 1], 3),
             'max_ms': round(max(values), 3)}
 
@@ -210,7 +227,7 @@ def benchmark(rounds=30, delay=200, mappings=0):
                     samples['popup'].append(session.action(
                         b' ', lambda state: state['keys']['popup'] > 0))
                     samples['subgroup'].append(session.action(
-                        b'u', lambda state: '<Space>u' in state['popup_title']))
+                        b'u', lambda state: menu_shown(state, '<Space>u')))
                     hits = session.state['hits']
                     samples['visible_mapping'].append(session.action(
                         b'a', lambda state: state['hits'] == hits + 1
