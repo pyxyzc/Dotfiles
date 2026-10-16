@@ -1260,3 +1260,99 @@ python3 tests/markdown_tree_latency.py --rounds 5 --profile /tmp/markdown-tree.p
 python3 tests/markdown_tree_latency.py --document README.md --rounds 3
 python3 tests/run.py test_markdown_view
 ```
+
+### 2026-10-16：Markdown 笔记、图片、数学片段及图表
+
+新增章节路径、可生成／更新／删除的文内目录、按标题层级折叠和 Markdown 自动保存。
+章节状态栏消费已有结构缓存，查找当前章节使用二分；不在每次状态栏重绘时解析全文。
+折叠仅在用户首次调用时启用，并按 changedtick 缓存行级结果。自动保存默认在退出插入、
+切换文件、失焦和空闲 1500 ms 时触发；未命名、只读及非 Markdown buffer 跳过，磁盘摘要
+变化时保留内存内容并交由用户处理。目录标记按保存更新，代码中的同名标记不会被修改。
+
+固定版本 `vim-vsnip` 在首个普通 Markdown buffer 使用时加载，提供占位符、前后跳转、
+嵌套片段、镜像字段及动态表格；数学输入有单独的区域检测。普通文字输入不会逐字扫描
+前文；分数与数字下标转换只检查相应后缀，数学区域的前文状态按未变化的文本复用。
+新增模块不为普通代码编辑创建自动保存或数学刷新计时器。
+
+图片默认位于文档目录的 `imgs/`。本机 helper 通过参数数组调用 PowerShell、Wayland、
+X11 或 macOS 工具；SSH 通过本机预览页的剪贴板／粘贴事件回传图片，Vim 通过文本属性
+跟踪插入位置。同名图片不覆盖；浏览器上传绑定当前粘贴请求和来源校验。
+图片尺寸／对齐作为受限属性解析，保留原始 HTML 按文字显示的行为。
+
+Mermaid 12.2.0 按图表需求加载；PlantUML MIT 1.2026.8 使用本地 Java，缺少 Graphviz 时
+使用 Smetana。两者都采用 TokyoNight 配色，不调用公共渲染服务。图表以内容缓存，
+光标变化不重复渲染；源码变化时异步替换图表并丢弃旧页面的过时结果。
+PlantUML 最多两个并发渲染，单次限制 15 秒；错误图表保留可展开的源码。
+
+验证：系统 Vim 9.1 完整 353 项通过，包含真实 Chrome 的流程图、甘特图、PlantUML、
+剪贴板 PNG 上传、图片宽度与居中、实时更新、离线请求检查与 PDF 输出。Vim 8.2.5172
+的 Markdown 专项 37 项，36 项通过，1 项因缺少虚拟文本而跳过。另验证 Windows／WSL
+PowerShell 参数接口、图片字节保留、同名编号、异步编辑中的锚点、SSH HTTP 回传到真实
+Vim、TOC 中文和重名锚点、首个章节折叠、自动保存外部修改保护、快速 Tab 与 Shift-Tab、
+嵌套分数和连续多位下标输入。当前会话未直接读取 Windows 桌面剪贴板。
+
+与此前相同的 1200 行、100×30 PTY、五轮 profile 测量：首次侧栏打开 111.4 ms，后续
+打开中位 40.3 ms，关闭中位 36.6 ms。没有因窗口宽度改变调用全文 Build，最终阅读宽度
+与实际窗口一致。已同步 `~/.vim`，实际安装副本的章节路径、目录、折叠、图片、片段、
+重载、文件栏和预览通过，模块、离线资源及片段运行时逐文件一致。
+
+```bash
+python3 tests/run.py test_markdown_notes test_markdown_snippets test_markdown_images
+VIM_MARKDOWN_BROWSER_TEST=1 python tests/run.py test_markdown_diagrams
+VIM_TEST_BINARY=/path/to/vim8 VIMRUNTIME=/path/to/runtime python3 tests/run.py test_markdown_notes test_markdown_snippets test_markdown_images
+python3 tests/markdown_tree_latency.py --rounds 5
+```
+
+## 原生 which-key 前缀提示（2026-10-16）
+
+参考 [which-key.nvim](https://github.com/folke/which-key.nvim) 的停顿提示和逐层分组，
+实现 `which-key.vim`，默认用于普通／选区模式的 leader。没有增加插件依赖或后台进程。
+显示延迟默认 200 ms，与原生 `timeoutlen` 分开；现有完整映射保持原样。
+前缀表达式临时挂起自身及祖先钩子，把前缀交还 Vim 解析；完成后用 `SafeState` 恢复。
+宏录制／回放不绘制菜单、不启动提示计时器。空闲时没有 which-key 计时器或输入回调。
+
+首次构建在 `VimEnter` 合并执行；后续按 buffer、文件类型和配置代次缓存映射，
+只收集启用前缀下的映射。按键路径直接查当前前缀的祖先列表，不扫描全部映射或全部
+钩子。菜单内容首次显示时生成，之后复用。新增运行时映射后可显式 refresh。
+Esc 取消保留终端序列的解析时间，并避免前缀回退再次等待 Esc；测试包含拆成两次到达
+的方向键，避免用立即吞掉 Esc 的方式破坏 SSH 终端分片。
+
+本机 Vim 9.1.697、100×30 PTY、关闭 LSP，分别开启／关闭此功能各 30 轮。
+数据为“中位数 / P95”，单位 ms；两组配置其余相同。观察器使用仅测试期间存在的
+2 ms 定时器，耗时包含调度和本地状态传输，不含 SSH、物理终端绘制时间。
+
+| 操作 | 关闭提示 | 开启提示 |
+| --- | ---: | ---: |
+| 一次发送完整组合键 | 1.342 / 2.063 | 0.801 / 1.395 |
+| 分段发送，最后两个键到执行 | 1.031 / 1.464 | 1.213 / 1.967 |
+| 普通光标移动 | 0.830 / 1.038 | 0.688 / 1.043 |
+| 插入一个字符 | 1.443 / 1.854 | 1.275 / 1.629 |
+| 等待前缀时 Esc 取消 | 35.814 / 37.202 | 35.019 / 36.718 |
+| 菜单已显示后完成映射 | — | 1.978 / 2.538 |
+| 菜单已显示后进入子分组 | — | 2.038 / 2.863 |
+| 200 ms 设置下首次提示 | — | 202.702 / 204.513 |
+
+这些小差异包含运行顺序与调度噪声，不能据此声称开启提示会加速普通输入。
+分段映射中位增量约 0.18 ms，快速执行路径没有新增 200 ms 等待。
+额外添加 1000 条 leader 映射后，分段执行各 30 轮：关闭为 0.814 / 1.395 ms，
+开启为 1.105 / 1.770 ms。提示模块在按键路径只查询当前前缀的祖先，不遍历这些映射。
+
+另以 `tests/startup_latency.py` 测量启动到首次观察重绘，每组 10 次，
+在临时 vimrc 中分别设置 `g:vimrc_lite_which_key = 0/1` 后 source 同一仓库配置。
+首页中位数从 20.73 到 26.06 ms，Python 文件从 24.38 到 30.81 ms，
+大文件从 35.20 到 41.30 ms。新增冷启动开销约 5–6 ms，不能声称完全没有启动成本。
+目录启动样本两组均出现既有 netrw 的 `s:netrwgray` 错误，未纳入此对照结论。
+
+回归覆盖普通／选区、快慢输入、原生超时与未知键、计数与寄存器、表达式映射、
+递归／Plug 映射、宏和点重复、局部覆盖、Markdown 分组、配置重载、关闭／启用、
+手动入口、外部清除浮窗、窄终端、中文／修饰功能键和终端序列分片。
+安装器一并复制新模块，旧 Vim 缺少必要 API 时保留 `:VimKeys` 查询。
+系统 Vim 9.1 全量 364 项检查：358 项通过、6 项跳过；最后的定向检查 14 项通过，
+Vim 8.2.5172 专项 13 项通过。Vimscript 样式、Python／Shell 语法与 diff 检查通过。
+
+```bash
+python3 tests/run.py test_which_key test_compat test_vim_style
+python3 tests/which_key_latency.py --rounds 30 --delay 200
+python3 tests/which_key_latency.py --rounds 30 --delay 200 --mappings 1000
+VIM_TEST_BINARY=/path/to/vim82 VIMRUNTIME=/path/to/runtime python3 tests/run.py test_which_key test_compat
+```

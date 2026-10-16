@@ -7,8 +7,11 @@ function! s:Show(title, lines) abort
   nnoremap <silent><buffer> q :close<CR>
 endfunction
 
-function! s:Keys(query) abort
-  let labels = {
+function! s:KeyLabels() abort
+  if exists('s:labels')
+    return
+  endif
+  let s:labels = {
         \ 'VimFind': '查找文件 / find files',
         \ 'VimSearch': '项目搜索 / project search',
         \ 'VimSearchWord': '搜索当前单词 / search word',
@@ -57,15 +60,16 @@ function! s:Keys(query) abort
         \ 'VimMarkdownWrap': 'Markdown 选区格式 / selection format',
         \ 'VimMarkdownInsert': 'Markdown 模板 / insert template',
         \ 'VimMarkdownHelp': 'Markdown 操作说明 / help',
+        \ 'VimMarkdownImage': 'Markdown 粘贴图片到 imgs/ / paste image',
+        \ 'VimMarkdownImageSize': 'Markdown 图片宽度和对齐 / image layout',
+        \ 'VimMarkdownToc': '生成 Markdown 文内目录 / document TOC',
+        \ 'VimMarkdownTocUpdate': '更新 Markdown 文内目录 / update TOC',
+        \ 'VimMarkdownTocRemove': '移除 Markdown 文内目录 / remove TOC',
+        \ 'VimMarkdownFold': '按 Markdown 章节折叠 / heading folds',
+        \ 'VimMarkdownAutoSave': 'Markdown 自动保存开关 / auto-save',
         \ 'wall': '保存全部 / save all',
         \ }
-  let rows = []
-  let sources = {}
-  for script in split(execute('scriptnames'), "\n")
-    let number = matchstr(script, '^\s*\zs\d\+')
-    let sources[number] = substitute(script, '^\s*\d\+:\s*', '', '')
-  endfor
-  let key_labels = {'af': '函数整体 / entire function', 'if': '函数体 / function body',
+  let s:key_labels = {'af': '函数整体 / entire function', 'if': '函数体 / function body',
         \ 'ac': '类整体 / entire class', 'ic': '类体 / class body',
         \ 'ab': '控制块整体 / entire block', 'ib': '控制块内容 / block body',
         \ 'gd': '跳转定义 / definition', 'gr': '列出引用 / references',
@@ -79,27 +83,52 @@ function! s:Keys(query) abort
         \ ' e': '开关文件树 / toggle tree', ' bn': '新建 buffer / new buffer',
         \ ' bp': '选择 buffer / select buffer', ' bD': '清空 buffer 或选区 / clear',
         \ ' bw': '去除行尾空白 / trim whitespace', ' fh': '清除搜索高亮',
+        \ ' v': '垂直分屏', ' q': '关闭窗口 / quit',
+        \ ' an': '新建标签页', ' aN': '复制到新标签页',
+        \ ' ah': '标签页左移', ' al': '标签页右移', ' ao': '只保留当前标签页',
         \ ' nh': '查看消息 / messages', 'q': '普通模式禁用宏录制；辅助窗口关闭',
         \ '<C-H>': '左侧窗口 / focus left', '<C-J>': '下方窗口 / focus down',
         \ '<C-K>': '上方窗口 / focus up', '<C-L>': '右侧窗口 / focus right',
         \ }
-  let tree_labels = {'Create': '新建文件或目录 / create', 'Rename': '重命名 / rename',
+  let s:tree_labels = {'Create': '新建文件或目录 / create', 'Rename': '重命名 / rename',
         \ 'Delete': '删除 / delete', 'Copy': '复制 / copy', 'Cut': '剪切 / cut',
         \ 'Paste': '粘贴 / paste', 'YankName': '复制文件名 / copy name',
         \ 'YankPath': '复制相对路径 / copy relative path', 'Refresh': '刷新文件树 / refresh',
         \ 'Hidden': '显示隐藏文件 / hidden files', 'FocusRight': '右侧窗口 / focus right'}
+endfunction
+
+function! VimKeyDescription(mapping) abort
+  call s:KeyLabels()
+  let command = matchstr(a:mapping.rhs, '\<\%(Vim[A-Za-z]*\|wall\)\>')
+  let key = get(a:mapping, 'lhsraw', a:mapping.lhs)
+  let description = get(s:key_labels, key, get(s:key_labels, a:mapping.lhs,
+        \ get(s:labels, command, a:mapping.rhs)))
+  if key =~# '^ [1-9]$'
+    let description = '切换 Buffer ' . key[1]
+  endif
+  if get(a:mapping, 'buffer', 0) && &filetype ==# 'netrw'
+    let action = matchstr(a:mapping.rhs, '_\zs[A-Za-z]\+\ze'')')
+    let description = get(s:tree_labels, action, a:mapping.rhs)
+  endif
+  return description
+endfunction
+
+function! s:Keys(query) abort
+  let rows = []
+  let sources = {}
+  for script in split(execute('scriptnames'), "\n")
+    let number = matchstr(script, '^\s*\zs\d\+')
+    let sources[number] = substitute(script, '^\s*\d\+:\s*', '', '')
+  endfor
   if exists('*maplist')
     for mapping in maplist()
-      if mapping.lhs =~? '^<Plug>' || mapping.rhs =~# '^<Plug>'
+      if mapping.rhs =~# '\%(<SID>\|<SNR>\d\+_\)\%(Prefix(\|Escape(\|Cancel()\)'
+            \ || mapping.lhs =~? '^<Plug>'
+            \ || mapping.rhs =~# '^<Plug>'
             \ && index(['gd', 'gr', 'K'], mapping.lhs) < 0
         continue
       endif
-      let command = matchstr(mapping.rhs, '\<\%(Vim[A-Za-z]*\|wall\)\>')
-      let description = get(key_labels, mapping.lhs, get(labels, command, mapping.rhs))
-      if get(mapping, 'buffer', 0) && &filetype ==# 'netrw'
-        let action = matchstr(mapping.rhs, '_\zs[A-Za-z]\+\ze'')')
-        let description = get(tree_labels, action, mapping.rhs)
-      endif
+      let description = VimKeyDescription(mapping)
       let key = substitute(mapping.lhs, '^ ', '<Space>', '')
       let mode = mapping.mode ==# ' ' ? 'n' : mapping.mode[0]
       let effective = maparg(mapping.lhs, mode, 0, 1)
@@ -154,6 +183,16 @@ function! s:Health() abort
   call add(lines, 'Markdown: native reading/editing; browser preview '
         \ . (executable('python3') && has('job') && has('channel') && has('timers')
         \ ? 'available (offline assets)' : 'needs python3 +job +channel +timers'))
+  if exists('*VimWhichKeyStatus')
+    let keys = VimWhichKeyStatus()
+    call add(lines, 'Which-key: ' . (!keys.supported ? 'needs popup/maplist/SafeState'
+          \ : keys.enabled ? 'enabled; delayed prefix hints' : 'disabled'))
+  endif
+  call add(lines, 'Markdown snippets: bundled vim-vsnip; Tab / Shift-Tab')
+  let java = executable('java') || !empty($VIM_MARKDOWN_JAVA)
+        \ || !empty(glob('~/.local/share/vim-lite/java/usr/lib/jvm/*/bin/java'))
+  call add(lines, 'Markdown diagrams: local Mermaid; PlantUML '
+        \ . (java ? 'Java available' : 'needs Java (Graphviz optional)'))
   if exists(':VimLspStatus')
     let lines += [''] + split(execute('VimLspStatus'), "\n")
   endif

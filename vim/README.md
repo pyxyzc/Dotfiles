@@ -2,7 +2,7 @@
 
 面向 Linux 上的完整 Vim 8/9，主要用于 Python、C/C++，也为 CUDA 文件启用 clangd。
 配置与 TokyoNight Night
-主题全部在本目录，随配置保存一个固定版本的第三方插件 `vim-lsp`。
+主题全部在本目录，随配置保存固定版本的 `vim-lsp` 与 `vim-vsnip`。
 没有插件管理器或自动下载；语言服务器 Pyright、clangd 及其运行环境由用户自行安装。
 主题默认透明背景，不需要特殊字体。
 Markdown 模块提供原生阅读视图和 TokyoNight 浏览器实时预览；渲染库随配置保存，离线可用。
@@ -14,6 +14,8 @@ Markdown 模块提供原生阅读视图和 TokyoNight 浏览器实时预览；�
 `.vimrc` 保留基础设置、通用功能和快捷键；`buffers.vim` 管理顶部 buffer 栏、
 buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等编辑辅助；
 `markdown.vim`、`markdown-view.vim` 与 `markdown/` 提供 Markdown 写作、原生阅读、导航和预览；
+`markdown-notes.vim` 提供章节路径、文内目录、折叠和自动保存；`markdown-snippets.vim`
+管理交互片段与数学输入，`markdown-images.vim` 连接本机剪贴板和 SSH 图片粘贴。
 `pins.vim` 提供随代码行移动、跨 Vim 重启恢复的持久 pin；
 `completion.vim` 分批扫描已加载 buffer，提供自动单词补全；
 `matchparen.vim` 为系统括号高亮增加光标附近的快速检查，避免无括号长行的重复扫描；
@@ -28,7 +30,8 @@ buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等�
 `git.vim` 提供 Git hunk 跳转和 LazyGit 入口，`terminal.vim` 统一管理 LazyGit 和普通
 shell 的终端退出清理；`textobjects.vim` 为 Python、C/C++/CUDA 提供轻量结构文本对象。
 `project.vim` 提供项目定位和持久撤销目录，`tasks.vim` 异步运行项目任务，
-`session.vim` 手动保存和恢复会话，`tools.vim` 提供快捷键查询及环境检查。
+`session.vim` 手动保存和恢复会话，`tools.vim` 提供快捷键查询及环境检查；
+`which-key.vim` 在按键前缀停顿时显示后续键位。
 
 ## Vimscript 代码风格
 
@@ -82,6 +85,9 @@ bash ~/Dotfiles/vim/vim-clean.sh
 ~/.vim/edit.vim
 ~/.vim/markdown.vim
 ~/.vim/markdown-view.vim
+~/.vim/markdown-notes.vim
+~/.vim/markdown-snippets.vim
+~/.vim/markdown-images.vim
 ~/.vim/markdown/
 ~/.vim/pins.vim
 ~/.vim/completion.vim
@@ -452,7 +458,7 @@ Python、C/C++、Shell、JSON、Vim 围栏启用 Vim 自带语法，可通过
 浏览器与终端共用 TokyoNight 配色，支持 CommonMark、表格、删除线、任务、常见语言代码
 高亮、相对图片、GitHub 风格 NOTE/TIP/IMPORTANT/WARNING/CAUTION 提示，以及 `$...$` / `$$...$$`
 KaTeX 公式。顶部可关闭「跟随光标」独立阅读，左侧目录可折叠；代码可以复制，支持打印／
-保存为 PDF。原始 HTML 作为文字显示；Mermaid、PlantUML 等图表围栏目前作为代码显示。
+保存为 PDF。原始 HTML 作为文字显示；Mermaid 流程图、甘特图及 PlantUML 围栏在本地渲染。
 图片路径相对文档解析，`/image.png` 相对项目根解析；目录外图片与跨目录符号链接不提供。
 浏览器中的本地文档链接会提示用 Vim 的 `<leader>ml` 打开。
 
@@ -478,6 +484,68 @@ let g:vimrc_lite_markdown_lists = 1
 let g:vimrc_lite_markdown_debounce = 150
 let g:vimrc_lite_markdown_browser = ['firefox', '--new-tab']
 ```
+
+### 笔记与数学输入
+
+图片默认保存到**当前 Markdown 文件所在目录的 `imgs/`**，不取 Vim 的工作目录。
+图片读取和传输使用 Python 3 标准库；章节、片段、折叠和原生阅读不需要 Python。
+`Space m v` 读取 Windows／WSL、Wayland、X11 或 macOS 图片剪贴板，异步保存并插入引用。
+同名文件自动追加编号；也可 `:VimMarkdownImage /path/to/screenshot.png` 导入已有图片。
+`Space m V` 强制使用浏览器通道：在本机预览页点击「粘贴图片」或按 Ctrl-v，图片上传到
+远端文档旁的 `imgs/`，引用自动写回 Vim。检测到 SSH 时 `Space m v` 也使用这个通道。
+图片粘贴期间继续编辑时，插入位置由文本属性跟踪。文档需要先有文件名。
+`:VimMarkdownImageSize 60% center` 设置当前行图片的宽度和对齐，也支持像素宽度与 left/right。
+尺寸以 `![描述](imgs/image.png){width=60% align=center}` 保存，由本地预览识别。
+
+| 按键／命令 | 操作 |
+| --- | --- |
+| 状态栏 | 随光标显示当前章节路径，窄窗口自动缩短 |
+| `Space m c` / `:VimMarkdownToc 3` | 插入文内目录，默认最多三级标题 |
+| `Space m u` / `:VimMarkdownTocUpdate 2` | 更新目录，也可调整标题层级 |
+| `:VimMarkdownTocRemove` | 移除本模块生成的目录 |
+| `Space m z` | 折叠／展开当前章节 |
+| `Space m Z` / `:VimMarkdownFold open` | 折叠全部／展开全部 |
+| `:VimMarkdownFold level 2` / `off` | 展开到指定层级／关闭章节折叠 |
+| `Space m a` | 开关当前文档自动保存 |
+| 插入模式 `Tab` / `Shift-Tab` | 展开交互片段、前进／后退到填写位置 |
+
+文内目录带专用注释标记，保存时默认更新这些目录；重复标题和中文标题使用正确锚点，
+代码与注释中的伪标题会被跳过。普通文档不会自动插入目录。折叠在首次使用对应命令时
+启用，之后也能使用 Vim 原生 `zo`、`zc`、`zM`、`zR`。
+
+常用片段：`title`、`h1`～`h4`、`code`、`link`、`image`、`note`、`task`、`table`、
+`mermaid`、`plantuml`。输入 `4x4tb` 或 `44tb` 后按 Tab，生成四列表头和四行正文，
+逐格填写。引擎支持嵌套片段与镜像字段，可在 `~/.vsnip/markdown.json` 增加 VS Code
+格式的个人片段；`:VsnipOpen` 打开编辑，不需要 Vim 的 Python 支持。
+
+`mk` + Tab 插入行内公式，`dm` + Tab 插入独立公式。在数学区域中，`ff`／`frac`、
+`sqrt`、`sum`、`int`、`lim`、`sub`、`sup`、`vec`、`matrix` + Tab 提供公式片段；
+`alpha`、`theta`、`;a`、`;t` 等 + Tab 输入希腊字母。直接输入 `A1` 自动得到 `A_1`，
+输入 `x/` 或 `(a+b)/` 自动变成分数并停在分母位置。这些自动转换不作用于普通文字、
+代码、注释和 front matter。补全菜单已有选中项时 Tab 继续选择候选。
+
+Markdown 自动保存默认启用，在退出插入、切换文件、失焦或空闲 1500 ms 时保存。
+未命名、只读及普通代码文件不自动保存；发现磁盘文件被外部修改时保留内存内容并提示，
+由用户检查后手动保存。首次接管已有未保存内容的 buffer 时，也需要先手动保存一次来
+建立磁盘基线。可在个人设置中调整：
+
+```vim
+let g:vimrc_lite_markdown_image_dir = 'imgs'
+let g:vimrc_lite_markdown_image_width = ''
+let g:vimrc_lite_markdown_image_align = ''
+let g:vimrc_lite_markdown_toc_depth = 3
+let g:vimrc_lite_markdown_toc_on_save = 1
+let g:vimrc_lite_markdown_autosave = 1
+let g:vimrc_lite_markdown_autosave_events = 'InsertLeave,BufLeave,FocusLost,Idle'
+let g:vimrc_lite_markdown_autosave_delay = 1500
+let g:vimrc_lite_markdown_math_auto = 1
+```
+
+Mermaid 按需加载随配置保存的浏览器资源；PlantUML 使用随配置保存的 MIT 构建和本地
+Java 运行时，不向公共服务器发送图表。Linux 可安装 `default-jre-headless`；没有 Graphviz
+时使用内置 Smetana 排版。已有 Java 也可通过环境变量 `VIM_MARKDOWN_JAVA` 指定路径。
+首次渲染后复用内存缓存，错误图表保留源码，其余正文继续显示。见
+[笔记示例](markdown/notes-example.md) 和 [依赖来源](markdown/vendor/SOURCE.md)。
 
 设计参考 [render-markdown.nvim](https://github.com/MeanderingProgrammer/render-markdown.nvim)
 的表格、checkbox、提示块与模式化视图，以及
@@ -869,6 +937,34 @@ pin 随上方插删行移动；替换该行文字仍保留 pin。删除整行时
 未保存内容不包含在会话里，应单独保存文件。不同项目与 Python 环境继续使用独立 Vim。
 
 ## 快捷键查询与环境检查
+
+默认启用类似 [which-key.nvim](https://github.com/folke/which-key.nvim) 的原生 Vim 前缀提示。
+在普通或选区模式按空格，停顿 200 ms 后，底部显示当前模式可用的后续键；继续按 `b`、
+`c`、`f`、`m` 等进入分组，完成组合键后执行原映射，`Esc` 取消。快速连按直接执行。
+Markdown 等 buffer 的局部键位优先，提示框使用现有主题颜色和按终端宽度排列的列。
+
+```vim
+" ~/.vim/settings.vim：提示延迟（毫秒），不改变映射的 timeoutlen。
+let g:vimrc_lite_which_key_delay = 200
+" 设为 0 可关闭自动前缀提示。
+let g:vimrc_lite_which_key = 1
+" 默认只提示 leader；可为其他尚未绑定完整命令的前缀启用提示。
+let g:vimrc_lite_which_key_triggers = ['<leader>', 'g', '[', ']']
+" 自定义描述使用完整按键名；默认 leader 为空格。
+let g:vimrc_lite_which_key_labels = {'<Space>ff': '查找项目文件'}
+```
+
+`:VimWhichKey` 立即进入 leader 提示，`:VimWhichKey <leader>b` 直接进入 Buffer 分组；
+`:VimWhichKeyDisable` / `:VimWhichKeyEnable` 临时关闭或启用。个人映射在加载配置时自动
+收集，切换文件类型也会更新；运行时增加、删除映射或修改描述后执行 `:VimWhichKeyRefresh`。
+提示只列出实际映射，不包含尚未配置的 Vim 内置命令。已有完整前缀映射不会被覆盖。
+
+显示计时和 Vim 的原生映射超时分别控制；若 `timeoutlen` 比提示延迟短，映射可能在提示
+显示前就已超时。输入仍由 Vim 解析，保留计数、寄存器、表达式和递归映射；宏录制／回放
+不启动提示计时器。没有常驻轮询、逐字符扫描或外部进程，映射和菜单按 buffer 缓存，
+只在前缀停顿后创建浮窗。Esc 沿用终端序列的解析时间，并支持方向键序列分片到达。
+需要 `popup_create()`、`maplist()`、定时器和 `SafeState`；功能不足时保留下面的查询入口。
+实测时延和复测命令见 [PERFORMANCE.md](PERFORMANCE.md)。
 
 `<leader>?` / `:VimKeys` 查看实际映射；`:VimKeys rename`、`:VimKeys 搜索` 可按
 按键、功能或命令过滤。支持对应功能时，还显示当前 buffer 的结构文本对象映射。

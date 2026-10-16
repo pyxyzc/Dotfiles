@@ -11,6 +11,11 @@
   let lastLine = -1;
   let currentBase = '';
   let sourceNodes = [];
+  let imageRequest = null;
+  let generation = 0;
+  let diagramNumber = 0;
+  let mermaidReady;
+  const diagrams = new Map();
   const md = window.markdownit({
     html: false, linkify: true, breaks: false,
     highlight(code, language) {
@@ -119,11 +124,32 @@
   const defaultFence = md.renderer.rules.fence;
   md.renderer.rules.fence = (tokens, index, options, env, renderer) => {
     const token = tokens[index];
-    const result = defaultFence(tokens, index, options, env, renderer);
     const language = token.info.trim().split(/\s+/)[0] || 'text';
+    if (['mermaid', 'plantuml', 'puml'].includes(language.toLowerCase())) {
+      return `<figure class="diagram" data-kind="${escape(language.toLowerCase())}" data-line="${token.map[0] + 1}">`
+        + `<div class="diagram-output" role="img" aria-label="${escape(language)} 图表">正在绘制图表…</div>`
+        + `<details><summary>${escape(language)} · 查看源码</summary><pre><code>${escape(token.content)}</code></pre></details></figure>`;
+    }
+    const result = defaultFence(tokens, index, options, env, renderer);
     return result.replace('<pre', `<pre data-line="${token.map[0] + 1}" data-language="${escape(language)}"`);
   };
   const defaultImage = md.renderer.rules.image;
+  md.inline.ruler.before('text', 'image_attributes', (state, silent) => {
+    if (state.src[state.pos] !== '{' || state.tokens.at(-1)?.type !== 'image') return false;
+    const found = /^\{((?:(?:width=\d+%?|align=(?:left|center|right))\s*)+)\}/.exec(state.src.slice(state.pos));
+    if (!found) return false;
+    if (!silent) {
+      const token = state.tokens.at(-1);
+      const width = /width=(\d+%?)/.exec(found[1])?.[1];
+      const align = /align=(left|center|right)/.exec(found[1])?.[1];
+      if (width && Number.parseInt(width, 10) <= (width.endsWith('%') ? 100 : 4096)) {
+        token.attrSet('style', `width:${width}${width.endsWith('%') ? '' : 'px'}`);
+      }
+      if (align) token.attrSet('class', 'image-align-' + align);
+    }
+    state.pos += found[0].length;
+    return true;
+  });
   md.renderer.rules.image = (tokens, index, options, env, renderer) => {
     const token = tokens[index];
     const src = token.attrGet('src') || '';
@@ -135,6 +161,7 @@
     return defaultImage(tokens, index, options, env, renderer);
   };
   function render(state) {
+    const currentGeneration = ++generation;
     currentBase = state.base;
     const front = /^---\n([\s\S]*?)\n(?:---|\.\.\.)\s*(?:\n|$)/.exec(state.text);
     let source = state.text;
@@ -195,7 +222,99 @@
     sourceNodes = [...article.querySelectorAll('[data-line]')]
       .sort((a, b) => Number(a.dataset.line) - Number(b.dataset.line));
     updateOutline();
+    renderDiagrams(currentGeneration);
   }
+  function loadMermaid() {
+    if (!mermaidReady) mermaidReady = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = prefix + 'vendor/mermaid.min.js';
+      script.onload = () => {
+        window.mermaid.initialize({startOnLoad: false, securityLevel: 'strict',
+          suppressErrorRendering: true, maxTextSize: 131072, maxEdges: 500,
+          theme: 'base', flowchart: {htmlLabels: false},
+          gantt: {fontSize: 14, sectionFontSize: 14},
+          themeVariables: {darkMode: true, background: '#1a1b26', primaryColor: '#24283b',
+            primaryTextColor: '#c0caf5', primaryBorderColor: '#7aa2f7', lineColor: '#7dcfff',
+            secondaryColor: '#292e42', tertiaryColor: '#202334', fontFamily: 'sans-serif'}});
+        resolve(window.mermaid);
+      };
+      script.onerror = () => { mermaidReady = undefined; reject(new Error('缺少本地 Mermaid 资源')); };
+      document.head.append(script);
+    });
+    return mermaidReady;
+  }
+  async function renderDiagrams(currentGeneration) {
+    for (const figure of article.querySelectorAll('figure.diagram')) {
+      const source = figure.querySelector('code').textContent;
+      const key = figure.dataset.kind + '\n' + source;
+      const output = figure.querySelector('.diagram-output');
+      try {
+        let cached = diagrams.get(key);
+        if (!cached) {
+          if (figure.dataset.kind === 'mermaid') {
+            const mermaid = await loadMermaid();
+            if (currentGeneration !== generation) return;
+            const result = await mermaid.render('md-diagram-' + (++diagramNumber), source, output);
+            cached = {svg: result.svg};
+          } else {
+            const response = await fetch(prefix + 'plantuml', {method: 'POST',
+              headers: {'Content-Type': 'application/json'}, body: JSON.stringify({source})});
+            if (!response.ok) throw new Error((await response.json()).error);
+            const svg = await response.text();
+            cached = {src: 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg)))};
+          }
+          diagrams.set(key, cached);
+          if (diagrams.size > 64) diagrams.delete(diagrams.keys().next().value);
+        }
+        if (currentGeneration !== generation || !figure.isConnected) return;
+        if (cached.svg) {
+          output.innerHTML = cached.svg;
+          if (/^\s*gantt\b/m.test(source)) output.querySelector('svg').style.minWidth = '720px';
+        }
+        else {
+          const image = document.createElement('img');
+          image.src = cached.src;
+          image.alt = 'PlantUML 图表';
+          output.replaceChildren(image);
+        }
+        figure.classList.add('diagram-ready');
+      } catch (error) {
+        if (currentGeneration !== generation || !figure.isConnected) return;
+        output.textContent = '图表未能绘制：' + error.message;
+        figure.classList.add('diagram-error');
+        figure.querySelector('details').open = true;
+      }
+    }
+    if (currentGeneration === generation) scrollToSource(lastLine);
+  }
+  async function pasteImage(blob) {
+    if (!imageRequest) throw new Error('请先在 Vim 按 Space m v，确定插入位置');
+    const response = await fetch(`${prefix}image?request=${imageRequest.id}`, {
+      method: 'POST', headers: {'Content-Type': blob.type || 'image/png'}, body: blob});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error);
+    imageRequest = null;
+    document.getElementById('paste-image').textContent = '已保存图片';
+    document.getElementById('connection').lastChild.textContent = result.relative;
+  }
+  document.getElementById('paste-image').addEventListener('click', async () => {
+    try {
+      if (!imageRequest) throw new Error('请先在 Vim 按 Space m v，确定插入位置');
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find(type => type.startsWith('image/'));
+        if (type) { await pasteImage(await item.getType(type)); return; }
+      }
+      throw new Error('剪贴板中没有图片');
+    } catch (error) { document.getElementById('connection').lastChild.textContent = error.message; }
+  });
+  window.addEventListener('paste', async event => {
+    const image = [...(event.clipboardData?.items || [])].find(item => item.type.startsWith('image/'));
+    if (!image) return;
+    event.preventDefault();
+    try { await pasteImage(image.getAsFile()); }
+    catch (error) { document.getElementById('connection').lastChild.textContent = error.message; }
+  });
   function scrollToSource(line) {
     if (!follow || !sourceNodes.length) return;
     let node = sourceNodes[0];
@@ -226,6 +345,8 @@
       if (!response.ok) throw new Error(String(response.status));
       if (response.status === 204) return;
       const state = await response.json();
+      imageRequest = state.image_request || null;
+      document.getElementById('paste-image').textContent = imageRequest ? '粘贴图片 · 等待中' : '粘贴图片';
       connection.classList.remove('offline');
       connection.lastChild.textContent = '实时预览';
       if (state.revision !== revision) {

@@ -388,6 +388,11 @@ function! s:Build(buf, width) abort
       endif
       if !s:Inside(spans, link[1])
         let image = link[0][0] ==# '!'
+        if image
+          let attributes = matchstr(strpart(text, link[2]),
+                \ '^{\%(\%(width=\d\+%\=\|align=\%(left\|center\|right\)\)\s*\)\+}')
+          let link[2] += strlen(attributes)
+        endif
         let label = matchstr(link[0], '\[\zs[^]]*\ze\]')
         let icon = image ? '▣ ' : '↗ '
         call add(row.insert, [link[1] + 1, icon . label,

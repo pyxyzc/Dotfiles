@@ -163,6 +163,15 @@ function! s:Attach() abort
   if exists('*VimMarkdownViewRefresh')
     call VimMarkdownViewRefresh()
   endif
+  if exists('*VimMarkdownNotesAttach')
+    call VimMarkdownNotesAttach()
+  endif
+  if exists('*VimMarkdownSnippetsAttach')
+    call VimMarkdownSnippetsAttach()
+  endif
+  if exists('*VimMarkdownImagesAttach')
+    call VimMarkdownImagesAttach()
+  endif
 endfunction
 
 function! s:Detach() abort
@@ -170,7 +179,14 @@ function! s:Detach() abort
     call VimMarkdownViewClear(bufnr('%'))
   endif
   call s:FocusRestore()
-  for key in ['mp', 'ms', 'mo', 'mr', 'mf', 'mx', 'mt', 'ml', 'mh', 'mi']
+  if exists('*VimMarkdownNotesStop')
+    call VimMarkdownNotesStop(bufnr('%'))
+  endif
+  if exists('*VimMarkdownImagesStop')
+    call VimMarkdownImagesStop(bufnr('%'))
+  endif
+  for key in ['mp', 'ms', 'mo', 'mr', 'mf', 'mx', 'mt', 'ml', 'mh', 'mi',
+        \ 'mc', 'mu', 'mz', 'mZ', 'ma', 'mv', 'mV']
     execute 'silent! nunmap <buffer> <leader>' . key
   endfor
   for key in ['mx', 'mb', 'mi', 'mc']
@@ -180,8 +196,13 @@ function! s:Detach() abort
     execute 'silent! nunmap <buffer> ' . key
   endfor
   silent! iunmap <buffer> <CR>
+  for key in ['<Tab>', '<S-Tab>', '<Plug>(vim-lite-markdown-tab)',
+        \ '<Plug>(vim-lite-markdown-backtab)', '<Plug>(vim-lite-markdown-expand)']
+    execute 'silent! iunmap <buffer> ' . key
+    execute 'silent! sunmap <buffer> ' . key
+  endfor
   setlocal wrap< linebreak< breakindent< conceallevel< concealcursor<
-  setlocal autoindent< indentexpr< textwidth< foldmethod<
+  setlocal autoindent< indentexpr< textwidth< foldmethod< foldexpr< foldtext<
   unlet! b:vimrc_lite_markdown b:vimrc_lite_markdown_headers b:vimrc_lite_markdown_fences
 endfunction
 
@@ -203,7 +224,8 @@ endfunction
 
 function! VimMarkdownStatusLabel() abort
   return s:Markdown() && !get(b:, 'vimrc_lite_large_file', 0)
-        \ ? (get(b:, 'vimrc_lite_markdown_raw', 0) ? ' [MD:source]' : ' [MD:read]') : ''
+        \ ? (get(b:, 'vimrc_lite_markdown_raw', 0) ? ' [MD:source]' : ' [MD:read]')
+        \ . (exists('*VimMarkdownBreadcrumb') ? VimMarkdownBreadcrumb() : '') : ''
 endfunction
 
 function! s:FocusRestore() abort
@@ -727,6 +749,8 @@ function! s:PreviewOutput(channel, message) abort
       else
         call s:OpenBrowser(ready.url)
       endif
+    elseif get(ready, 'event', '') ==# 'image' && exists('*VimMarkdownImageReceived')
+      call VimMarkdownImageReceived(ready)
     endif
   catch
     call s:Warn('preview: ' . a:message)
@@ -751,11 +775,13 @@ function! s:Send() abort
     let path = empty(bufname(buf)) ? getcwd() . '/Untitled.md' : fnamemodify(bufname(buf), ':p')
     let payload = {'text': join(getbufline(buf, 1, '$'), "\n"),
           \ 'path': path, 'root': s:preview.root,
+          \ 'tick': tick,
           \ 'name': empty(bufname(buf)) ? 'Untitled.md' : fnamemodify(path, ':t')}
     let s:preview.tick = tick
   endif
   if bufnr('%') == buf
     let payload.line = line('.')
+    let payload.column = col('.')
   endif
   if !empty(payload)
     try
@@ -763,6 +789,19 @@ function! s:Send() abort
     catch
       call s:Warn('preview channel closed; use :VimMarkdownPreview to restart')
     endtry
+  endif
+endfunction
+
+function! VimMarkdownPreviewSync() abort
+  call s:Send()
+  call VimMarkdownViewSchedule()
+endfunction
+
+function! VimMarkdownImageBridge(request) abort
+  call s:Preview(1)
+  if !empty(s:preview) && job_status(s:preview.job) ==# 'run'
+    call ch_sendraw(job_getchannel(s:preview.job),
+          \ json_encode({'image_request': a:request}) . "\n")
   endif
 endfunction
 
@@ -845,6 +884,15 @@ function! s:Wipe(buf) abort
 endfunction
 
 function! s:Shutdown() abort
+  if exists('*vsnip#deactivate')
+    call vsnip#deactivate()
+  endif
+  if exists('*VimMarkdownImagesStop')
+    call VimMarkdownImagesStop()
+  endif
+  if exists('*VimMarkdownNotesStop')
+    call VimMarkdownNotesStop()
+  endif
   if exists('*VimMarkdownViewStop')
     call VimMarkdownViewStop()
   endif
@@ -903,6 +951,8 @@ function! s:Help() abort
         \ 'f focus / x task / t table / l follow link / h help',
         \ 'i insert template · :VimMarkdownInsert code python',
         \ 'Visual: b bold / i italic / c code · [h ]h headings',
+        \ 'v paste image / c TOC / u update TOC / z fold / Z fold all / a auto-save',
+        \ 'Tab expands snippets / Shift-Tab goes back · mk/dm/ff · 4x4tb',
         \ 'Enter continues lists; empty item exits · j/k move by screen line'], "\n")
 endfunction
 
@@ -947,6 +997,18 @@ else
   call s:Warn('missing markdown-view.vim; copy the complete module or run vim-install.sh')
 endif
 call s:Colors()
+let s:notes = fnamemodify(s:directory, ':h') . '/markdown-notes.vim'
+if filereadable(s:notes)
+  execute 'source ' . fnameescape(s:notes)
+endif
+let s:snippets = fnamemodify(s:directory, ':h') . '/markdown-snippets.vim'
+if filereadable(s:snippets)
+  execute 'source ' . fnameescape(s:snippets)
+endif
+let s:images = fnamemodify(s:directory, ':h') . '/markdown-images.vim'
+if filereadable(s:images)
+  execute 'source ' . fnameescape(s:images)
+endif
 if &filetype ==# 'markdown'
   call s:Attach()
 endif

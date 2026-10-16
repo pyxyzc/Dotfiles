@@ -10,6 +10,9 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
 
+from diagrams import render_plantuml
+from images import MAX_IMAGE, save_image
+
 
 ASSETS = Path(__file__).resolve().parent
 IMAGE_TYPES = {'.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.avif', '.bmp', '.ico'}
@@ -25,6 +28,7 @@ class PreviewServer(ThreadingHTTPServer):
         self.state = {'text': '', 'name': 'Untitled.md', 'line': 1, 'revision': 0,
                       'document': 0, 'base': ''}
         self.root = Path.cwd()
+        self.document_path = self.root / 'Untitled.md'
 
     def update(self, payload):
         with self.lock:
@@ -37,10 +41,16 @@ class PreviewServer(ThreadingHTTPServer):
                     # Files outside the project can still preview their own local images.
                     root, base = path.parent.resolve(), ''
                 self.root = root
+                if self.document_path != path:
+                    self.state.pop('image_request', None)
+                self.document_path = path
                 self.state.update(text=str(payload['text']), name=str(payload['name']),
-                                  base='' if base == '.' else base)
+                                  base='' if base == '.' else base, tick=payload.get('tick', 0))
                 self.state['document'] += 1
+            if 'image_request' in payload:
+                self.state['image_request'] = payload['image_request']
             self.state['line'] = max(1, int(payload.get('line', self.state['line'])))
+            self.state['column'] = max(1, int(payload.get('column', self.state.get('column', 1))))
             self.state['revision'] += 1
 
 
@@ -57,7 +67,7 @@ class PreviewHandler(BaseHTTPRequestHandler):
         self.send_header('Referrer-Policy', 'no-referrer')
         self.send_header('Content-Security-Policy',
                          "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-                         "font-src 'self'; img-src 'self' data: https: http:; "
+                         "font-src 'self'; img-src 'self' blob: data: https: http:; "
                          "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'")
         self.end_headers()
         if self.command != 'HEAD':
@@ -65,6 +75,48 @@ class PreviewHandler(BaseHTTPRequestHandler):
 
     def do_HEAD(self):
         self.do_GET()
+
+    def do_POST(self):
+        port = self.server.server_port
+        allowed = {f'127.0.0.1:{port}', f'localhost:{port}'}
+        prefix = '/' + self.server.token + '/'
+        route = urlsplit(self.path)
+        origin = self.headers.get('Origin')
+        if self.headers.get('Host') not in allowed or (origin and origin not in
+                                                       {f'http://{host}' for host in allowed}):
+            self.send(b'Invalid origin', 'text/plain', 403)
+            return
+        if route.path not in {prefix + 'image', prefix + 'plantuml'}:
+            self.send(b'Not found', 'text/plain', 404)
+            return
+        try:
+            length = int(self.headers.get('Content-Length', 0))
+            limit = MAX_IMAGE if route.path.endswith('/image') else 256 * 1024
+            if not 0 < length <= limit:
+                raise ValueError('request is empty or too large')
+            data = self.rfile.read(length)
+            if route.path.endswith('/plantuml'):
+                payload = json.loads(data)
+                self.send(render_plantuml(str(payload['source'])), 'image/svg+xml')
+                return
+            query = parse_qs(route.query)
+            with self.server.lock:
+                state = self.server.state
+                request = state.get('image_request', {})
+                if not request or query.get('request') != [str(request['id'])]:
+                    self.send(b'{"error":"Paste request changed; run Space m v again"}',
+                              'application/json', 409)
+                    return
+                image = save_image(data, self.server.document_path.parent,
+                                   request.get('folder', 'imgs'), request.get('name', ''))
+                event = {**image, 'event': 'image', 'request': request['id'],
+                         'source': str(self.server.document_path)}
+                state.pop('image_request', None)
+                state['revision'] += 1
+            print(json.dumps(event, ensure_ascii=False), flush=True)
+            self.send(json.dumps(image, ensure_ascii=False).encode('utf-8'), 'application/json')
+        except (ValueError, OSError, KeyError, TypeError) as error:
+            self.send(json.dumps({'error': str(error)}).encode('utf-8'), 'application/json', 400)
 
     def do_GET(self):
         port = self.server.server_port

@@ -1,3 +1,14 @@
+figure.diagram { margin: 1.4em 0; padding: 18px; border: 1px solid #3d59a1; border-radius: 12px; background: #16161e; }
+.diagram-output { overflow: auto; min-height: 50px; text-align: center; color: #9aa5ce; }
+.diagram-output svg, .diagram-output img { max-width: 100%; height: auto; }
+figure.diagram details { margin-top: 12px; font-size: .85em; }
+figure.diagram summary { cursor: pointer; color: #7aa2f7; }
+figure.diagram pre { margin-bottom: 0; }
+.diagram-error { border-color: #f7768e; }
+.diagram-error .diagram-output { color: #f7768e; }
+img.image-align-center { display: block; margin-left: auto; margin-right: auto; }
+img.image-align-left { display: block; margin-right: auto; }
+img.image-align-right { display: block; margin-left: auto; }
 :root {
   color-scheme: dark;
   --bg: #1a1b26; --panel: #16161e; --surface: #24283b; --fg: #c0caf5;

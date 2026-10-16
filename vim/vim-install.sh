@@ -14,6 +14,7 @@ config_files=(
     tasks.vim
     session.vim
     tools.vim
+    which-key.vim
     dashboard.vim
     lsp.vim
     context.vim
@@ -25,6 +26,9 @@ config_files=(
     edit.vim
     markdown.vim
     markdown-view.vim
+    markdown-notes.vim
+    markdown-snippets.vim
+    markdown-images.vim
     pins.vim
     completion.vim
     matchparen.vim
@@ -47,9 +51,17 @@ plugin_files=(
     vendor/vim-lsp/LICENSE
     vendor/vim-lsp/LICENSE-THIRD-PARTY
     vendor/vim-lsp/SOURCE.md
+    vendor/vim-vsnip/plugin/vsnip.vim
+    vendor/vim-vsnip/autoload/vsnip.vim
+    vendor/vim-vsnip/LICENSE
+    vendor/vim-vsnip/SOURCE.md
+    vendor/vim-vsnip/manifest.json
 )
 markdown_files=(
     markdown/preview.py
+    markdown/images.py
+    markdown/diagrams.py
+    markdown/snippets/markdown.json
     markdown/index.html
     markdown/preview.js
     markdown/preview.css
@@ -61,6 +73,10 @@ markdown_files=(
     markdown/vendor/LICENSE.highlight.js
     markdown/vendor/LICENSE.katex
     markdown/vendor/manifest.json
+    markdown/vendor/mermaid.min.js
+    markdown/vendor/plantuml.jar
+    markdown/vendor/LICENSE.mermaid
+    markdown/vendor/LICENSE.plantuml
     markdown/vendor/fonts/KaTeX_Main-Regular.woff2
 )
 
@@ -233,6 +249,7 @@ install_entry() {
 }
 
 install_entry "$script_dir/vendor/vim-lsp" "$install_target/.vim/vendor/vim-lsp"
+install_entry "$script_dir/vendor/vim-vsnip" "$install_target/.vim/vendor/vim-vsnip"
 install_entry "$script_dir/markdown" "$install_target/.vim/markdown"
 install_entry "$script_dir/.vimrc" "$install_target/.vimrc"
 for name in "${config_files[@]}"; do

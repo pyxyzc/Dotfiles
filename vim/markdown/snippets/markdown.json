@@ -1,0 +1,101 @@
+{
+  "Document title": {
+    "prefix": "title",
+    "body": [
+      "# ${1:标题}",
+      "",
+      "${0}"
+    ]
+  },
+  "Heading 1": {
+    "prefix": "h1",
+    "body": "# ${1:标题}$0"
+  },
+  "Heading 2": {
+    "prefix": "h2",
+    "body": "## ${1:标题}$0"
+  },
+  "Heading 3": {
+    "prefix": "h3",
+    "body": "### ${1:标题}$0"
+  },
+  "Heading 4": {
+    "prefix": "h4",
+    "body": "#### ${1:标题}$0"
+  },
+  "Code block": {
+    "prefix": [
+      "code",
+      "fence"
+    ],
+    "body": [
+      "```${1:python}",
+      "${2}",
+      "```",
+      "$0"
+    ]
+  },
+  "Link": {
+    "prefix": "link",
+    "body": "[${1:文字}](${2:url})$0"
+  },
+  "Image": {
+    "prefix": "image",
+    "body": "![${1:描述}](imgs/${2:image.png})$0"
+  },
+  "Callout": {
+    "prefix": "note",
+    "body": [
+      "> [!${1:NOTE}] ${2:标题}",
+      "> ${3:内容}",
+      "$0"
+    ]
+  },
+  "Task": {
+    "prefix": "task",
+    "body": "- [ ] ${1:任务}$0"
+  },
+  "Table": {
+    "prefix": "table",
+    "body": [
+      "| ${1:标题} | ${2:标题} |",
+      "| --- | --- |",
+      "| ${3} | ${4} |",
+      "$0"
+    ]
+  },
+  "Inline math": {
+    "prefix": "mk",
+    "body": "\\$${1}\\$$0"
+  },
+  "Display math": {
+    "prefix": "dm",
+    "body": [
+      "\\$\\$",
+      "${1}",
+      "\\$\\$",
+      "$0"
+    ]
+  },
+  "Mermaid": {
+    "prefix": "mermaid",
+    "body": [
+      "```mermaid",
+      "flowchart ${1:LR}",
+      "    ${2:A}[${3:开始}] --> ${4:B}[${5:结束}]",
+      "```",
+      "$0"
+    ]
+  },
+  "PlantUML": {
+    "prefix": "plantuml",
+    "body": [
+      "```plantuml",
+      "@startuml",
+      "${1:Alice} -> ${2:Bob}: ${3:Hello}",
+      "@enduml",
+      "```",
+      "$0"
+    ]
+  }
+}

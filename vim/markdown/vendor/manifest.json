@@ -18,6 +18,18 @@
     "integrity": "sha512-XCHRdUw4lf3SKBaJe4EvgqIuWwkPSo9XoeO8GjQW94Bp7TWv9hNhzZjZ+OH9yf1UmLygb7DIT5GSFQiyt16zYg=="
   },
   {
+    "package": "mermaid",
+    "version": "12.2.0",
+    "tarball": "https://registry.npmjs.org/mermaid/-/mermaid-12.2.0.tgz",
+    "integrity": "sha512-w7nr/SFrLO7BaVTs3dQTvYSV6nYSBj0Yy9DjBhsIJtAcHqRzXSq4Pg32ujHZ/AdWsAMNEvvhbm5dt9E2tOiHzw=="
+  },
+  {
+    "package": "plantuml-mit",
+    "version": "1.2026.8",
+    "url": "https://github.com/plantuml/plantuml/releases/download/v1.2026.8/plantuml-mit-1.2026.8.jar",
+    "integrity": "sha256:3629c9cd017c7f73e6450396eea0040216c7e1eef8473ce33cc1aad469dab2f9"
+  },
+  {
     "files": {
       "LICENSE.highlight.js": "6c081431591d9df696c82dc598fe1423765b8a299b200ed00b281afd0f64c490",
       "LICENSE.katex": "766ccc1f306c885aa45542a9846bbd0a505b27a0374f146778171c2254ce18e3",
@@ -45,7 +57,11 @@
       "highlight.min.js": "c4a399dd6f488bc97a3546e3476747b3e714c99c57b9473154c6fb8d259b9381",
       "katex.min.css": "b075123b50e51a0a7819b49efa2a62bb05bc7dac04b0d65a9a3799c2211ea48f",
       "katex.min.js": "e8d885505949f3a5f4abdd5dd0d53696bd1371ad26ffbf4f310dcd77c8cdae89",
-      "markdown-it.min.js": "38c70a1e7ca91ab40e2d9e6e60129851a717ed1c7d4acbbdd41bf9503791cf68"
+      "markdown-it.min.js": "38c70a1e7ca91ab40e2d9e6e60129851a717ed1c7d4acbbdd41bf9503791cf68",
+      "mermaid.min.js": "a8a6a6f805b074a8261a2825c86f99c8054acb3b35f50bb7e24a4f9f2c3c3b9f",
+      "LICENSE.mermaid": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
+      "plantuml.jar": "3629c9cd017c7f73e6450396eea0040216c7e1eef8473ce33cc1aad469dab2f9",
+      "LICENSE.plantuml": "d37d0aca1a09630ef2cf6b6cf59ff17fc4035347eae8004b8508d6e373c83f29"
     }
   }
 ]
