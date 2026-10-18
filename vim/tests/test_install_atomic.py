@@ -39,9 +39,13 @@ class AtomicInstallTests(unittest.TestCase):
     def test_file_move_failure_keeps_original_config(self):
         config = self.target / '.vimrc'
         config.write_text('old configuration\n')
+        obsolete = self.target / '.vim/which-key.vim'
+        obsolete.parent.mkdir()
+        obsolete.write_text('old module\n')
         result = self.install(config)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(config.read_text(), 'old configuration\n')
+        self.assertEqual(obsolete.read_text(), 'old module\n')
         self.assertFalse(list(self.target.rglob('*.tmp.*')))
 
     def test_directory_move_failure_restores_old_plugin(self):

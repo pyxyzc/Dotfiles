@@ -383,8 +383,4 @@ if has('terminal')
 endif
 
 call s:SourceLocalConfig('mappings')
-" 前缀提示最后接线，以实际默认键位和个人键位生成缓存。
-if !s:SourceModule('which-key.vim')
-  call s:Warn('missing which-key.vim; copy the complete vim directory')
-endif
 silent doautocmd <nomodeline> User VimrcLiteReady

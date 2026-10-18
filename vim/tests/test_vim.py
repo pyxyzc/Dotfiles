@@ -2622,7 +2622,7 @@ call assert_equal([], popup_list())
                      'buffers.vim', 'edit.vim', 'markdown.vim', 'markdown-view.vim',
                      'markdown-notes.vim', 'markdown-snippets.vim', 'markdown-images.vim',
                      'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
-                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'which-key.vim', 'pins.vim'):
+                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim'):
             shutil.copyfile(ROOT / name, config / name)
         # Simulate a Vim without popup windows while exercising the actual split implementation.
         (config / 'search.vim').write_text((ROOT / 'search.vim').read_text().replace(
@@ -3179,11 +3179,14 @@ class InstallerTests(unittest.TestCase):
         modules = [self.target / '.vim' / name for name in
                    ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim',
                     'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
-                    'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'which-key.vim', 'pins.vim')]
+                    'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim')]
         for module in modules:
             module.write_text('" old module\n')
+        obsolete = self.target / '.vim' / 'which-key.vim'
+        obsolete.write_text('" retired module\n')
         (colors / "unrelated.vim").write_text('" leave alone\n')
         self.install("--config-only")
+        self.assertFalse(obsolete.exists())
         self.assertEqual(external.read_text(), '" original\n')
         self.assertEqual(list(self.target.glob(".vimrc.bak.*")), [])
         self.assertFalse((self.target / ".vimrc").is_symlink())
@@ -3194,7 +3197,7 @@ class InstallerTests(unittest.TestCase):
                      'markdown.vim', 'markdown-view.vim', 'markdown-notes.vim',
                      'markdown-snippets.vim', 'markdown-images.vim',
                      'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
-                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'which-key.vim', 'pins.vim'):
+                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), [])
         for module in modules:
@@ -3230,7 +3233,10 @@ class InstallerTests(unittest.TestCase):
              '-c', 'qa!'], capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        obsolete.symlink_to(external)
         self.install("--config-only")
+        self.assertFalse(obsolete.is_symlink())
+        self.assertEqual(external.read_text(), '" original\n')
         self.assertEqual(list(self.target.glob(".vimrc.bak.*")), [])
         self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), [])
         for module in modules:

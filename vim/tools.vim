@@ -1,4 +1,6 @@
 " 按需展示快捷键和环境状态，不运行版本探测进程或项目任务。
+unlet! s:labels
+
 function! s:Show(title, lines) abort
   botright new
   setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile noundofile
@@ -77,16 +79,19 @@ function! s:KeyLabels() abort
         \ 'gcc': '切换行注释 / comment line', '<C-W>': '关闭 buffer / close buffer',
         \ 'H': '上一个 buffer / previous buffer', 'L': '下一个 buffer / next buffer',
         \ '[c': '上一个 Git hunk / previous hunk', ']c': '下一个 Git hunk / next hunk',
-        \ '[q': '上一个 quickfix 结果 / previous result', ']q': '下一个 quickfix 结果',
-        \ '[h': '上一个 Markdown 标题 / previous heading', ']h': '下一个 Markdown 标题',
+        \ '[q': '上一个 quickfix 结果 / previous result', ']q': '下一个 quickfix 结果 / next result',
+        \ '[h': '上一个 Markdown 标题 / previous heading', ']h': '下一个 Markdown 标题 / next heading',
         \ '[d': '上一个诊断 / previous diagnostic', ']d': '下一个诊断 / next diagnostic',
         \ ' e': '开关文件树 / toggle tree', ' bn': '新建 buffer / new buffer',
         \ ' bp': '选择 buffer / select buffer', ' bD': '清空 buffer 或选区 / clear',
-        \ ' bw': '去除行尾空白 / trim whitespace', ' fh': '清除搜索高亮',
-        \ ' v': '垂直分屏', ' q': '关闭窗口 / quit',
-        \ ' an': '新建标签页', ' aN': '复制到新标签页',
-        \ ' ah': '标签页左移', ' al': '标签页右移', ' ao': '只保留当前标签页',
-        \ ' nh': '查看消息 / messages', 'q': '普通模式禁用宏录制；辅助窗口关闭',
+        \ ' bw': '去除行尾空白 / trim whitespace', ' fh': '清除搜索高亮 / clear search',
+        \ ' ca': '代码操作 / code action', ' cf': '格式化 / format',
+        \ ' xQ': 'Quickfix 列表 / quickfix list', ' xL': '位置列表 / location list',
+        \ ' v': '垂直分屏 / vertical split', ' q': '关闭窗口 / close window',
+        \ ' an': '新建标签页 / new tab', ' aN': '复制到新标签页 / duplicate tab',
+        \ ' ah': '标签页左移 / move tab left', ' al': '标签页右移 / move tab right',
+        \ ' ao': '只保留当前标签页 / close other tabs',
+        \ ' nh': '查看消息 / messages', 'q': '普通模式禁用宏录制；辅助窗口关闭 / close panel',
         \ '<C-H>': '左侧窗口 / focus left', '<C-J>': '下方窗口 / focus down',
         \ '<C-K>': '上方窗口 / focus up', '<C-L>': '右侧窗口 / focus right',
         \ }
@@ -97,14 +102,14 @@ function! s:KeyLabels() abort
         \ 'Hidden': '显示隐藏文件 / hidden files', 'FocusRight': '右侧窗口 / focus right'}
 endfunction
 
-function! VimKeyDescription(mapping) abort
+function! s:KeyDescription(mapping) abort
   call s:KeyLabels()
   let command = matchstr(a:mapping.rhs, '\<\%(Vim[A-Za-z]*\|wall\)\>')
   let key = get(a:mapping, 'lhsraw', a:mapping.lhs)
   let description = get(s:key_labels, key, get(s:key_labels, a:mapping.lhs,
         \ get(s:labels, command, a:mapping.rhs)))
   if key =~# '^ [1-9]$'
-    let description = '切换 Buffer ' . key[1]
+    let description = '切换 Buffer ' . key[1] . ' / Buffer ' . key[1]
   endif
   if get(a:mapping, 'buffer', 0) && &filetype ==# 'netrw'
     let action = matchstr(a:mapping.rhs, '_\zs[A-Za-z]\+\ze'')')
@@ -122,13 +127,11 @@ function! s:Keys(query) abort
   endfor
   if exists('*maplist')
     for mapping in maplist()
-      if mapping.rhs =~# '\%(<SID>\|<SNR>\d\+_\)\%(Prefix(\|Escape(\|Cancel()\)'
-            \ || mapping.lhs =~? '^<Plug>'
-            \ || mapping.rhs =~# '^<Plug>'
+      if mapping.lhs =~? '^<Plug>' || mapping.rhs =~# '^<Plug>'
             \ && index(['gd', 'gr', 'K'], mapping.lhs) < 0
         continue
       endif
-      let description = VimKeyDescription(mapping)
+      let description = s:KeyDescription(mapping)
       let key = substitute(mapping.lhs, '^ ', '<Space>', '')
       let mode = mapping.mode ==# ' ' ? 'n' : mapping.mode[0]
       let effective = maparg(mapping.lhs, mode, 0, 1)
@@ -183,11 +186,6 @@ function! s:Health() abort
   call add(lines, 'Markdown: native reading/editing; browser preview '
         \ . (executable('python3') && has('job') && has('channel') && has('timers')
         \ ? 'available (offline assets)' : 'needs python3 +job +channel +timers'))
-  if exists('*VimWhichKeyStatus')
-    let keys = VimWhichKeyStatus()
-    call add(lines, 'Which-key: ' . (!keys.supported ? 'needs popup/maplist/SafeState'
-          \ : keys.enabled ? 'enabled; delayed prefix hints' : 'disabled'))
-  endif
   call add(lines, 'Markdown snippets: bundled vim-vsnip; Tab / Shift-Tab')
   let java = executable('java') || !empty($VIM_MARKDOWN_JAVA)
         \ || !empty(glob('~/.local/share/vim-lite/java/usr/lib/jvm/*/bin/java'))

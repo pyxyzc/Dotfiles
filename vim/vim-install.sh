@@ -14,7 +14,6 @@ config_files=(
     tasks.vim
     session.vim
     tools.vim
-    which-key.vim
     dashboard.vim
     lsp.vim
     context.vim
@@ -259,4 +258,10 @@ for source in "$script_dir"/colors/*; do
     [[ -f "$source" ]] || continue
     install_entry "$source" "$install_target/.vim/colors/$(basename -- "$source")"
 done
+# Remove the retired module only after the replacement configuration is installed.
+obsolete_module="$install_target/.vim/which-key.vim"
+if [[ -f "$obsolete_module" || -L "$obsolete_module" ]]; then
+    rm -f -- "$obsolete_module"
+    printf '已删除旧模块：%s\n' "$obsolete_module"
+fi
 printf '\n完成。运行 vim 即可；目标目录：%s\n' "$install_target"

@@ -300,6 +300,13 @@ call assert_equal(origin, win_getid())
     def test_health_and_key_query_and_reload(self):
         self.vim(r'''
 let origin = win_getid()
+call assert_equal(0, exists(':VimWhichKey'))
+call assert_equal(0, exists('*VimWhichKeyStatus'))
+for mode in ['n', 'x']
+  for prefix in [' ', ' b', ' c', ' m']
+    call assert_equal({}, maparg(prefix, mode, 0, 1))
+  endfor
+endfor
 VimKeys rename
 call assert_match('符号重命名', join(getline(1, '$'), "\n"))
 call assert_match('<Space>rn', join(getline(1, '$'), "\n"))
@@ -315,6 +322,8 @@ call assert_match('Undo:', join(getline(1, '$'), "\n"))
 call assert_match('missing executable:', join(getline(1, '$'), "\n"))
 call feedkeys('q', 'xt')
 source ''' + str(ROOT / '.vimrc') + r'''
+call assert_equal({}, maparg(' ', 'n', 0, 1))
+call assert_equal({}, maparg(' ', 'x', 0, 1))
 call assert_equal(2, exists(':VimTask'))
 call assert_equal(2, exists(':VimSessionSave'))
 call assert_true(&undofile)

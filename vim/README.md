@@ -30,8 +30,7 @@ buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等�
 `git.vim` 提供 Git hunk 跳转和 LazyGit 入口，`terminal.vim` 统一管理 LazyGit 和普通
 shell 的终端退出清理；`textobjects.vim` 为 Python、C/C++/CUDA 提供轻量结构文本对象。
 `project.vim` 提供项目定位和持久撤销目录，`tasks.vim` 异步运行项目任务，
-`session.vim` 手动保存和恢复会话，`tools.vim` 提供快捷键查询及环境检查；
-`which-key.vim` 在按键前缀停顿时显示后续键位。
+`session.vim` 手动保存和恢复会话，`tools.vim` 提供快捷键查询及环境检查。
 
 ## Vimscript 代码风格
 
@@ -937,38 +936,6 @@ pin 随上方插删行移动；替换该行文字仍保留 pin。删除整行时
 未保存内容不包含在会话里，应单独保存文件。不同项目与 Python 环境继续使用独立 Vim。
 
 ## 快捷键查询与环境检查
-
-默认启用类似 [which-key.nvim](https://github.com/folke/which-key.nvim) 的原生 Vim 前缀提示。
-在普通或选区模式按空格，停顿 200 ms 后，底部显示当前模式可用的后续键；继续按 `b`、
-`c`、`f`、`m` 等进入分组。展开后持续等待选择，完成组合键后执行原映射，`Esc` 取消。
-快速连按直接执行。面板铺满终端底部，使用独立的 TokyoNight 背景、按键与分组颜色；
-切换分组复用窗口并保留已展开的高度，终端大小变化时重新排版。Markdown 等 buffer
-的局部键位优先。窄屏或条目较多时可用 `Ctrl-D` / `Ctrl-U` 翻页；已有同名映射优先。
-
-```vim
-" ~/.vim/settings.vim：提示延迟（毫秒），不改变映射的 timeoutlen。
-let g:vimrc_lite_which_key_delay = 200
-" 设为 0 可关闭自动前缀提示。
-let g:vimrc_lite_which_key = 1
-" 默认只提示 leader；可为其他尚未绑定完整命令的前缀启用提示。
-let g:vimrc_lite_which_key_triggers = ['<leader>', 'g', '[', ']']
-" 自定义描述使用完整按键名；默认 leader 为空格。
-let g:vimrc_lite_which_key_labels = {'<Space>ff': '查找项目文件'}
-```
-
-`:VimWhichKey` 立即进入 leader 提示，`:VimWhichKey <leader>b` 直接进入 Buffer 分组；
-`:VimWhichKeyDisable` / `:VimWhichKeyEnable` 临时关闭或启用。个人映射在加载配置时自动
-收集，切换文件类型也会更新；运行时增加、删除映射或修改描述后执行 `:VimWhichKeyRefresh`。
-提示只列出实际映射，不包含尚未配置的 Vim 内置命令。已有完整前缀映射不会被覆盖。
-
-展开前仍遵循原生映射超时；若 `timeoutlen` 比提示延迟短，映射可能在提示显示前就已
-超时。面板展开后临时暂停 `timeout`，完成、取消、切换窗口、关闭功能或重载时恢复；
-不修改 `timeoutlen`、`ttimeout` 或 `ttimeoutlen`。输入仍由 Vim 解析，保留计数、
-寄存器、表达式和递归映射；宏录制／回放
-不启动提示计时器。没有常驻轮询、逐字符扫描或外部进程，映射和菜单按 buffer 缓存，
-只在前缀停顿后创建浮窗。Esc 沿用终端序列的解析时间，并支持方向键序列分片到达。
-需要 `popup_create()`、`maplist()`、定时器和 `SafeState`；功能不足时保留下面的查询入口。
-实测时延和复测命令见 [PERFORMANCE.md](PERFORMANCE.md)。
 
 `<leader>?` / `:VimKeys` 查看实际映射；`:VimKeys rename`、`:VimKeys 搜索` 可按
 按键、功能或命令过滤。支持对应功能时，还显示当前 buffer 的结构文本对象映射。
