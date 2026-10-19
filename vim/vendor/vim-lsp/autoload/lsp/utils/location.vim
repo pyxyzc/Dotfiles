@@ -75,29 +75,33 @@ function! s:lsp_location_item_to_vim(loc, cache) abort
     endif
 
     let l:path = lsp#utils#uri_to_path(l:uri)
-    let l:loc_range = lsp#utils#range#lsp_to_vim_loc(l:path, l:range)
-
-    let l:index = l:loc_range['lnum'] - 1
-    if has_key(a:cache, l:path)
-        let l:text = a:cache[l:path][l:index]
-    else
+    if !has_key(a:cache, l:path)
         let l:contents = getbufline(l:path, 1, '$')
-        if !empty(l:contents)
-            let l:text = get(l:contents, l:index, '')
-        else
+        if empty(l:contents)
             let l:contents = readfile(l:path)
-            let a:cache[l:path] = l:contents
-            let l:text = get(l:contents, l:index, '')
         endif
+        let a:cache[l:path] = l:contents
     endif
+    " One response owns one snapshot per file, including unsaved buffer text.
+    " Convert both UTF-16 columns from that snapshot instead of rereading files.
+    let l:start = l:range['start']
+    let l:end = l:range['end']
+    let l:text = get(a:cache[l:path], l:start.line, '')
+    let l:loc_range = {
+        \ 'lnum': l:start.line + 1,
+        \ 'col': lsp#utils#utf16#byteidx(l:text, l:start.character) + 1,
+        \ 'end_lnum': l:end.line + 1,
+        \ 'end_col': lsp#utils#utf16#byteidx(
+        \     get(a:cache[l:path], l:end.line, ''), l:end.character) + 1,
+        \ }
 
     if l:use_link
         " viewstart/end decremented to account for incrementing in _lsp_to_vim
         return extend({
             \ 'filename': l:path,
             \ 'text': l:text,
-            \ 'viewstart': lsp#utils#position#lsp_to_vim(l:path, a:loc['targetRange']['start'])[0] - 1,
-            \ 'viewend': lsp#utils#position#lsp_to_vim(l:path, a:loc['targetRange']['end'])[0] - 1,
+            \ 'viewstart': a:loc['targetRange']['start']['line'],
+            \ 'viewend': a:loc['targetRange']['end']['line'],
             \ }, l:loc_range)
     else
         return extend({
@@ -110,10 +114,11 @@ endfunction
 " @summary Use this to convert loc to vim list that is compatible with
 " quickfix and locllist items
 " @param loc = v:null | Location | Location[] | LocationLink
+" @param cache? = {} shared only within the current response
 " @returns []
-function! lsp#utils#location#_lsp_to_vim_list(loc) abort
+function! lsp#utils#location#_lsp_to_vim_list(loc, ...) abort
     let l:result = []
-    let l:cache = {}
+    let l:cache = a:0 ? a:1 : {}
     if empty(a:loc) " v:null
         return l:result
     elseif type(a:loc) == type([]) " Location[]

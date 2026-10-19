@@ -59,6 +59,48 @@ class LspFixture(VimSession):
         return values if method is None else [value for value in values if value.get('method') == method]
 
 
+class LspLocationTests(VimSession):
+    def test_location_snapshots_preserve_unicode_unsaved_text_and_links(self):
+        source = self.work / 'locations 中文.py'
+        source.write_text('🙂é中target\n\n🙂é中target\n')
+        self.vim(r'''
+let path = ''' + quoted(source) + r'''
+let uri = lsp#utils#path_to_uri(path)
+let selection = {'start': {'line': 0, 'character': 5},
+      \ 'end': {'line': 0, 'character': 11}}
+let location = {'uri': uri, 'range': selection}
+let link = {'targetUri': uri, 'targetSelectionRange': selection,
+      \ 'targetRange': {'start': {'line': 0, 'character': 0},
+      \ 'end': {'line': 2, 'character': 11}}}
+let multiline = {'uri': uri, 'range': {'start': {'line': 0, 'character': 5},
+      \ 'end': {'line': 1, 'character': 0}}}
+call assert_false(bufloaded(path))
+let items = lsp#utils#location#_lsp_to_vim_list([
+      \ location, link, multiline, {'uri': 'https://example.invalid', 'range': selection}])
+call assert_equal(3, len(items))
+call assert_equal([1, 11, 1, 17], [items[0].lnum, items[0].col,
+      \ items[0].end_lnum, items[0].end_col])
+call assert_equal('🙂é中target', items[0].text)
+call assert_equal([0, 2], [items[1].viewstart, items[1].viewend])
+call assert_equal([2, 1], [items[2].end_lnum, items[2].end_col])
+call assert_false(bufloaded(path), 'conversion must not load a hidden buffer')
+call writefile(['HELLOtarget'], path)
+let item = lsp#utils#location#_lsp_to_vim_list(location)[0]
+call assert_equal(['HELLOtarget', 6, 12], [item.text, item.col, item.end_col])
+execute 'edit ' . fnameescape(path)
+call setline(1, '🙂é中target unsaved')
+let items = lsp#utils#location#_lsp_to_vim_list([location, location])
+call assert_equal(items[0], items[1])
+call assert_equal(['🙂é中target unsaved', 11, 17],
+      \ [items[0].text, items[0].col, items[0].end_col])
+call setline(1, 'HELLOtarget changed again')
+let item = lsp#utils#location#_lsp_to_vim_list(location)[0]
+call assert_equal(['HELLOtarget changed again', 6], [item.text, item.col])
+call assert_true(&modified)
+call assert_equal(['HELLOtarget'], readfile(path))
+''')
+
+
 class LspTests(LspFixture):
     def test_indicator_startup_ready_and_statusline(self):
         delayed = self.command + ['--initialize-delay-ms', '700']

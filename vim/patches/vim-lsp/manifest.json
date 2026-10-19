@@ -15,6 +15,10 @@
     {
       "path": "patches/vim-lsp/0001-vim-lite.patch",
       "sha256": "04846b5ea737e1ecd6c324495ab8ed7dbd90e01ed05919a049b3d9d780dcff64"
+    },
+    {
+      "path": "patches/vim-lsp/0002-location-snapshot.patch",
+      "sha256": "14654270d7634f5a3aca3e9c2cb48dd069a9ba88247d5396d578462bb933398b"
     }
   ]
 }

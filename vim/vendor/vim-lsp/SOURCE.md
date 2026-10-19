@@ -8,6 +8,18 @@
 - 上述 SHA-256 对应原始上游归档；当前快照额外包含下列本地补丁，不再宣称完全原样。
 - 服务器配置适配位于上两级的 `lsp.vim`；上游许可证及未列出的源码保持不变。
 
+## 本地补丁：批量位置转换（2026-10-19）
+
+`autoload/lsp/utils/location.vim` 在单次响应内为每个文件保留一份文本快照，
+同时转换 UTF-16 起止列与列表文字；符号与诊断列表也在单次转换内共享快照。
+已加载文件使用未保存的 buffer 内容，
+未加载文件只读取一次；下一次响应重新读取，避免缓存过期。LocationLink 的
+显示行范围直接读取协议行号，省去无用的列转换。
+
+补丁保存在 `patches/vim-lsp/0002-location-snapshot.patch`，校验信息见 manifest。
+`tests/test_lsp.py` 验证 Unicode、组合字符、未保存内容、跨行范围和 LocationLink；
+`tests/lsp_locations_latency.py` 通过模拟 LSP 的真实请求测量批量引用列表就绪时间。
+
 ## 本地补丁：UTF-16 边界转换（2026-09-28）
 
 本配置沿用 LSP 默认 UTF-16 位置编码，不协商 UTF-8 或 UTF-32。

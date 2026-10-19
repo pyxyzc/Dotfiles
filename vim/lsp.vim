@@ -881,18 +881,47 @@ function! s:LocationOrder(first, second) abort
         \ : get(a:first, 'col', 1) - get(a:second, 'col', 1)
 endfunction
 
+" 每个路径只规范化一次；原生字符串排序处理行列号，避免比较器反复查询文件系统。
+function! s:SortLocations(items) abort
+  let paths = {}
+  let files = {}
+  for index in range(len(a:items))
+    let item = a:items[index]
+    let name = get(item, 'filename', bufname(get(item, 'bufnr', 0)))
+    if !has_key(paths, name)
+      let paths[name] = resolve(fnamemodify(name, ':p'))
+    endif
+    let path = paths[name]
+    if !has_key(files, path)
+      let files[path] = []
+    endif
+    call add(files[path], printf('%020d:%020d:%020d', item.lnum, get(item, 'col', 1), index))
+  endfor
+  let result = []
+  for path in sort(keys(files))
+    for key in sort(files[path])
+      call add(result, a:items[str2nr(strpart(key, 42))])
+    endfor
+  endfor
+  return result
+endfunction
+
 function! s:LocationsResult(context, result) abort
   let items = []
   let seen = {}
+  let paths = {}
   for item in lsp#utils#location#_lsp_to_vim_list(a:result)
-    let key = string([resolve(item.filename), item.lnum, item.col,
+    if !has_key(paths, item.filename)
+      let paths[item.filename] = resolve(item.filename)
+    endif
+    let key = string([paths[item.filename], item.lnum, item.col,
           \ get(item, 'end_lnum', 0), get(item, 'end_col', 0)])
     if !has_key(seen, key)
       let seen[key] = 1
       call add(items, item)
     endif
   endfor
-  call sort(items, function('s:LocationOrder'))
+  let items = s:SortLocations(items)
   if empty(items)
     echom 'Vim LSP: no ' . a:context.operation . ' found'
     return
@@ -1099,7 +1128,7 @@ function! s:Signature() abort
   endif
 endfunction
 
-function! s:SymbolItems(context, symbols, depth) abort
+function! s:SymbolItems(context, symbols, depth, cache) abort
   let items = []
   for symbol in a:symbols
     let location = get(symbol, 'location', {'uri': a:context.uri,
@@ -1107,24 +1136,24 @@ function! s:SymbolItems(context, symbols, depth) abort
     if !has_key(location, 'range')
       continue
     endif
-    let converted = lsp#utils#location#_lsp_to_vim_list(location)
+    let converted = lsp#utils#location#_lsp_to_vim_list(location, a:cache)
     for item in converted
       let item.text = repeat('  ', a:depth) . symbol.name . ' ['
             \ . lsp#ui#vim#utils#_get_symbol_text_from_kind(a:context.server, symbol.kind) . ']'
       call add(items, item)
     endfor
-    let items += s:SymbolItems(a:context, get(symbol, 'children', []), a:depth + 1)
+    let items += s:SymbolItems(a:context, get(symbol, 'children', []), a:depth + 1, a:cache)
   endfor
   return items
 endfunction
 
 function! s:SymbolsResult(context, result) abort
-  let items = s:SymbolItems(a:context, empty(a:result) ? [] : a:result, 0)
+  let items = s:SymbolItems(a:context, empty(a:result) ? [] : a:result, 0, {})
   if empty(items)
     echom 'Vim LSP: no symbols found'
     return
   endif
-  call sort(items, function('s:LocationOrder'))
+  let items = s:SortLocations(items)
   call s:OpenReferences(a:context, items, 'symbols')
 endfunction
 
@@ -1173,6 +1202,7 @@ function! s:DiagnosticItems(project) abort
   endif
   let current_uri = lsp#utils#normalize_uri(lsp#utils#get_buffer_uri(buffer))
   let items = []
+  let cache = {}
   for [uri, servers] in items(
         \ lsp#internal#diagnostics#state#_get_all_diagnostics_grouped_by_uri_and_server())
     if !a:project && uri !=# current_uri
@@ -1184,7 +1214,7 @@ function! s:DiagnosticItems(project) abort
       endif
       for diagnostic in get(get(response, 'params', {}), 'diagnostics', [])
         let locations = lsp#utils#location#_lsp_to_vim_list(
-              \ {'uri': uri, 'range': diagnostic.range})
+              \ {'uri': uri, 'range': diagnostic.range}, cache)
         if !empty(locations)
           let item = locations[0]
           let item.text = get(diagnostic, 'message', '')
@@ -1196,7 +1226,7 @@ function! s:DiagnosticItems(project) abort
       endfor
     endfor
   endfor
-  return sort(items, function('s:LocationOrder'))
+  return s:SortLocations(items)
 endfunction
 
 function! s:DiagnosticHighlights() abort
