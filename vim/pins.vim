@@ -329,13 +329,18 @@ function! s:Attach(buffer, root, path, records) abort
   if !empty(a:records)
     let lines = getbufline(a:buffer, 1, '$')
     let hash = sha256(join(lines, "\n"))
-    for index in range(len(lines))
-      let text = lines[index]
-      if !has_key(candidates, text)
-        let candidates[text] = []
+    " 未变文件直接使用原行号；重定位只索引实际待查的文字，避免为全文分配字典。
+    for record in a:records
+      if record.hash !=# hash || record.line > len(lines)
+            \ || lines[record.line - 1] !=# record.text
+        let candidates[record.text] = []
       endif
-      call add(candidates[text], index + 1)
     endfor
+    if !empty(candidates)
+      for index in filter(range(len(lines)), 'has_key(candidates, lines[v:val])')
+        call add(candidates[lines[index]], index + 1)
+      endfor
+    endif
   endif
   for record in a:records
     let id = string(s:next_id)
