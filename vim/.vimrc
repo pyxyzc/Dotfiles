@@ -86,7 +86,6 @@ set number relativenumber cursorline
 set laststatus=2 showmode showcmd
 " 窄分屏优先显示文件名、作用域和位置；语言与服务器信息留给较宽窗口。
 let &statusline = '%1* %n %* %<%f%{exists("*VimContextLabel") ? VimContextLabel() : ""} %m%r%h %='
-      \ . '%{exists("*VimMarkdownStatusLabel") ? VimMarkdownStatusLabel() : ""} '
       \ . '%{exists("*VimTreeStatusLabel") ? VimTreeStatusLabel() : ""}'
       \ . '%{winwidth(0) < 60 ? "" : exists("*VimLspStatusLabel") ? VimLspStatusLabel() : '
       \ . 'empty(&filetype) ? "" : "[lang: " . &filetype . "]"} %2* %l:%c %* %p%% '
@@ -229,11 +228,6 @@ endif
 " 编辑辅助模块：清空、去空白、注释切换。
 if !s:SourceModule('edit.vim')
   call s:Warn('missing edit.vim; copy the complete vim directory')
-endif
-
-" Markdown 编辑、TokyoNight 阅读视图与离线浏览器预览。
-if !s:SourceModule('markdown.vim')
-  call s:Warn('missing markdown.vim; copy the complete vim directory')
 endif
 
 " 持久化行级 pin，复用项目状态目录。

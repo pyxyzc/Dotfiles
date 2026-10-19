@@ -2619,8 +2619,7 @@ call assert_equal([], popup_list())
         config = self.work / 'fallback config'
         config.mkdir()
         for name in ('.vimrc', 'search.sh', 'search.awk', 'search-preview.awk', 'dashboard.vim', 'tree.vim',
-                     'buffers.vim', 'edit.vim', 'markdown.vim', 'markdown-view.vim',
-                     'markdown-notes.vim', 'markdown-snippets.vim', 'markdown-images.vim',
+                     'buffers.vim', 'edit.vim',
                      'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
                      'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim', 'ui.vim'):
             shutil.copyfile(ROOT / name, config / name)
@@ -3194,8 +3193,6 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(dashboard.read_bytes(), (ROOT / 'dashboard.vim').read_bytes())
         for name in ('search.vim', 'search.sh', 'search.awk', 'search-preview.awk', 'lsp.vim', 'clipboard.vim',
                      'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim', 'edit.vim',
-                     'markdown.vim', 'markdown-view.vim', 'markdown-notes.vim',
-                     'markdown-snippets.vim', 'markdown-images.vim',
                      'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
                      'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim', 'ui.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
@@ -3205,16 +3202,6 @@ class InstallerTests(unittest.TestCase):
         for source in (ROOT / "colors").iterdir():
             self.assertEqual((colors / source.name).read_bytes(), source.read_bytes())
         plugin = self.target / '.vim' / 'vendor' / 'vim-lsp'
-        for source in (ROOT / 'vendor/vim-vsnip').rglob('*'):
-            if source.is_file():
-                relative = source.relative_to(ROOT / 'vendor/vim-vsnip')
-                self.assertEqual((self.target / '.vim/vendor/vim-vsnip' / relative).read_bytes(),
-                                 source.read_bytes())
-        markdown = self.target / '.vim' / 'markdown'
-        for source in (ROOT / 'markdown').rglob('*'):
-            if source.is_file():
-                relative = source.relative_to(ROOT / 'markdown')
-                self.assertEqual((markdown / relative).read_bytes(), source.read_bytes())
         for source in (ROOT / 'vendor' / 'vim-lsp').rglob('*'):
             if source.is_file():
                 relative = source.relative_to(ROOT / 'vendor' / 'vim-lsp')

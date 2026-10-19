@@ -42,11 +42,52 @@ class AtomicInstallTests(unittest.TestCase):
         obsolete = self.target / '.vim/which-key.vim'
         obsolete.parent.mkdir()
         obsolete.write_text('old module\n')
+        markdown = obsolete.parent / 'markdown.vim'
+        markdown.write_text('old markdown module\n')
+        resources = obsolete.parent / 'markdown'
+        resources.mkdir()
+        (resources / 'preview.py').write_text('old preview\n')
+        snippets = obsolete.parent / 'vendor/vim-vsnip'
+        snippets.mkdir(parents=True)
+        (snippets / 'old.txt').write_text('old snippets\n')
         result = self.install(config)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(config.read_text(), 'old configuration\n')
         self.assertEqual(obsolete.read_text(), 'old module\n')
+        self.assertEqual(markdown.read_text(), 'old markdown module\n')
+        self.assertEqual((resources / 'preview.py').read_text(), 'old preview\n')
+        self.assertEqual((snippets / 'old.txt').read_text(), 'old snippets\n')
         self.assertFalse(list(self.target.rglob('*.tmp.*')))
+
+    def test_upgrade_removes_markdown_and_preserves_symlink_targets(self):
+        vim = self.target / '.vim'
+        (vim / 'vendor').mkdir(parents=True)
+        modules = [vim / name for name in (
+            'markdown.vim', 'markdown-view.vim', 'markdown-reader.vim',
+            'markdown-notes.vim', 'markdown-snippets.vim', 'markdown-images.vim')]
+        directories = [vim / 'markdown', vim / 'vendor/vim-vsnip']
+        for path in modules:
+            path.write_text('old module\n')
+        for path in directories:
+            path.mkdir()
+            (path / 'old.txt').write_text('old resource\n')
+        external = self.work / 'external'
+        external.mkdir()
+        keep = external / 'keep.txt'
+        keep.write_text('keep\n')
+        for mode in ('files', 'symlinks', 'dangling', 'repeat'):
+            with self.subTest(mode=mode):
+                if mode in ('symlinks', 'dangling'):
+                    for path in modules:
+                        path.symlink_to(keep if mode == 'symlinks' else external / 'missing')
+                    for path in directories:
+                        path.symlink_to(external if mode == 'symlinks' else external / 'missing',
+                                        target_is_directory=True)
+                result = self.install()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                for path in modules + directories:
+                    self.assertFalse(path.exists() or path.is_symlink(), str(path))
+                self.assertEqual(keep.read_text(), 'keep\n')
 
     def test_directory_move_failure_restores_old_plugin(self):
         plugin = self.target / '.vim/vendor/vim-lsp'

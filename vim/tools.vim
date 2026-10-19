@@ -62,24 +62,6 @@ function! s:KeyLabels() abort
         \ 'VimGit': '打开 LazyGit / git',
         \ 'VimCopyPath': '复制文件路径 / copy path',
         \ 'VimCopyContent': '复制全文 / copy content',
-        \ 'VimMarkdownPreview': 'Markdown 实时预览 / live preview',
-        \ 'VimMarkdownStop': '停止 Markdown 预览 / stop preview',
-        \ 'VimMarkdownOutline': 'Markdown 标题目录 / outline',
-        \ 'VimMarkdownRender': 'Markdown 阅读与源码切换 / reading view',
-        \ 'VimMarkdownFocus': 'Markdown 专注写作 / focus',
-        \ 'VimMarkdownTask': 'Markdown 任务勾选 / task',
-        \ 'VimMarkdownTable': 'Markdown 表格对齐 / table',
-        \ 'VimMarkdownLink': '打开 Markdown 链接 / follow link',
-        \ 'VimMarkdownWrap': 'Markdown 选区格式 / selection format',
-        \ 'VimMarkdownInsert': 'Markdown 模板 / insert template',
-        \ 'VimMarkdownHelp': 'Markdown 操作说明 / help',
-        \ 'VimMarkdownImage': 'Markdown 粘贴图片到 imgs/ / paste image',
-        \ 'VimMarkdownImageSize': 'Markdown 图片宽度和对齐 / image layout',
-        \ 'VimMarkdownToc': '生成 Markdown 文内目录 / document TOC',
-        \ 'VimMarkdownTocUpdate': '更新 Markdown 文内目录 / update TOC',
-        \ 'VimMarkdownTocRemove': '移除 Markdown 文内目录 / remove TOC',
-        \ 'VimMarkdownFold': '按 Markdown 章节折叠 / heading folds',
-        \ 'VimMarkdownAutoSave': 'Markdown 自动保存开关 / auto-save',
         \ 'wall': '保存全部 / save all',
         \ }
   let s:key_labels = {'af': '函数整体 / entire function', 'if': '函数体 / function body',
@@ -91,7 +73,6 @@ function! s:KeyLabels() abort
         \ 'H': '上一个 buffer / previous buffer', 'L': '下一个 buffer / next buffer',
         \ '[c': '上一个 Git hunk / previous hunk', ']c': '下一个 Git hunk / next hunk',
         \ '[q': '上一个 quickfix 结果 / previous result', ']q': '下一个 quickfix 结果 / next result',
-        \ '[h': '上一个 Markdown 标题 / previous heading', ']h': '下一个 Markdown 标题 / next heading',
         \ '[d': '上一个诊断 / previous diagnostic', ']d': '下一个诊断 / next diagnostic',
         \ ' e': '开关文件树 / toggle tree', ' bn': '新建 buffer / new buffer',
         \ ' bp': '选择 buffer / select buffer', ' bD': '清空 buffer 或选区 / clear',
@@ -194,14 +175,6 @@ function! s:Health() abort
   endif
   let tasks = VimLiteProjectRoot({'purpose': 'tasks'}) . '/.vim-lite-tasks.json'
   call add(lines, 'Tasks: ' . (filereadable(tasks) ? tasks : 'no project task file'))
-  call add(lines, 'Markdown: native reading/editing; browser preview '
-        \ . (executable('python3') && has('job') && has('channel') && has('timers')
-        \ ? 'available (offline assets)' : 'needs python3 +job +channel +timers'))
-  call add(lines, 'Markdown snippets: bundled vim-vsnip; Tab / Shift-Tab')
-  let java = executable('java') || !empty($VIM_MARKDOWN_JAVA)
-        \ || !empty(glob('~/.local/share/vim-lite/java/usr/lib/jvm/*/bin/java'))
-  call add(lines, 'Markdown diagrams: local Mermaid; PlantUML '
-        \ . (java ? 'Java available' : 'needs Java (Graphviz optional)'))
   if exists(':VimLspStatus')
     let lines += [''] + split(execute('VimLspStatus'), "\n")
   endif

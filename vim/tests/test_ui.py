@@ -27,7 +27,7 @@ edit notes.md
 let origin = win_getid()
 let options = [&number, &relativenumber, &cursorline, &signcolumn, &statusline]
 call Call('BufferLine', [])
-for command in ['VimMarkdownOutline', 'VimKeys buffer', 'VimHealth', 'VimLspInfo']
+for command in ['VimKeys buffer', 'VimHealth', 'VimLspInfo']
   execute command
   call assert_false(&number || &relativenumber || &cursorcolumn)
   call assert_equal('no', &signcolumn)
@@ -35,7 +35,7 @@ for command in ['VimMarkdownOutline', 'VimKeys buffer', 'VimHealth', 'VimLspInfo
 endfor
 source ''' + str(ROOT / '.vimrc') + r'''
 call assert_match('%#VimrcBufferLineCurrent# 2:notes.md', Call('BufferLine', []))
-for panel in range(4)
+for panel in range(3)
   call feedkeys('q', 'xt')
 endfor
 call assert_equal(origin, win_getid())
@@ -46,14 +46,14 @@ call assert_equal('', v:errmsg)
 
     def test_narrow_panel_footer_and_literal_status_text(self):
         self.terminal_vim(r'''
-edit notes.md
-call setline(1, ['# Notes', '', '## Details'])
-VimMarkdownOutline
+leftabove vnew
+vertical resize 24
+call VimLitePanel('Panel', 'Enter: jump  q: close')
 call assert_true(winwidth(0) <= &columns / 3)
 redraw!
 let row = getwininfo(win_getid())[0].winrow + winheight(0)
 let text = join(map(range(1, winwidth(0)), 'screenstring(row, v:val)'), '')
-call assert_match('Outline', text)
+call assert_match('Panel', text)
 call assert_notmatch('Enter:', text)
 call assert_notmatch('^<', text)
 vertical resize 75

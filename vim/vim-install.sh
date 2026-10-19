@@ -24,11 +24,6 @@ config_files=(
     tree-list.vim
     buffers.vim
     edit.vim
-    markdown.vim
-    markdown-view.vim
-    markdown-notes.vim
-    markdown-snippets.vim
-    markdown-images.vim
     pins.vim
     completion.vim
     matchparen.vim
@@ -51,33 +46,6 @@ plugin_files=(
     vendor/vim-lsp/LICENSE
     vendor/vim-lsp/LICENSE-THIRD-PARTY
     vendor/vim-lsp/SOURCE.md
-    vendor/vim-vsnip/plugin/vsnip.vim
-    vendor/vim-vsnip/autoload/vsnip.vim
-    vendor/vim-vsnip/LICENSE
-    vendor/vim-vsnip/SOURCE.md
-    vendor/vim-vsnip/manifest.json
-)
-markdown_files=(
-    markdown/preview.py
-    markdown/images.py
-    markdown/diagrams.py
-    markdown/snippets/markdown.json
-    markdown/index.html
-    markdown/preview.js
-    markdown/preview.css
-    markdown/vendor/markdown-it.min.js
-    markdown/vendor/highlight.min.js
-    markdown/vendor/katex.min.js
-    markdown/vendor/katex.min.css
-    markdown/vendor/LICENSE.markdown-it
-    markdown/vendor/LICENSE.highlight.js
-    markdown/vendor/LICENSE.katex
-    markdown/vendor/manifest.json
-    markdown/vendor/mermaid.min.js
-    markdown/vendor/plantuml.jar
-    markdown/vendor/LICENSE.mermaid
-    markdown/vendor/LICENSE.plantuml
-    markdown/vendor/fonts/KaTeX_Main-Regular.woff2
 )
 
 usage() {
@@ -93,7 +61,6 @@ usage() {
 支持 apt-get、dnf、yum、apk、pacman、zypper，不下载任何 Vim 插件。
 搜索需要 fd/fdfind、ripgrep、gawk 和 fzf 0.29.0+；缺少时只提示，不自动安装。
 LSP 使用本目录保存的 vim-lsp；Pyright/clangd 由用户自行安装，缺失时只提示。
-Markdown 的浏览器预览需要 python3；离线渲染资源随配置复制，原生阅读与编辑不依赖 Python。
 EOF
 }
 
@@ -113,8 +80,7 @@ while (( $# )); do
 done
 
 [[ -f "$script_dir/.vimrc" ]] || die '缺少 .vimrc，请复制完整的 vim 目录'
-for required in "${config_files[@]}" "${color_files[@]}" "${plugin_files[@]}" \
-    "${markdown_files[@]}"; do
+for required in "${config_files[@]}" "${color_files[@]}" "${plugin_files[@]}"; do
     [[ -f "$script_dir/$required" ]] || die "缺少 $required，请复制完整的 vim 目录"
 done
 [[ ! -e "$install_target" || -d "$install_target" ]] || die "不是目录：$install_target"
@@ -169,9 +135,6 @@ if (( ! config_only )); then
     command -v clangd >/dev/null 2>&1 || missing_lsp+=(clangd)
     if (( ${#missing_lsp[@]} )); then
         printf 'LSP 服务器缺失：%s；请手动安装或配置命令路径，不影响基础编辑和配置复制。\n' "${missing_lsp[*]}"
-    fi
-    if ! command -v python3 >/dev/null 2>&1; then
-        printf 'Markdown 浏览器预览需要 python3；原生阅读和编辑仍可用。\n'
     fi
 fi
 
@@ -249,8 +212,6 @@ install_entry() {
 }
 
 install_entry "$script_dir/vendor/vim-lsp" "$install_target/.vim/vendor/vim-lsp"
-install_entry "$script_dir/vendor/vim-vsnip" "$install_target/.vim/vendor/vim-vsnip"
-install_entry "$script_dir/markdown" "$install_target/.vim/markdown"
 install_entry "$script_dir/.vimrc" "$install_target/.vimrc"
 for name in "${config_files[@]}"; do
     install_entry "$script_dir/$name" "$install_target/.vim/$name"
@@ -259,10 +220,20 @@ for source in "$script_dir"/colors/*; do
     [[ -f "$source" ]] || continue
     install_entry "$source" "$install_target/.vim/colors/$(basename -- "$source")"
 done
-# Remove the retired module only after the replacement configuration is installed.
-obsolete_module="$install_target/.vim/which-key.vim"
-if [[ -f "$obsolete_module" || -L "$obsolete_module" ]]; then
-    rm -f -- "$obsolete_module"
-    printf '已删除旧模块：%s\n' "$obsolete_module"
-fi
+# Remove retired modules only after the replacement configuration is installed.
+for name in which-key.vim markdown.vim markdown-view.vim markdown-reader.vim \
+    markdown-notes.vim markdown-snippets.vim markdown-images.vim; do
+    obsolete_module="$install_target/.vim/$name"
+    if [[ -f "$obsolete_module" || -L "$obsolete_module" ]]; then
+        rm -f -- "$obsolete_module"
+        printf '已删除旧模块：%s\n' "$obsolete_module"
+    fi
+done
+for name in markdown vendor/vim-vsnip; do
+    obsolete_directory="$install_target/.vim/$name"
+    if [[ -e "$obsolete_directory" || -L "$obsolete_directory" ]]; then
+        rm -rf -- "$obsolete_directory"
+        printf '已删除旧资源：%s\n' "$obsolete_directory"
+    fi
+done
 printf '\n完成。运行 vim 即可；目标目录：%s\n' "$install_target"
