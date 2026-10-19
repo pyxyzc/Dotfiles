@@ -4,6 +4,36 @@ from test_vim import ROOT, VimSession, quoted
 
 
 class ProjectTests(VimSession):
+    def test_health_observes_executable_and_path_changes(self):
+        tools = self.work / 'tools space'
+        tools.mkdir()
+        for name in ['fd', 'fzf', 'gawk']:
+            program = tools / name
+            program.write_text('#!/bin/sh\nexit 0\n')
+            program.chmod(0o644 if name == 'fd' else 0o755)
+        self.vim(r'''
+let saved_path = $PATH
+let $PATH = ''' + quoted(tools) + r'''
+VimHealth
+let text = join(getline(1, '$'), "\n")
+call assert_match('\[missing\] fd\n', text)
+call assert_match('File search: missing tools', text)
+close
+call setfperm(''' + quoted(tools / 'fd') + r''', 'rwxr-xr-x')
+VimHealth
+let text = join(getline(1, '$'), "\n")
+call assert_match('\[ok\] fd -> ' . escape($PATH, '\'), text)
+call assert_match('File search: tools available', text)
+close
+let $PATH = '/missing-vim-health-test'
+VimHealth
+let text = join(getline(1, '$'), "\n")
+call assert_match('\[missing\] fzf\n', text)
+call assert_match('File search: missing tools', text)
+close
+let $PATH = saved_path
+''')
+
     def test_python_project_opened_from_outside_has_consistent_roots(self):
         project = self.work / 'python project'
         source = project / 'src' / 'main.py'

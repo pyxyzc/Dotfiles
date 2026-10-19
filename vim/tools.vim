@@ -154,12 +154,14 @@ function! s:Health() abort
     call add(lines, (has(feature) ? '[ok] ' : '[missing] ') . '+' . feature)
   endfor
   call add(lines, '')
+  let programs = {}
   for name in ['bash', 'fd', 'fdfind', 'rg', 'fzf', 'gawk', 'lazygit']
-    call add(lines, (executable(name) ? '[ok] ' : '[missing] ') . name
-          \ . (executable(name) ? ' -> ' . exepath(name) : ''))
+    let programs[name] = exepath(name)
+    call add(lines, (empty(programs[name]) ? '[missing] ' : '[ok] ') . name
+          \ . (empty(programs[name]) ? '' : ' -> ' . programs[name]))
   endfor
-  let finder = executable('fd') || executable('fdfind')
-  call add(lines, 'File search: ' . (finder && executable('fzf') && executable('gawk')
+  let finder = !empty(programs.fd) || !empty(programs.fdfind)
+  call add(lines, 'File search: ' . (finder && !empty(programs.fzf) && !empty(programs.gawk)
         \ ? 'tools available' : 'missing tools (fd and fdfind are alternatives)'))
   call add(lines, 'fzf compatibility: requires 0.29.0+; checked when search opens')
   call add(lines, 'Clipboard: ' . (get(g:, 'vimrc_lite_osc52',
