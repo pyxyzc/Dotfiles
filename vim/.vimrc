@@ -85,11 +85,11 @@ set noswapfile
 set number relativenumber cursorline
 set laststatus=2 showmode showcmd
 " 窄分屏优先显示文件名、作用域和位置；语言与服务器信息留给较宽窗口。
-let &statusline = '%n:%<%f%{exists("*VimContextLabel") ? VimContextLabel() : ""} %m%r%h%='
-      \ . '%{exists("*VimMarkdownStatusLabel") ? VimMarkdownStatusLabel() : ""}'
+let &statusline = '%1* %n %* %<%f%{exists("*VimContextLabel") ? VimContextLabel() : ""} %m%r%h %='
+      \ . '%{exists("*VimMarkdownStatusLabel") ? VimMarkdownStatusLabel() : ""} '
       \ . '%{exists("*VimTreeStatusLabel") ? VimTreeStatusLabel() : ""}'
       \ . '%{winwidth(0) < 60 ? "" : exists("*VimLspStatusLabel") ? VimLspStatusLabel() : '
-      \ . 'empty(&filetype) ? "" : "[lang: " . &filetype . "]"} %l:%c %p%%'
+      \ . 'empty(&filetype) ? "" : "[lang: " . &filetype . "]"} %2* %l:%c %* %p%% '
 set scrolloff=5 sidescrolloff=5 nowrap
 set splitbelow splitright
 set backspace=indent,eol,start
@@ -126,13 +126,8 @@ if exists('+cursorlineopt')
   set cursorlineopt=both
 endif
 
-" 在当前行文字下方绘制横线，并保持背景透明。
-highlight CursorLine gui=underline guibg=NONE
-highlight CursorLine cterm=underline ctermbg=NONE
-
-" 使用亮粉色强调当前行号，与亮青蓝的普通行号区分。
-highlight CursorLineNr gui=bold guifg=#ff6bcb guibg=NONE
-highlight CursorLineNr cterm=bold ctermfg=206 ctermbg=NONE
+" 在主题之上统一编辑区、栏位、工具面板与浮窗。
+call s:SourceModule('ui.vim')
 
 augroup vimrc_lite
   autocmd!

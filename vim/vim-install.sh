@@ -10,6 +10,7 @@ rollback_destination=''
 
 # Required files are registered only here; preflight, occupancy checks and install share the list.
 config_files=(
+    ui.vim
     project.vim
     tasks.vim
     session.vim

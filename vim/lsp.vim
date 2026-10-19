@@ -196,7 +196,12 @@ function! s:Info() abort
     setlocal undolevels=-1 nonumber norelativenumber wrap linebreak nospell
     setlocal foldmethod=manual nofoldenable
     setlocal filetype=vimlspinfo
-    let &l:statusline = ' LSP 状态 %= r 刷新 / q 关闭 '
+    " 缺失配置的故障面板也要可用，此时 ui.vim 可能尚未安装。
+    if exists('*VimLitePanel')
+      call VimLitePanel('LSP', 'r: refresh  q: close')
+    else
+      let &l:statusline = ' LSP %= r: refresh  q: close '
+    endif
     let b:vimrc_lite_lsp_info = 1
     nnoremap <silent><buffer> r :call <SID>RefreshInfo()<CR>
     nnoremap <silent><buffer> q :call <SID>CloseInfo()<CR>
@@ -983,10 +988,10 @@ function! s:ShowDocument(context, lines, focus, ...) abort
   call s:CloseDocument(0)
   let s:document = {'origin': a:context, 'lines': a:lines, 'window': 0, 'popup': 0}
   if g:lsp_preview_float && !a:focus && (!a:0 || a:1)
-    let s:document.popup = popup_create(a:lines, {'pos': 'botleft', 'line': 'cursor+1',
+    let options = extend(VimLitePopupOptions(), {'pos': 'botleft', 'line': 'cursor+1',
           \ 'col': 'cursor', 'maxwidth': min([80, max([20, &columns - 4])]),
-          \ 'maxheight': max([1, &lines / 3]), 'padding': [0, 1, 0, 1],
-          \ 'border': [1, 1, 1, 1], 'moved': 'any', 'mapping': 0})
+          \ 'maxheight': max([1, &lines / 3]), 'moved': 'any', 'mapping': 0})
+    let s:document.popup = popup_create(a:lines, options)
     return
   endif
   noautocmd keepalt botright new
@@ -994,6 +999,7 @@ function! s:ShowDocument(context, lines, focus, ...) abort
   setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile noundofile
   setlocal nonumber norelativenumber wrap linebreak nospell foldmethod=manual nofoldenable
   setlocal filetype=markdown
+  call VimLitePanel('Documentation', 'q: close')
   if !a:focus
     setlocal previewwindow
   endif
@@ -1275,18 +1281,15 @@ function! s:DiagnosticPopupOptions(content) abort
   let available = upward ? above : below
   let column = max([window.wincol,
         \ min([column, window.wincol + window.width - width - 5])])
-  let rounded = &encoding ==# 'utf-8' && &ambiwidth ==# 'single'
-  return {'pos': upward ? 'botleft' : 'topleft', 'line': row + (upward ? -1 : 1),
+  return extend(VimLitePopupOptions(),
+        \ {'pos': upward ? 'botleft' : 'topleft', 'line': row + (upward ? -1 : 1),
         \ 'col': column, 'posinvert': 0, 'fixed': 1, 'minwidth': width, 'maxwidth': width,
-        \ 'maxheight': min([10, available - 2]), 'padding': [0, 1, 0, 1],
-        \ 'border': [1, 1, 1, 1],
-        \ 'borderchars': rounded ? ['─', '│', '─', '│', '╭', '╮', '╯', '╰']
-        \   : ['-', '|', '-', '|', '+', '+', '+', '+'],
+        \ 'maxheight': min([10, available - 2]),
         \ 'highlight': 'VimLspDiagnosticNormal',
         \ 'borderhighlight': ['VimLspDiagnosticBorder'],
         \ 'wrap': 1, 'scrollbar': 1, 'moved': 'any', 'mapping': 1,
         \ 'filter': function('s:DiagnosticPopupFilter'),
-        \ 'callback': function('s:DiagnosticPopupClosed')}
+        \ 'callback': function('s:DiagnosticPopupClosed')})
 endfunction
 
 function! s:DiagnosticPopupFilter(window, key) abort

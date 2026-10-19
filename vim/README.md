@@ -11,7 +11,8 @@ Markdown 模块提供原生阅读视图和 TokyoNight 浏览器实时预览；�
 终端转义序列等待默认 30 ms，普通组合映射仍使用 Vim 的 `timeoutlen`。
 如果远程终端会拆分按键序列，可在加载配置后增大 `ttimeoutlen`。
 
-`.vimrc` 保留基础设置、通用功能和快捷键；`buffers.vim` 管理顶部 buffer 栏、
+`.vimrc` 保留基础设置、通用功能和快捷键；`ui.vim` 统一栏位、分隔线、面板和浮窗的外观；
+`buffers.vim` 管理顶部 buffer 栏、
 buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等编辑辅助；
 `markdown.vim`、`markdown-view.vim` 与 `markdown/` 提供 Markdown 写作、原生阅读、导航和预览；
 `markdown-notes.vim` 提供章节路径、文内目录、折叠和自动保存；`markdown-snippets.vim`
@@ -71,6 +72,7 @@ bash ~/Dotfiles/vim/vim-clean.sh
 
 ```text
 ~/.vimrc
+~/.vim/ui.vim
 ~/.vim/dashboard.vim
 ~/.vim/project.vim
 ~/.vim/tasks.vim
@@ -245,7 +247,9 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 ## 快捷键
 
 编辑界面顶部常驻 buffer 栏，例如 `1:main.py  2:utils.py +  3:README.md`。
-顶部保留浅灰蓝底色和深色文字的浅色横栏，当前项使用原来的蓝底深色字选中色块。
+顶部和底部状态栏保留整条浅白色底与深色文字；顶部当前文件使用蓝色选中块，
+右侧 slogan 与未聚焦窗口的状态文字使用较淡的深色。
+文件树或工具面板获得焦点时，顶部仍标记对应的编辑文件。
 `+` 表示未保存，`[RO]` 表示只读，`[term]` 表示终端；未命名文件显示
 `[No Name]`。同名文件补充最短可区分的父目录。栏内编号是列表位置，与空格 `1`～`9`
 对应；关闭文件后位置会重新编号，区别于 `:ls` / `:buffer` 使用的实际 buffer 编号。
@@ -255,6 +259,13 @@ vim --cmd 'let g:vimrc_lite_dashboard = 0'
 长名称以 `~` 截断，切换时当前项保持可见。超过第 9 项可用 `H/L` 或 `<leader>bp`
 切换。多个标签页时右侧显示 `Tab 当前页/总页数`，不足 40 列时优先显示 buffer。
 首页单独显示时隐藏顶部栏，返回编辑界面后恢复；搜索临时 buffer 不进入列表。
+
+编辑区、顶部栏、状态栏和浮窗沿用 TokyoNight 的蓝紫配色，普通行号与分隔线使用较低亮度，
+保留当前行的下划线与粉色行号。状态栏区分文件编号、路径、语言服务与光标位置，
+未聚焦窗口的文件名仍保持可读。工具面板隐藏行号、标尺和代码窗口的光标装饰，
+标题、操作提示及留白保持一致；文档和诊断浮窗共用细圆角边框，双宽字符模式下使用 ASCII。
+这些设置同时提供真彩色和静态 256 色，重新加载配置或主题时自动恢复。
+Markdown 目录宽度随终端收窄；浏览器预览在窄屏将文件名与操作按钮分为两行。
 
 当前配置预设以下三句 slogan，也可在 vimrc 顶部配置自己的列表，每个列表项是一句完整的文字：
 

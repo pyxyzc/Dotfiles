@@ -789,10 +789,10 @@ tabprevious
 call assert_match('Tab 1/2', BarText())
 colorscheme tokyonight-night
 for mode in ['gui', 'cterm']
-  call assert_equal(synIDattr(synIDtrans(hlID('TabLineFill')), 'bg', mode),
-        \ synIDattr(hlID('VimrcBufferLine'), 'fg', mode))
-  call assert_equal(synIDattr(synIDtrans(hlID('Normal')), 'fg', mode),
-        \ synIDattr(hlID('VimrcBufferLine'), 'bg', mode))
+  call assert_equal(synIDattr(synIDtrans(hlID('TabLine')), 'fg', mode),
+        \ synIDattr(synIDtrans(hlID('VimrcBufferLine')), 'fg', mode))
+  call assert_equal(synIDattr(synIDtrans(hlID('TabLine')), 'bg', mode),
+        \ synIDattr(synIDtrans(hlID('VimrcBufferLine')), 'bg', mode))
 endfor
 ''', args=['-c', 'let g:skip_home = 1'])
 
@@ -967,23 +967,23 @@ highlight VimrcBufferSlogan guifg=#ffffff guibg=#000000 gui=bold
 colorscheme tokyonight-night
 call assert_equal(before, Call('BufferLine', []))
 for mode in ['gui', 'cterm']
-  for group in ['VimrcBufferLine', 'VimrcBufferSlogan']
-    call assert_equal(synIDattr(synIDtrans(hlID('TabLineFill')), 'bg', mode),
-          \ synIDattr(hlID(group), 'fg', mode))
-    call assert_equal(synIDattr(synIDtrans(hlID('Normal')), 'fg', mode),
-          \ synIDattr(hlID(group), 'bg', mode))
-    call assert_equal('', synIDattr(hlID(group), 'reverse', mode))
+  for [group, target] in [['VimrcBufferLine', 'TabLine'],
+        \ ['VimrcBufferSlogan', 'VimLiteSlogan']]
+    for attribute in ['fg', 'bg', 'reverse']
+      call assert_equal(synIDattr(synIDtrans(hlID(target)), attribute, mode),
+            \ synIDattr(synIDtrans(hlID(group)), attribute, mode))
+    endfor
   endfor
   call assert_equal(synIDattr(synIDtrans(hlID('TabLineSel')), 'fg', mode),
-        \ synIDattr(hlID('VimrcBufferLineCurrent'), 'fg', mode))
+        \ synIDattr(synIDtrans(hlID('VimrcBufferLineCurrent')), 'fg', mode))
   call assert_equal(synIDattr(synIDtrans(hlID('TabLineSel')), 'bg', mode),
-        \ synIDattr(hlID('VimrcBufferLineCurrent'), 'bg', mode))
-  call assert_equal('', synIDattr(hlID('VimrcBufferLineCurrent'), 'bold', mode))
-  call assert_equal('', synIDattr(hlID('VimrcBufferLineCurrent'), 'underline', mode))
-  call assert_equal('', synIDattr(hlID('VimrcBufferLineCurrent'), 'reverse', mode))
-  call assert_equal('', synIDattr(hlID('VimrcBufferLine'), 'bold', mode))
-  call assert_equal('', synIDattr(hlID('VimrcBufferSlogan'), 'bold', mode))
-  call assert_equal('1', synIDattr(hlID('VimrcBufferSlogan'), 'italic', mode))
+        \ synIDattr(synIDtrans(hlID('VimrcBufferLineCurrent')), 'bg', mode))
+  call assert_equal('', synIDattr(synIDtrans(hlID('VimrcBufferLineCurrent')), 'bold', mode))
+  call assert_equal('', synIDattr(synIDtrans(hlID('VimrcBufferLineCurrent')), 'underline', mode))
+  call assert_equal('', synIDattr(synIDtrans(hlID('VimrcBufferLineCurrent')), 'reverse', mode))
+  call assert_equal('', synIDattr(synIDtrans(hlID('VimrcBufferLine')), 'bold', mode))
+  call assert_equal('', synIDattr(synIDtrans(hlID('VimrcBufferSlogan')), 'bold', mode))
+  call assert_equal('1', synIDattr(synIDtrans(hlID('VimrcBufferSlogan')), 'italic', mode))
 endfor
 ''', before=["let g:vimrc_lite_buffer_slogans = ['kept']"])
 
@@ -2622,7 +2622,7 @@ call assert_equal([], popup_list())
                      'buffers.vim', 'edit.vim', 'markdown.vim', 'markdown-view.vim',
                      'markdown-notes.vim', 'markdown-snippets.vim', 'markdown-images.vim',
                      'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
-                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim'):
+                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim', 'ui.vim'):
             shutil.copyfile(ROOT / name, config / name)
         # Simulate a Vim without popup windows while exercising the actual split implementation.
         (config / 'search.vim').write_text((ROOT / 'search.vim').read_text().replace(
@@ -3179,7 +3179,7 @@ class InstallerTests(unittest.TestCase):
         modules = [self.target / '.vim' / name for name in
                    ('clipboard.vim', 'git.vim', 'terminal.vim', 'tree.vim', 'buffers.vim',
                     'edit.vim', 'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
-                    'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim')]
+                    'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim', 'ui.vim')]
         for module in modules:
             module.write_text('" old module\n')
         obsolete = self.target / '.vim' / 'which-key.vim'
@@ -3197,7 +3197,7 @@ class InstallerTests(unittest.TestCase):
                      'markdown.vim', 'markdown-view.vim', 'markdown-notes.vim',
                      'markdown-snippets.vim', 'markdown-images.vim',
                      'completion.vim', 'matchparen.vim', 'textobjects.vim', 'context.vim',
-                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim'):
+                     'project.vim', 'tasks.vim', 'session.vim', 'tools.vim', 'pins.vim', 'ui.vim'):
             self.assertEqual((self.target / '.vim' / name).read_bytes(), (ROOT / name).read_bytes())
         self.assertEqual(list(dashboard.parent.glob('dashboard.vim.bak.*')), [])
         for module in modules:

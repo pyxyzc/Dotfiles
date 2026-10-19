@@ -76,6 +76,7 @@ function! s:Open(command) abort
     if !state.buf || job_status(term_getjob(state.buf)) ==# 'fail'
       throw 'could not start terminal: ' . command
     endif
+    call VimLitePanel(command ==# 'lazygit' ? 'Git' : 'Terminal', 'Ctrl-w N: normal')
     if command ==# 'lazygit'
       " Esc 立即传给 LazyGit，覆盖全局双 Esc 映射的等待与模式切换。
       tnoremap <buffer> <Esc><Esc> <Esc><Esc>
@@ -143,6 +144,7 @@ function! s:Toggle() abort
     let state.origin = win_getid()
     botright 12split
     execute 'buffer ' . state.buf
+    call VimLitePanel('Terminal', 'Ctrl-g: hide')
     " Terminal-Normal 中 :startinsert 无效；返回输入循环后执行原生 i。
     call feedkeys('i', 'in')
     return
@@ -155,6 +157,7 @@ function! s:Toggle() abort
     if !state.buf || job_status(term_getjob(state.buf)) ==# 'fail'
       throw 'could not start terminal: ' . &shell
     endif
+    call VimLitePanel('Terminal', 'Ctrl-g: hide')
     setlocal bufhidden=hide
     let b:vimrc_lite_terminal_root = root
     let s:reusable[root] = state

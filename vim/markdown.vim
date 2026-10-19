@@ -377,7 +377,7 @@ function! s:OutlineRefresh() abort
     return
   endif
   let rows = s:Headers(s:outline.source)
-  let lines = ['  DOCUMENT OUTLINE', '  Enter: jump   q: close', '']
+  let lines = ['  DOCUMENT OUTLINE', '  Enter: jump / q', '']
   for row in rows
     call add(lines, repeat('  ', row.level) . row.text . '  · ' . row.line)
   endfor
@@ -429,17 +429,18 @@ function! s:Outline() abort
     let s:outline.source = source
     let s:outline.sourcewin = sourcewin
   else
-    topleft 32vnew
+    execute 'topleft ' . min([32, max([20, &columns / 4])]) . 'vnew'
     setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile noundofile
     setlocal nonumber norelativenumber nowrap signcolumn=no
+    call VimLitePanel('Outline', 'Enter: jump  q: close')
+    setlocal cursorline
     let s:outline = {'source': source, 'sourcewin': sourcewin,
           \ 'buf': bufnr('%'), 'win': win_getid()}
     nnoremap <silent><buffer> <CR> :call <SID>OutlineJump()<CR>
     nnoremap <silent><buffer> q :close<CR>
     syntax match VimMarkdownCallout /^  DOCUMENT OUTLINE$/
     syntax match Comment /^  Enter:.*/
-    syntax match LineNr /· \d\+$/
-    let &l:statusline = ' Markdown · Outline '
+    syntax match Comment /· \d\+$/
   endif
   call s:OutlineRefresh()
   call cursor(4, 1)

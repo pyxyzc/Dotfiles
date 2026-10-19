@@ -1,10 +1,21 @@
 " 按需展示快捷键和环境状态，不运行版本探测进程或项目任务。
 unlet! s:labels
 
-function! s:Show(title, lines) abort
+function! s:Show(title, hint, lines) abort
   botright new
+  execute 'resize ' . min([18, max([6, &lines * 2 / 5])])
   setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile noundofile
-  call setline(1, [a:title, ''] + a:lines)
+  setlocal filetype=vimlitepanel
+  call VimLitePanel(a:title, '/: search  q: close')
+  call setline(1, ['  ' . a:title, '  ' . a:hint, '']
+        \ + map(copy(a:lines), '''  '' . v:val'))
+  syntax match VimLiteTitle /\%1l.*/
+  syntax match VimLiteMuted /\%2l.*/
+  syntax match VimLiteMuted /source=.*/
+  syntax match VimLiteOk /\[ok\]/
+  syntax match VimLiteWarning /\[missing\]/
+  highlight default link VimLiteOk String
+  highlight default link VimLiteWarning WarningMsg
   setlocal nomodifiable nowrap
   nnoremap <silent><buffer> q :close<CR>
 endfunction
@@ -150,7 +161,7 @@ function! s:Keys(query) abort
     let rows = split(execute('verbose map') . "\n" . execute('verbose tmap'), "\n")
     call filter(rows, 'empty(a:query) || stridx(tolower(v:val), tolower(a:query)) >= 0')
   endif
-  call s:Show('快捷键 / :VimKeys [搜索词] / q 关闭', rows)
+  call s:Show('Keymaps', ':VimKeys [query]', empty(rows) ? ['No matching mappings.'] : rows)
 endfunction
 
 function! s:Health() abort
@@ -194,7 +205,7 @@ function! s:Health() abort
   if exists(':VimLspStatus')
     let lines += [''] + split(execute('VimLspStatus'), "\n")
   endif
-  call s:Show('环境检查 / q 关闭', lines)
+  call s:Show('Health', 'Environment and project tools', lines)
 endfunction
 
 command! -nargs=* VimKeys call <SID>Keys(<q-args>)

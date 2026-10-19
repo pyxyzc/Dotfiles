@@ -190,7 +190,9 @@ function! s:ShowOutput() abort
   endif
   botright new
   setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile noundofile
+  call VimLitePanel('Task output', 'q: close')
   call setline(1, ['Task: ' . s:last.name . ' / ' . s:last.root] + s:last.lines)
+  syntax match VimLiteTitle /\%1l.*/
   setlocal nomodifiable
   nnoremap <silent><buffer> q :close<CR>
 endfunction

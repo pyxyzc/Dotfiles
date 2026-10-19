@@ -120,10 +120,22 @@ let s:slogan_cache = get(s:, 'slogan_cache', {
       \ 'source': [], 'display': [], 'entries': [], 'current': {}, 'miss': -1, 'rotate': 0})
 let s:slogan_seed = get(s:, 'slogan_seed', [])
 
+" 新建面板会先触发 BufEnter 再取消 listed；保留少量历史以越过这些临时 buffer。
+let s:focus_history = get(s:, 'focus_history', [])
+function! s:RememberFocus(buffer) abort
+  if get(s:focus_history, 0, -1) == a:buffer
+    return
+  endif
+  call filter(s:focus_history, 'v:val != a:buffer')
+  call insert(s:focus_history, a:buffer)
+  let s:focus_history = s:focus_history[:31]
+endfunction
+
 " 新打开的 buffer 也会触发 BufEnter；只排队一次选择，重绘时按最终空间挑句子。
 function! s:RotateSlogan(buffer) abort
   if buflisted(a:buffer)
     let s:slogan_cache.rotate = 1
+    call s:RememberFocus(a:buffer)
   endif
 endfunction
 
@@ -206,7 +218,19 @@ function! s:BufferLine() abort
   endif
   let numbers = map(copy(buffers), 'v:val.bufnr')
   let current = index(numbers, bufnr('%'))
-  let focus = current >= 0 ? current : max([0, index(numbers, bufnr('#'))])
+  if current >= 0
+    call s:RememberFocus(bufnr('%'))
+  endif
+  let focus = max([0, current])
+  if current < 0
+    for buffer in s:focus_history
+      let candidate = index(numbers, buffer)
+      if candidate >= 0
+        let focus = candidate
+        break
+      endif
+    endfor
+  endif
   let tabs = tabpagenr('$') > 1 ? printf(' Tab %d/%d ', tabpagenr(), tabpagenr('$')) : ''
   " 极窄窗口优先保留当前 buffer 编号和状态。
   if &columns < 40
@@ -216,7 +240,7 @@ function! s:BufferLine() abort
   let [first, last, labels, used] = s:VisibleRange(buffers, s:names, focus, budget)
   let line = '%#VimrcBufferLine#' . (first > 0 ? '< ' : '')
   for index in range(first, last)
-    let line .= index == current ? '%#VimrcBufferLineCurrent#' : '%#VimrcBufferLine#'
+    let line .= index == focus ? '%#VimrcBufferLineCurrent#' : '%#VimrcBufferLine#'
     let line .= substitute(labels[index], '%', '%%', 'g')
   endfor
   " buffer 与溢出标记优先；slogan 左侧留两列，右侧留一列。
@@ -228,32 +252,10 @@ function! s:BufferLine() abort
 endfunction
 
 function! s:BufferLineColors() abort
-  let status = synIDtrans(hlID('StatusLine'))
-  let normal = synIDtrans(hlID('Normal'))
-  let fill = synIDtrans(hlID('TabLineFill'))
-  let selected = synIDtrans(hlID('TabLineSel'))
-  " 恢复整条浅色横栏：以正文前景作底色、填充区背景作字色，直接设色而不依赖反色。
-  for [group, style] in [['VimrcBufferLine', 'NONE'],
-        \ ['VimrcBufferLineCurrent', 'NONE'], ['VimrcBufferSlogan', 'italic']]
-    execute 'highlight! ' . group . ' gui=' . style . ' cterm=' . style . ' term=' . style
-    for mode in ['gui', 'cterm']
-      let foreground = synIDattr(fill, 'bg', mode)
-      if empty(foreground)
-        let foreground = synIDattr(status, 'bg', mode)
-      endif
-      let background = synIDattr(normal, 'fg', mode)
-      if empty(background)
-        let background = synIDattr(status, 'fg', mode)
-      endif
-      if group ==# 'VimrcBufferLineCurrent'
-        let foreground = synIDattr(selected, 'fg', mode)
-        let background = synIDattr(selected, 'bg', mode)
-      endif
-      execute 'highlight ' . group . ' ' . mode . 'fg='
-            \ . (empty(foreground) ? 'NONE' : foreground) . ' ' . mode . 'bg='
-            \ . (empty(background) ? 'NONE' : background)
-    endfor
-  endfor
+  highlight! link VimrcBufferLine TabLine
+  highlight! link VimrcBufferLineCurrent TabLineSel
+  execute 'highlight! link VimrcBufferSlogan '
+        \ . (hlexists('VimLiteSlogan') ? 'VimLiteSlogan' : 'TabLineFill')
 endfunction
 call s:BufferLineColors()
 set showtabline=2
