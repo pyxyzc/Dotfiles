@@ -1,3 +1,67 @@
+# 全项目性能复查（2026-10-19）
+
+基线为已移除 Markdown 模块的本轮初始工作树副本。审查全部自有 Vim 模块、搜索
+Shell/awk 管线、安装与升级脚本，以及客户端同步、位置转换和本地补丁；同时检查
+仓库的 tmux/LazyGit 安装入口。改动集中在有可测重复工作的四条路径。
+
+- 顶部 buffer 栏：仍读取实时名称、修改及只读状态，但列表编号未变时不再运行
+  Vimscript 排序比较器；保留 `noautocmd` 改名、增删和状态变化的可见性。
+- 环境检查：每个命令只解析一次路径，后续状态行复用当次结果；每次打开仍重新检查，
+  能立即反映 PATH、执行权限及命令的变化。
+- pin 恢复：内容摘要和原行匹配时直接恢复；需要重定位时，仅索引待查文字。
+  原生列表过滤跳过无关行，保留重复文字的上下文判定和未可靠定位的记录。
+- LSP 列表：一次操作内每个文件只取一份文本快照，用同一份文字转换 UTF-16 起止列。
+  引用、符号与诊断共享这条路径；已加载文件包含未保存内容，下一次操作重新取文本。
+  路径规范化按不同文件缓存，位置排序改为原生排序，保持路径、行、列及相同位置的顺序。
+
+本机 Linux/WSL、Vim 9.1，PATH 包含 Windows 挂载目录。环境检查使用真实 PTY，
+5 轮且两组同样启用 profile；buffer 栏为 1000 个 buffer 的 100 次热调用；
+pin 为十万行、一个 pin、5 次打开；引用为模拟 LSP 返回倒序的 1000 个 Unicode
+位置及重复项，3 次真实请求到列表就绪。以下均为中位数，单位 ms。
+
+| 场景 | 基线 | 优化后 |
+| --- | ---: | ---: |
+| 打开环境检查面板 | 94.19 | 35.73 |
+| 千 buffer 顶部栏重绘 | 2.780 | 1.220 |
+| pin 恢复，文件内容未变 | 351.975 | 12.841 |
+| pin 恢复，外部插入一行后重定位 | 352.260 | 86.329 |
+| 千条引用，目标文件已加载 | 223.201 | 82.421 |
+| 千条引用，目标文件未加载 | 267.845 | 77.619 |
+
+启动、常用编辑操作、搜索、自动补全、上下文、回退 diff 及真实 clangd/Pyright
+已分别测量。长行补全约 8 ms；十万行稀疏候选约 154 ms 到达，但最大主循环间隔
+约 4.7 ms。上下文同一作用域查询约 0.018 ms；真实语义请求热中位数约 3–14 ms。
+100/10000 文件搜索覆盖 ff/fp/fr、持续修改查询及预览，万文件文本预览中位数在
+22–44 ms 间波动，没有将该波动解释为本轮收益。上述结果不包含 SSH 网络和显示器刷新，
+也不代表大型工程完整索引的耗时。
+
+大目录仍有明确边界：万文件树的刷新按键约 14 ms，完整列表就绪约 462 ms；
+首开还包括工具探测和 netrw 初始化。直接目录启动仍遇到本机运行时的
+`E121: Undefined variable: s:netrwgray`；仅启用内置 filetype/syntax/netrw 的最小配置
+也复现该错误，不能把目录启动描述为完全无错误。
+
+验证：系统 Vim 9.1 完整 309 项、tmux 6 项、LazyGit 7 项全部通过；独立 Vim
+8.2.5172 的项目、pin、Unicode 位置、请求交互、启动、buffer 缓存及样式专项 44 项
+通过。新增检查覆盖命令权限/PATH 实时变化，以及未加载/未保存文件、Unicode、
+组合字符、跨行和 LocationLink。LSP 补丁加入校验清单，固定归档重放后与完整快照一致。
+已同步当前 `~/.vim`；实际安装副本逐文件一致，Unicode 位置、引用、环境检查和重载通过。
+
+```bash
+python3 tests/operation_latency.py --buffers 1000
+python3 tests/editor_latency.py --rounds 5
+python3 tests/pins_latency.py --lines 100000
+python3 tests/pins_latency.py --lines 100000 --changed
+python3 tests/lsp_locations_latency.py --references 1000 --loaded
+python3 tests/lsp_locations_latency.py --references 1000
+python3 tests/search_latency.py --rounds 3 --files 10000 --no-lsp
+python3 tests/lsp_latency.py --rounds 3 --unicode
+python3 tests/run.py
+```
+
+使用上述基准的 `--config /path/to/baseline/.vimrc` 参数可测量另一个完整配置副本。
+
+---
+
 # 状态栏上下文与窗口交互审查（2026-10-10）
 
 审查当前 vimrc、buffer 切换、上下文、搜索序号及其测试。上下文只显示在状态栏，

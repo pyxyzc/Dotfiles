@@ -858,6 +858,9 @@ python3 ~/Dotfiles/tests/run.py --suite vim test_project test_tree_async
 # 行级 pin：持久化、编辑跟踪、跳转和真实终端高亮。
 python3 ~/Dotfiles/vim/tests/test_pins.py
 
+# 批量引用与大文件 pin 恢复的性能基准。
+python3 ~/Dotfiles/vim/tests/lsp_locations_latency.py --references 1000
+python3 ~/Dotfiles/vim/tests/pins_latency.py --lines 100000 --changed
 ```
 
 CUDA 验收覆盖模拟协议路由和真实 clangd 的 `.cu` 定义跳转／返回，使用 host-only
