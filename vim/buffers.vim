@@ -8,8 +8,18 @@ function! s:Warn(message) abort
   echohl None
 endfunction
 
+let s:listed_key = []
+let s:listed_ordered = 1
 function! s:ListedBuffers() abort
-  return sort(getbufinfo({'buflisted': 1}), {left, right -> left.bufnr - right.bufnr})
+  let buffers = getbufinfo({'buflisted': 1})
+  let key = map(copy(buffers), 'v:val.bufnr')
+  " 通常已按编号排列；列表未变时省去 Vimscript 比较器，仍读取实时名称与状态。
+  if key !=# s:listed_key
+    let s:listed_key = key
+    let s:listed_ordered = key ==# sort(copy(key), 'n')
+  endif
+  return s:listed_ordered ? buffers
+        \ : sort(buffers, {left, right -> left.bufnr - right.bufnr})
 endfunction
 
 " 同名 buffer 以足够的路径后缀区分；一次统计后缀，避免重绘时两两比较。
