@@ -27,6 +27,11 @@ function! s:Colors() abort
   highlight default link VimMarkdownH2 Function
   highlight default link VimMarkdownH3 Type
   highlight default link VimMarkdownH4 Identifier
+  highlight default link VimMarkdownH5 Constant
+  highlight default link VimMarkdownH6 Comment
+  for level in range(1, 6)
+    execute 'highlight default link VimMarkdownHeadingMark' . level . ' VimMarkdownH' . level
+  endfor
   highlight default link VimMarkdownMarker Comment
   highlight default link VimMarkdownCode String
   highlight default link VimMarkdownInline String
@@ -64,10 +69,22 @@ function! s:Syntax() abort
   syntax match VimMarkdownMarker /^\s*\%([-+*]\|\d\+[.)]\)\ze\s/
   syntax match VimMarkdownTodo /\[[ !-]\]/
   syntax match VimMarkdownDone /\[[xX]\]/
-  syntax match VimMarkdownH4 /^ \{0,3}#\{4,6}\%([ \t].*\|$\)/
-  syntax match VimMarkdownH3 /^ \{0,3}###\%([ \t].*\|$\)/
-  syntax match VimMarkdownH2 /^ \{0,3}##\%([ \t].*\|$\)/
-  syntax match VimMarkdownH1 /^ \{0,3}#\%([ \t].*\|$\)/
+  " Setext 保留原有下划线。仅给普通段落加标题色，块语法随后定义。
+  let paragraph = '^ \{0,3}\%([#>|]\|[-+*][ \t]\|\d\+[.)][ \t]\)\@!\S.*'
+  execute 'syntax match VimMarkdownH1 /' . paragraph . '\n \{0,3}=\+[ \t]*$/'
+  execute 'syntax match VimMarkdownH2 /' . paragraph . '\n \{0,3}-\+[ \t]*$/'
+  " 用单列标记区分级别；双宽终端使用数字。光标行由 Vim 显示原始 #。
+  let markers = ['█', '▰', '◆', '▸', '•', '·']
+  for level in range(1, 6)
+    let hashes = repeat('#', level)
+    let marker = markers[level - 1]
+    let group = 'VimMarkdownHeadingMark' . level
+    execute 'syntax match VimMarkdownH' . level . ' /^ \{0,3}' . hashes
+          \ . '\%([ \t].*\|$\)/ contains=' . group
+    execute 'syntax match ' . group . ' /^ \{0,3}\zs' . hashes
+          \ . '\ze\%([ \t]\|$\)/ contained conceal cchar='
+          \ . (strdisplaywidth(marker) == 1 ? marker : string(level))
+  endfor
   syntax match VimMarkdownRule /^ \{0,3}\%([-*_]\s*\)\{3,}$/
   syntax match VimMarkdownCode /^\%( \{4}\|\t\).*/
   syntax region VimMarkdownInline start=/\z(`\+\)/ end=/\z1/ oneline keepend
@@ -77,9 +94,6 @@ function! s:Syntax() abort
   syntax region VimMarkdownCode matchgroup=VimMarkdownMarker
         \ start=/^ \{0,3}\z(\~\{3,}\).*$/ end=/^ \{0,3}\z1\~*\s*$/ keepend
   syntax region VimMarkdownFront start=/\%1l^---$/ end=/^\%(---\|\.\.\.\)$/ keepend
-  " 只隐藏短行内标记；光标行原生显示源码，不增加移动／模式切换回调。
-  syntax match VimMarkdownMarker /^ \{0,3}#\{1,6}\ze\s/ contained
-        \ containedin=VimMarkdownH1,VimMarkdownH2,VimMarkdownH3,VimMarkdownH4 conceal
   syntax sync minlines=40 maxlines=120
   let b:current_syntax = 'markdown'
 endfunction

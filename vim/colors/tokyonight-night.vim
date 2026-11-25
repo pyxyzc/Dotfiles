@@ -233,6 +233,12 @@ hi TabLine gui=NONE guibg=#3b4261 guifg=#a9b1d6 ctermfg=146 ctermbg=239 cterm=NO
 hi TabLineFill gui=NONE guibg=#3b4261 guifg=#bb9af7 ctermfg=141 ctermbg=239 cterm=NONE term=NONE
 hi TabLineSel guibg=#7aa2f7 guifg=#15161e ctermfg=234 ctermbg=111
 hi Title gui=bold guibg=NONE guifg=#7aa2f7 ctermfg=111 ctermbg=NONE cterm=bold
+hi VimMarkdownH1 gui=bold guibg=#354f8e guifg=#f1f5ff ctermfg=255 ctermbg=60 cterm=bold
+hi VimMarkdownH2 gui=bold guibg=#3b2d56 guifg=#e4d4ff ctermfg=189 ctermbg=54 cterm=bold
+hi VimMarkdownH3 gui=bold,underline guibg=NONE guifg=#7dcfff ctermfg=117 ctermbg=NONE cterm=bold,underline
+hi VimMarkdownH4 gui=bold guibg=NONE guifg=#9ece6a ctermfg=149 ctermbg=NONE cterm=bold
+hi VimMarkdownH5 gui=italic guibg=NONE guifg=#e0af68 ctermfg=179 ctermbg=NONE cterm=italic
+hi VimMarkdownH6 gui=NONE guibg=NONE guifg=#9aa5ce ctermfg=146 ctermbg=NONE cterm=NONE
 hi Todo guibg=#e0af68 guifg=#1a1b26 ctermfg=234 ctermbg=179
 hi Type guibg=NONE guifg=#2ac3de ctermfg=38 ctermbg=NONE
 hi Underlined gui=underline guibg=NONE ctermbg=NONE cterm=underline

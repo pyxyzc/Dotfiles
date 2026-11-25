@@ -489,19 +489,37 @@ call assert_equal(400, line('$'))
     def test_native_terminal_heading_conceal_and_colors_follow_cursor_without_modifications(self):
         self.terminal_vim(WAIT + r'''
 edit sample.md
-call setline(1, ['# Heading', 'plain text', '', '```', '# literal', '```'])
+set ambiwidth=single
+call setline(1, map(range(1, 6), 'repeat("#", v:val) . " Heading"')
+      \ + ['plain text', '', '```', '# literal', '```', '', 'Setext one', '===',
+      \ '', 'Setext two', '---'])
 call WaitMd()
 setlocal nomodified
 let tick = b:changedtick
-call cursor(2, 1)
-redraw
+call cursor(7, 1)
 let row = win_screenpos(winnr())[0]
-let heading = join(map(range(1, &columns), 'screenstring(row, v:val)'), '')
-call assert_match('Heading', heading)
-call assert_notmatch('# Heading', heading)
-let column = stridx(heading, 'Heading') + 1
-call assert_notequal(screenattr(row, column), screenattr(row + 1, column))
-call cursor(1, 1)
+let markers = ['█', '▰', '◆', '▸', '•', '·']
+for rgb in [1, 0]
+  let &termguicolors = rgb
+  redraw!
+  let attributes = []
+  for level in range(1, 6)
+    let current = row + level - 1
+    let heading = join(map(range(1, &columns), 'screenstring(current, v:val)'), '')
+    call assert_true(stridx(heading, markers[level - 1] . ' Heading') >= 0, heading)
+    let column = strdisplaywidth(matchstr(heading, '^.\{-}\zeHeading')) + 1
+    call add(attributes, screenattr(current, column))
+  endfor
+  call assert_equal(6, len(uniq(sort(attributes))))
+endfor
+call assert_equal('VimMarkdownCode', synIDattr(synID(10, 3, 1), 'name'))
+call assert_equal('VimMarkdownH1', synIDattr(synID(13, 1, 1), 'name'))
+call assert_equal('VimMarkdownH2', synIDattr(synID(16, 1, 1), 'name'))
+call cursor(6, 1)
+redraw
+let heading = join(map(range(1, &columns), 'screenstring(row + 5, v:val)'), '')
+call assert_match('###### Heading', heading)
+VimMarkdownRender
 redraw
 let heading = join(map(range(1, &columns), 'screenstring(row, v:val)'), '')
 call assert_match('# Heading', heading)
