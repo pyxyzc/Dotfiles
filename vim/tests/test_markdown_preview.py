@@ -148,7 +148,8 @@ call assert_false(exists('g:vimrc_lite_markdown_preview_url'))
         chrome = os.environ.get('VIM_MARKDOWN_CHROME') or shutil.which('google-chrome')
         self.assertTrue(chrome, 'Chrome executable is required')
         process, url = self.server()
-        self.update(process, '# 中文标题\n\n- [x] done\n\n> [!NOTE]\n> hello\n\n'
+        self.update(process, '# 中文标题\n\n## 章节\n\n### 小节\n\n#### 主题\n\n'
+                    '##### 细节\n\n###### 补充说明\n\n- [x] done\n\n> [!NOTE]\n> hello\n\n'
                     '| 名称 | value |\n| --- | --- |\n| 中文 | x |\n\n'
                     '```python\nprint("hello")\n```\n\n$E=mc^2$\n\n<script>alert(1)</script>')
         screenshot = self.work / 'preview.png'
@@ -161,6 +162,8 @@ call assert_false(exists('g:vimrc_lite_markdown_preview_url'))
         for snippet in ['id="中文标题"', 'class="katex"', '<table ', 'task-list-item',
                         'hljs-', 'callout-note', '&lt;script&gt;alert(1)&lt;/script&gt;']:
             self.assertIn(snippet, result.stdout)
+        for level, heading in enumerate(['中文标题', '章节', '小节', '主题', '细节', '补充说明'], 1):
+            self.assertRegex(result.stdout, rf'<h{level}\b[^>]*>{heading}</h{level}>')
         destination = os.environ.get('VIM_MARKDOWN_SCREENSHOT')
         if destination:
             shutil.copyfile(screenshot, destination)
