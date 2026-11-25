@@ -61,7 +61,10 @@ endif
 " 必须先于内置 filetypedetect/LSP 注册；重载时保留原来的事件执行顺序。
 function! s:LargeFile() abort
   let limit = get(g:, 'vimrc_lite_large_file_bytes', 1024 * 1024)
-  if limit > 0 && getfsize(expand('<afile>:p')) >= limit
+  let markdown_limit = get(g:, 'vimrc_lite_markdown_large_file_lines', 100000)
+  let many_lines = markdown_limit > 0 && line('$') > markdown_limit
+        \ && expand('<afile>:e') =~? '^\%(md\|markdown\|mdown\|mkd\)$'
+  if limit > 0 && getfsize(expand('<afile>:p')) >= limit || many_lines
     let b:vimrc_lite_large_file = 1
     setfiletype text
     setlocal syntax=OFF foldmethod=manual
@@ -229,6 +232,9 @@ endif
 if !s:SourceModule('edit.vim')
   call s:Warn('missing edit.vim; copy the complete vim directory')
 endif
+
+" Markdown 常驻轻量显示与编辑；结构索引分批，复杂操作按需调用。
+call s:SourceModule('markdown.vim')
 
 " 持久化行级 pin，复用项目状态目录。
 if !s:SourceModule('pins.vim')

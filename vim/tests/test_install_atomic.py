@@ -59,13 +59,13 @@ class AtomicInstallTests(unittest.TestCase):
         self.assertEqual((snippets / 'old.txt').read_text(), 'old snippets\n')
         self.assertFalse(list(self.target.rglob('*.tmp.*')))
 
-    def test_upgrade_removes_markdown_and_preserves_symlink_targets(self):
+    def test_upgrade_replaces_markdown_removes_retired_files_and_preserves_symlink_targets(self):
         vim = self.target / '.vim'
         (vim / 'vendor').mkdir(parents=True)
         modules = [vim / name for name in (
-            'markdown.vim', 'markdown-view.vim', 'markdown-reader.vim',
+            'markdown-view.vim', 'markdown-reader.vim',
             'markdown-notes.vim', 'markdown-snippets.vim', 'markdown-images.vim')]
-        directories = [vim / 'markdown', vim / 'vendor/vim-vsnip']
+        directories = [vim / 'vendor/vim-vsnip']
         for path in modules:
             path.write_text('old module\n')
         for path in directories:
@@ -83,10 +83,22 @@ class AtomicInstallTests(unittest.TestCase):
                     for path in directories:
                         path.symlink_to(external if mode == 'symlinks' else external / 'missing',
                                         target_is_directory=True)
+                    active = vim / 'markdown.vim'
+                    active.unlink()
+                    active.symlink_to(keep if mode == 'symlinks' else external / 'missing')
+                    preview = vim / 'markdown'
+                    shutil.rmtree(preview)
+                    preview.symlink_to(external if mode == 'symlinks' else external / 'missing',
+                                       target_is_directory=True)
                 result = self.install()
                 self.assertEqual(result.returncode, 0, result.stderr)
                 for path in modules + directories:
                     self.assertFalse(path.exists() or path.is_symlink(), str(path))
+                self.assertEqual((vim / 'markdown.vim').read_bytes(),
+                                 (ROOT / 'markdown.vim').read_bytes())
+                self.assertEqual((vim / 'markdown/preview.py').read_bytes(),
+                                 (ROOT / 'markdown/preview.py').read_bytes())
+                self.assertFalse((vim / 'markdown').is_symlink())
                 self.assertEqual(keep.read_text(), 'keep\n')
 
     def test_directory_move_failure_restores_old_plugin(self):

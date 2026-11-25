@@ -62,6 +62,18 @@ function! s:KeyLabels() abort
         \ 'VimGit': '打开 LazyGit / git',
         \ 'VimCopyPath': '复制文件路径 / copy path',
         \ 'VimCopyContent': '复制全文 / copy content',
+        \ 'VimMarkdownRender': 'Markdown 阅读／源码 / reading view',
+        \ 'VimMarkdownOutline': 'Markdown 标题目录 / outline',
+        \ 'VimMarkdownTask': 'Markdown 任务 / task',
+        \ 'VimMarkdownTable': 'Markdown 对齐表格 / align table',
+        \ 'VimMarkdownInsert': 'Markdown 模板 / template',
+        \ 'VimMarkdownToc': 'Markdown 插入／更新目录 / TOC',
+        \ 'VimMarkdownLink': 'Markdown 打开链接 / follow link',
+        \ 'VimMarkdownFocus': 'Markdown 专注 / focus',
+        \ 'VimMarkdownFold': 'Markdown 章节折叠 / fold section',
+        \ 'VimMarkdownPreview': 'Markdown 离线预览 / offline preview',
+        \ 'VimMarkdownStop': 'Markdown 停止预览 / stop preview',
+        \ 'VimMarkdownHelp': 'Markdown 帮助 / help',
         \ 'wall': '保存全部 / save all',
         \ }
   let s:key_labels = {'af': '函数整体 / entire function', 'if': '函数体 / function body',
@@ -74,6 +86,8 @@ function! s:KeyLabels() abort
         \ '[c': '上一个 Git hunk / previous hunk', ']c': '下一个 Git hunk / next hunk',
         \ '[q': '上一个 quickfix 结果 / previous result', ']q': '下一个 quickfix 结果 / next result',
         \ '[d': '上一个诊断 / previous diagnostic', ']d': '下一个诊断 / next diagnostic',
+        \ '[h': '上一个 Markdown 标题 / previous heading',
+        \ ']h': '下一个 Markdown 标题 / next heading',
         \ ' e': '开关文件树 / toggle tree', ' bn': '新建 buffer / new buffer',
         \ ' bp': '选择 buffer / select buffer', ' bD': '清空 buffer 或选区 / clear',
         \ ' bw': '去除行尾空白 / trim whitespace', ' fh': '清除搜索高亮 / clear search',
@@ -168,6 +182,10 @@ function! s:Health() abort
         \ !empty($SSH_CONNECTION) || !empty($SSH_TTY)) ? 'OSC 52' : has('clipboard')
         \ ? 'local clipboard' : 'unnamed register fallback'))
   call add(lines, 'Undo: ' . (exists('+undofile') && &undofile ? &undodir : 'disabled'))
+  call add(lines, 'Markdown: ' . (get(g:, 'vimrc_lite_markdown', 1)
+        \ ? 'native highlighting and writing tools' : 'disabled'))
+  let python = exepath('python3')
+  call add(lines, 'Markdown preview: ' . (empty(python) ? 'missing optional python3' : python))
   call add(lines, 'Pins: ' . (v:version >= 802 && has('textprop')
         \ && exists('*listener_add') && exists('*prop_find')
         \ && exists('*json_encode') && exists('*sha256') && exists('*timer_start')

@@ -24,6 +24,9 @@ config_files=(
     tree-list.vim
     buffers.vim
     edit.vim
+    markdown.vim
+    markdown-structure.vim
+    markdown-preview.vim
     pins.vim
     completion.vim
     matchparen.vim
@@ -46,6 +49,28 @@ plugin_files=(
     vendor/vim-lsp/LICENSE
     vendor/vim-lsp/LICENSE-THIRD-PARTY
     vendor/vim-lsp/SOURCE.md
+)
+preview_files=(
+    netrw-tools/autoload/netrw.vim
+    markdown/preview.py
+    markdown/preview.js
+    markdown/preview.css
+    markdown/index.html
+    markdown/vendor/markdown-it.min.js
+    markdown/vendor/highlight.min.js
+    markdown/vendor/katex.min.js
+    markdown/vendor/katex.min.css
+    markdown/vendor/manifest.json
+    markdown/vendor/LICENSE.highlight.js
+    markdown/vendor/LICENSE.katex
+    markdown/vendor/LICENSE.markdown-it
+    markdown/vendor/SOURCE.md
+    markdown/vendor/fonts/KaTeX_{AMS-Regular,Caligraphic-Bold,Caligraphic-Regular}.woff2
+    markdown/vendor/fonts/KaTeX_{Fraktur-Bold,Fraktur-Regular,Main-Bold,Main-BoldItalic}.woff2
+    markdown/vendor/fonts/KaTeX_{Main-Italic,Main-Regular,Math-BoldItalic,Math-Italic}.woff2
+    markdown/vendor/fonts/KaTeX_{SansSerif-Bold,SansSerif-Italic,SansSerif-Regular}.woff2
+    markdown/vendor/fonts/KaTeX_{Script-Regular,Size1-Regular,Size2-Regular,Size3-Regular}.woff2
+    markdown/vendor/fonts/KaTeX_{Size4-Regular,Typewriter-Regular}.woff2
 )
 
 usage() {
@@ -80,7 +105,8 @@ while (( $# )); do
 done
 
 [[ -f "$script_dir/.vimrc" ]] || die '缺少 .vimrc，请复制完整的 vim 目录'
-for required in "${config_files[@]}" "${color_files[@]}" "${plugin_files[@]}"; do
+for required in "${config_files[@]}" "${color_files[@]}" "${plugin_files[@]}" \
+    "${preview_files[@]}"; do
     [[ -f "$script_dir/$required" ]] || die "缺少 $required，请复制完整的 vim 目录"
 done
 [[ ! -e "$install_target" || -d "$install_target" ]] || die "不是目录：$install_target"
@@ -220,8 +246,10 @@ for source in "$script_dir"/colors/*; do
     [[ -f "$source" ]] || continue
     install_entry "$source" "$install_target/.vim/colors/$(basename -- "$source")"
 done
+install_entry "$script_dir/markdown" "$install_target/.vim/markdown"
+install_entry "$script_dir/netrw-tools" "$install_target/.vim/netrw-tools"
 # Remove retired modules only after the replacement configuration is installed.
-for name in which-key.vim markdown.vim markdown-view.vim markdown-reader.vim \
+for name in which-key.vim markdown-view.vim markdown-reader.vim \
     markdown-notes.vim markdown-snippets.vim markdown-images.vim; do
     obsolete_module="$install_target/.vim/$name"
     if [[ -f "$obsolete_module" || -L "$obsolete_module" ]]; then
@@ -229,7 +257,7 @@ for name in which-key.vim markdown.vim markdown-view.vim markdown-reader.vim \
         printf '已删除旧模块：%s\n' "$obsolete_module"
     fi
 done
-for name in markdown vendor/vim-vsnip; do
+for name in vendor/vim-vsnip; do
     obsolete_directory="$install_target/.vim/$name"
     if [[ -e "$obsolete_directory" || -L "$obsolete_directory" ]]; then
         rm -rf -- "$obsolete_directory"
