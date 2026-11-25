@@ -47,8 +47,9 @@ class VimSession(unittest.TestCase):
         self.env = os.environ.copy()
         self.env['XDG_STATE_HOME'] = str(self.work / 'state')
 
-    def vim(self, body, config=None, before=None, timeout=20):
+    def vim(self, body, config=None, before=None, timeout=20, expect_exit=False):
         report = self.work / "errors.txt"
+        report.unlink(missing_ok=True)
         script = self.work / "check.vim"
         script.write_text(
             "set nomore\n"
@@ -78,6 +79,11 @@ class VimSession(unittest.TestCase):
         )
         errors = report.read_text(errors='replace') if report.exists() else ""
         self.assertEqual(result.returncode, 0, errors + result.stdout + result.stderr)
+        if expect_exit:
+            self.assertFalse(report.exists(), 'Vim did not exit at the requested operation')
+        else:
+            self.assertTrue(report.exists(), 'Vim exited before writing assertions: '
+                            + result.stdout + result.stderr)
         self.assertEqual(errors, "")
         return result
 
@@ -152,6 +158,11 @@ class VimSession(unittest.TestCase):
         return bytes(output)
 
 class VimTests(VimSession):
+    def test_headless_harness_rejects_exit_before_assertions(self):
+        self.vim('call assert_equal(1, 1)')
+        with self.assertRaisesRegex(AssertionError, 'before writing assertions'):
+            self.vim('qa!')
+
     def test_dashboard_terminal_startup_and_new_file(self):
         output = self.terminal_vim(r'''
 call assert_equal('vimdashboard', &filetype)
@@ -615,7 +626,8 @@ call assert_equal(windows, map(getwininfo(), 'v:val.winid'))
 ''')
 
     def test_last_buffer_exits(self):
-        self.vim("call Call('CloseBuffer', [])\ncall writefile(['unexpected'], 'after-close')")
+        self.vim("call Call('CloseBuffer', [])\ncall writefile(['unexpected'], 'after-close')",
+                 expect_exit=True)
         self.assertFalse((self.work / "after-close").exists())
 
     def test_close_save_and_discard_in_terminal(self):
@@ -1527,7 +1539,7 @@ call assert_equal('text', &filetype)
         self.assertTrue((self.work / 'opened.txt').exists())
 
     def test_file_tree_prompt_cancel(self):
-        self.vim(r'''
+        self.terminal_vim(r'''
 call feedkeys(' e', 'xt')
 let timeoutlen = &ttimeoutlen
 let ttimeout = &ttimeout
@@ -1568,15 +1580,16 @@ call assert_equal('nested.txt', @")
         self.assertIn(b'\x1b]52;c;' + base64.b64encode(b'nested.txt') + b'\x07', output)
 
     def test_terminal_opens_one_window_in_new_tab(self):
-        self.vim(r'''
+        self.terminal_vim(r'''
 if has('terminal')
+  edit origin.txt
   let original_tabs = tabpagenr('$')
-  execute "normal \<Space>;"
+  call feedkeys("\<Space>;", 'xt')
   call assert_equal(original_tabs + 1, tabpagenr('$'))
   call assert_equal(1, winnr('$'))
   call assert_equal('terminal', &buftype)
   let terminal = bufnr('%')
-  call Call('CloseBuffer', [])
+  call call(function(ScriptPrefix('/buffers.vim$') . 'CloseBuffer'), [])
   call assert_equal(terminal, bufnr('%'))
   call term_sendkeys(terminal, "exit\n")
   for attempt in range(200)
