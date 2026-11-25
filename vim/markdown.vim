@@ -115,11 +115,20 @@ function! s:WindowRestore() abort
   endif
 endfunction
 
-function! s:Map(mode, key, rhs, expression) abort
-  let old = maparg(a:key, a:mode, 0, 1)
+function! s:MapInfo(mode, key) abort
+  let saved = &cpoptions
+  try
+    noautocmd set cpoptions-=<
+    return maparg(a:key, a:mode, 0, 1)
+  finally
+    noautocmd let &cpoptions = saved
+  endtry
+endfunction
+
+function! s:Map(mode, key, rhs, flags) abort
+  let old = s:MapInfo(a:mode, a:key)
   call add(b:vimrc_lite_md_maps, [a:mode, a:key, get(old, 'buffer', 0) ? old : {}])
-  execute a:mode . 'noremap <silent><buffer> ' . (a:expression ? '<expr> ' : '')
-        \ . a:key . ' ' . a:rhs
+  execute a:mode . 'noremap <silent><special><buffer>' . a:flags . ' ' . a:key . ' ' . a:rhs
 endfunction
 
 function! s:Attach() abort
@@ -146,19 +155,19 @@ function! s:Attach() abort
           \ '<leader>mh': 'VimMarkdownHelp', '<leader>mp': 'VimMarkdownPreview',
           \ '<leader>ms': 'VimMarkdownStop', '<leader>mz': 'VimMarkdownFold',
           \ '<leader>mf': 'VimMarkdownFocus'})
-      call s:Map('n', key, ':' . rhs . '<CR>', 0)
+      call s:Map('n', key, ':' . rhs . '<CR>', '')
     endfor
-    call s:Map('n', ']h', ':<C-u>call <SID>Heading(1, v:count1)<CR>', 0)
-    call s:Map('n', '[h', ':<C-u>call <SID>Heading(-1, v:count1)<CR>', 0)
-    call s:Map('n', 'j', 'v:count ? "j" : "gj"', 1)
-    call s:Map('n', 'k', 'v:count ? "k" : "gk"', 1)
-    " Ignore 先提交已输入文本，避免表达式映射提前读取旧行内容。
-    call s:Map('i', '<CR>', '<SID>EnterKey()', 1)
-    call s:Map('i', '<Plug>(vim-lite-md-enter)', '<SID>Enter()', 1)
-    call s:Map('x', '<leader>mx', ':VimMarkdownTask<CR>', 0)
+    call s:Map('n', ']h', ':<C-u>call <SID>Heading(1, v:count1)<CR>', '')
+    call s:Map('n', '[h', ':<C-u>call <SID>Heading(-1, v:count1)<CR>', '')
+    call s:Map('n', 'j', 'v:count ? "j" : "gj"', '<expr>')
+    call s:Map('n', 'k', 'v:count ? "k" : "gk"', '<expr>')
+    " 旧版 Vim 不会重映射 noremap 返回的 <Plug>；显式允许脚本局部映射。
+    call s:Map('i', '<CR>', '<SID>EnterKey()', '<script><expr>')
+    call s:Map('i', expand('<SID>') . 'MarkdownEnter', '<SID>EnterList()', '<expr>')
+    call s:Map('x', '<leader>mx', ':VimMarkdownTask<CR>', '')
     for [key, kind] in items({'b': 'bold', 'i': 'italic', 'c': 'code'})
       call s:Map('x', '<leader>m' . key,
-            \ ':<C-u>call <SID>VisualWrap(''' . kind . ''')<CR>', 0)
+            \ ':<C-u>call <SID>VisualWrap(''' . kind . ''')<CR>', '')
     endfor
     let b:undo_ftplugin = get(b:, 'undo_ftplugin', '')
           \ . '|call ' . expand('<SID>') . 'Detach()'
@@ -219,10 +228,10 @@ function! s:Detach() abort
     execute 'let &l:' . name . ' = value'
   endfor
   for [mode, key, old] in b:vimrc_lite_md_maps
-    if get(maparg(key, mode, 0, 1), 'sid', 0) != s:script_id
+    if get(s:MapInfo(mode, key), 'sid', 0) != s:script_id
       continue
     endif
-    execute 'silent! ' . mode . 'unmap <buffer> ' . key
+    execute 'silent! ' . mode . 'unmap <special><buffer> ' . key
     if !empty(old) && exists('*mapset')
       call mapset(mode, 0, old)
     endif
@@ -250,11 +259,7 @@ function! s:Render() abort
   endif
 endfunction
 
-function! s:Enter() abort
-  if pumvisible()
-    return exists('*complete_info') && complete_info(['selected']).selected < 0
-          \ ? "\<C-e>\<CR>" : "\<C-y>"
-  endif
+function! s:EnterList() abort
   if &paste || !get(g:, 'vimrc_lite_markdown_lists', 1) || !s:Editable()
     return "\<CR>"
   endif
@@ -284,12 +289,12 @@ function! s:Enter() abort
 endfunction
 
 function! s:EnterKey() abort
-  " Ignore 会结束补全状态，菜单分支必须在提交普通输入之前直接处理。
+  " Ignore 先提交已输入文本再检查续写，但会结束补全，菜单分支先处理。
   if pumvisible()
     return exists('*complete_info') && complete_info(['selected']).selected < 0
           \ ? "\<C-e>\<CR>" : "\<C-y>"
   endif
-  return "\<Ignore>\<Plug>(vim-lite-md-enter)"
+  return "\<Ignore>\<SNR>" . s:script_id . '_MarkdownEnter'
 endfunction
 
 function! s:Task(first, last) abort

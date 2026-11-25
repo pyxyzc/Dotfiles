@@ -65,6 +65,20 @@ call feedkeys("A\<CR>next\<Esc>", 'xt')
 call assert_equal(''' + str(expected).replace('\\', '\\\\') + r''', getline(1, '$'))
 ''')
 
+    def test_enter_handles_queued_typing_with_vim_special_key_notation_disabled(self):
+        self.vim(WAIT + r'''
+new plain.txt
+inoremap <buffer> <CR> USER
+set cpoptions+=<
+setlocal filetype=markdown
+call WaitMd()
+call feedkeys("i正文\<CR>- [x] 完成\<CR>下一项\<CR>\<CR>正文\<Esc>", 'xt')
+call assert_equal(['正文', '- [x] 完成', '- [ ] 下一项', '', '正文'], getline(1, '$'))
+call assert_true(stridx(&cpoptions, '<') >= 0)
+setlocal filetype=text
+call assert_equal('USER', maparg("\<CR>", 'i'))
+''')
+
     def test_fences_frontmatter_comments_and_unclosed_blocks(self):
         self.md(r'''
 call setline(1, ['---', 'title: x', '---', '# 正文', '````python', '- literal',
@@ -512,6 +526,8 @@ call WaitMd()
 call cursor(2, 1)
 VimMarkdownTask
 call assert_equal('- [x] task', getline(2))
+call feedkeys("A\<CR>new\<CR>\<CR>tail\<Esc>", 'xt')
+call assert_equal(['# installed', '- [x] task', '- [ ] new', '', 'tail'], getline(1, '$'))
 call feedkeys("\<Space>e\<Space>e", 'xt')
 call assert_equal('markdown', &filetype)
 VimMarkdownPreview!
