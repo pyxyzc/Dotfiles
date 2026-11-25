@@ -5,6 +5,7 @@
 主题全部在本目录，随配置保存固定版本的 `vim-lsp`。
 没有插件管理器或自动下载；语言服务器 Pyright、clangd 及其运行环境由用户自行安装。
 主题默认透明背景，不需要特殊字体。
+Markdown 使用轻量原生高亮与写作辅助；浏览器预览显式启动，渲染资源随配置离线保存。
 
 全项目性能审查、实测对照、复测命令和未完成项见 [PERFORMANCE.md](PERFORMANCE.md)。
 终端转义序列等待默认 30 ms，普通组合映射仍使用 Vim 的 `timeoutlen`。
@@ -13,12 +14,15 @@
 `.vimrc` 保留基础设置、通用功能和快捷键；`ui.vim` 统一栏位、分隔线、面板和浮窗的外观；
 `buffers.vim` 管理顶部 buffer 栏、
 buffer 切换与关闭，`edit.vim` 提供清空、去空白和注释切换等编辑辅助；
+`markdown.vim` 提供轻量显示与写作，`markdown-structure.vim` 分批维护结构索引，
+`markdown-preview.vim` 与 `markdown/` 仅在显式预览时工作；
 `pins.vim` 提供随代码行移动、跨 Vim 重启恢复的持久 pin；
 `completion.vim` 分批扫描已加载 buffer，提供自动单词补全；
 `matchparen.vim` 为系统括号高亮增加光标附近的快速检查，避免无括号长行的重复扫描；
 `dashboard.vim` 管理首页，
 `clipboard.vim` 管理 OSC 52 远程剪贴板与复制粘贴回退，
-`tree.vim` 集中管理 netrw 侧边文件树的加载、选项和快捷键；
+`tree.vim` 集中管理 netrw 侧边文件树的加载、选项和快捷键，
+`netrw-tools/` 将可选网络后端探测延后到首次传输；
 `tree-async.vim` 管理大目录后台列举，`tree-list.vim` 是不加载用户配置的 Vim 工作进程；
 `search.vim`、`search.sh` 和 `search.awk` 连接 Vim 内置终端与 fd/ripgrep/fzf；
 `search-preview.awk` 为受限的预览片段提供语法颜色。
@@ -80,6 +84,11 @@ bash ~/Dotfiles/vim/vim-clean.sh
 ~/.vim/tree-list.vim
 ~/.vim/buffers.vim
 ~/.vim/edit.vim
+~/.vim/markdown.vim
+~/.vim/markdown-structure.vim
+~/.vim/markdown-preview.vim
+~/.vim/markdown/
+~/.vim/netrw-tools/
 ~/.vim/pins.vim
 ~/.vim/completion.vim
 ~/.vim/matchparen.vim
@@ -357,6 +366,8 @@ slogan 不会挤掉原本能显示的 buffer 标签。
 Unix 本地树按名称／扩展名排序时，会为已核对完整函数体的 netrw 运行时启用批量列举，
 减少重复文件属性查询和逐行写入。未知运行时、其他列表布局、大小／时间排序、
 动态列宽及换行／回车文件名保留原生路径；不修改系统 netrw 文件。
+本地树不会探测可选的 WebDAV/fetch/文本浏览器后端；这些程序在首次实际传输时
+查找，避免 WSL 的 Windows PATH 或网络挂载拖慢开树。后端优先级与个人 netrw 命令设置保留。
 可用 `let g:vimrc_lite_netrw_fast_listing = 0` 随时关闭加速，便于对照排查。
 树布局中的自定义文件操作会区分字面 `@`、`*`、`=`、`|` 后缀与文件类型标记；
 显示歧义或属性已变化时拒绝猜测目标，并提示使用明确路径或刷新。
@@ -400,6 +411,102 @@ LazyGit 内 `Esc` 直接传给 LazyGit，不等待双击或切换 Vim 模式；�
 buffer 尚未保存时也会按内存内容计算。未跟踪且未被 ignore 的非空文件视为一个完整 hunk。
 在 Vim diff 窗口中，这两个按键保留 Vim 自带的 diff 跳转行为。没有 hunk 或当前文件不在
 Git 仓库中时只显示提示，不修改 buffer。
+
+## Markdown 写作
+
+新版目标、开发过程、实测结果和复测命令见 [MARKDOWN.md](MARKDOWN.md)。
+
+```bash
+vim -Nu ~/Dotfiles/vim/.vimrc ~/Dotfiles/vim/markdown/example.md
+```
+
+标题分层着色，代码、引用、任务、链接和强调使用 TokyoNight 语义色；正文保留源码布局。
+阅读模式只隐藏标题的 `#`，光标行由 Vim 原生显示标记。插入／退出、移动和窗口缩放不
+清空或重建整篇装饰，不创建虚拟文本、卡片边框或表格替换文本。
+代码围栏统一着色，默认不加载各语言的嵌套语法。
+
+长段落软换行，`j/k` 按屏幕行移动，带计数的 `3j/3k` 按文件行移动。保持原始行宽、
+Markdown 的两个尾随空格和原生撤销；不自动保存、重排表格或改写数学输入。
+`Tab` 保留原有行为，常用结构通过显式模板插入。
+
+以下映射只在 Markdown buffer 中启用，`<leader>` 默认是空格：
+
+| 按键 | 操作 |
+| --- | --- |
+| `Space m r` | 阅读／源码切换，同一文档的窗口同步 |
+| `[h` / `]h` | 上／下一个标题，支持计数，识别 ATX 与 Setext 标题 |
+| `Space m o` | 标题目录，Enter 跳转，q 关闭；修改后的旧目录需重新打开 |
+| `Space m x` | 切换任务，支持选区；代码、属性和注释受到保护 |
+| `Space m t` | 显式对齐当前表格，支持中文宽度、转义竖线、行内代码与列对齐 |
+| `Space m l` | 打开行内链接、本地文件、标题锚点，支持百分号编码与括号路径 |
+| `Space m c` | 插入／更新带标记的文内目录，默认最多三级 |
+| `Space m z` | 折叠／展开当前章节，使用原生手动折叠 |
+| `Space m f` | 专注模式，离开窗口归还行号、光标线和标记栏 |
+| `Space m i` | 显示模板用法 |
+| 选区 `Space m b/i/c` | 粗体／斜体／行内代码，支持中文字符和多行选区 |
+| `Space m p` / `Space m s` | 启动／停止离线浏览器预览 |
+| `Space m h` | 简短帮助；`:VimKeys Markdown` 查询实际映射 |
+
+Enter 延续无序列表、有序列表、任务和引用；新任务始终未勾选，空条目 Enter 退出。
+代码块和 front matter 中保持原生 Enter，补全菜单选中项用 Enter 确认，未选中时换行。
+原生粘贴不经过逐行续写。表格整理上限为 500 行、40 列，输入与输出各不超过 64 KiB，
+超限提示并保持内容。
+选区包装支持字符与整行选择；块选择保留源码并提示改用字符或整行选择。
+
+```vim
+" 直接输入命令，不绑定 Tab，也不在普通输入中自动替换文字。
+VimMarkdownInsert code python
+VimMarkdownInsert table 3 4
+VimMarkdownInsert math
+VimMarkdownInsert image
+VimMarkdownInsert note
+VimMarkdownInsert mermaid
+VimMarkdownInsert plantuml
+```
+
+结构索引在编辑空闲后按约 3 ms 分批处理，同一段状态重新一致后复用后续索引。
+输入期间暂停后台扫描；回车通常只查看缓存或一个最多 32 行的检查点区间。
+少量分散修改会额外验证至多三个前置检查点，确认块状态相同后复用中间内容。
+新打开的长文档尚未索引到光标位置时，保留原生回车，避免错误改写或同步扫描全文；
+标题命令会等待索引，等待期间继续编辑或移动光标会取消旧跳转。
+超过现有大文件阈值（默认 1 MiB）的文件沿用 text 快速模式。
+Markdown 超过 10 万行时同样使用快速模式，阈值由
+`g:vimrc_lite_markdown_large_file_lines` 调整。
+
+高亮默认只检查每行前 512 字节、向前同步最多 120 行。超长行后部和直接跳入长代码块
+深处时可能仅保留基础着色；编辑代码保护使用独立结构索引，不依赖高亮判断。
+出现超过 8192 字节的单行时，当前文档自动使用基础配色和横向滚动，避免长行语法与
+软换行阻塞编辑；长行缩短后恢复高亮和软换行。
+阈值由 `g:vimrc_lite_markdown_long_line_bytes` 调整，0 关闭此保护。
+自动括号高亮跳过超过 8192 字节的单行，原生 `%` 跳转仍可使用；全局阈值由
+`g:vimrc_lite_matchparen_max_bytes` 调整，0 恢复不限制。自动单词补全跳过超过 1024 字节的
+输入前缀，避免正则长度错误；普通前缀仍可补全完整的超长候选。
+
+浏览器预览需要 `python3` 与 Vim `+job +channel +timers`，无需 pip、Node 或联网。
+包含表格、任务、代码高亮、提示块、相对图片和 KaTeX 公式；Mermaid／PlantUML 保留源码。
+未保存文本在暂停输入约 250 ms 后合并同步，快照分批捕获，旧快照会被新编辑取消；
+移动光标不发请求，浏览器的「跟随编辑」定位到最近同步的编辑位置。
+原始 HTML 按文字显示，图片仅提供文档目录内的资源。
+
+`:VimMarkdownPreview!` 只显示 URL，适合 SSH 端口转发；例如随机端口为 45678：
+
+```bash
+ssh -N -L 45678:127.0.0.1:45678 your-host
+```
+
+在本地浏览器打开完整 URL（含随机令牌）。预览只监听 `127.0.0.1`，一个 Vim 实例一次
+预览一篇文档；重启命令切换文档，关闭源 buffer、重载配置或退出会停止服务。
+数学和预览渲染库的固定版本、来源与校验见 [SOURCE.md](markdown/vendor/SOURCE.md)。
+
+可在个人 `~/.vim/settings.vim` 调整：
+
+```vim
+let g:vimrc_lite_markdown = 1
+let g:vimrc_lite_markdown_render = 1
+let g:vimrc_lite_markdown_lists = 1
+let g:vimrc_lite_markdown_synmaxcol = 512
+let g:vimrc_lite_markdown_browser = ['firefox', '--new-tab']
+```
 
 ## Python / C++ 工作流
 
