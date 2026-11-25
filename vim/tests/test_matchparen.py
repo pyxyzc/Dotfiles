@@ -4,6 +4,21 @@ from test_vim import ROOT, VimSession
 
 
 class MatchParenTests(VimSession):
+    def test_giant_line_guard_preserves_other_matches_and_can_be_disabled(self):
+        self.terminal_vim(r'''
+edit pairs.txt
+setlocal nowrap syntax=OFF
+call setline(1, repeat('plain ', 2000) . '()')
+call cursor(1, strlen(getline(1)) - 1)
+let other = matchaddpos('Search', [[1, 1]], 17)
+doautocmd matchparen CursorMoved
+call assert_equal([], filter(getmatches(), 'v:val.group ==# "MatchParen"'))
+call assert_equal(1, len(filter(getmatches(), 'v:val.id == other')))
+let g:vimrc_lite_matchparen_max_bytes = 0
+doautocmd matchparen CursorMoved
+call assert_false(empty(filter(getmatches(), 'v:val.group ==# "MatchParen"')))
+''')
+
     def test_highlight_matches_system_for_pairs_unicode_and_plain_text(self):
         self.terminal_vim(r'''
 let system = matchstr(execute('function /_Highlight_Matching_Pair'), '<SNR>\d\+_Highlight_Matching_Pair')

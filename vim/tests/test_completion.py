@@ -4,6 +4,24 @@ from test_vim import VimSession, quoted
 
 
 class CompletionTests(VimSession):
+    def test_giant_typed_prefix_does_not_compile_an_oversized_pattern(self):
+        self.terminal_vim(r'''
+enew
+setlocal nowrap
+call setline(1, repeat('a', 120000))
+let g:finished = 0
+function! GiantPrefixEnd(timer) abort
+  let g:finished = 1
+  call feedkeys("\<Esc>", 't')
+endfunction
+call timer_start(100, function('GiantPrefixEnd'))
+call feedkeys('Al', 'xt!')
+call assert_equal(1, g:finished)
+call assert_equal(120001, strlen(getline(1)))
+call assert_notmatch('E339\|Pattern too long', execute('messages'))
+call assert_false(pumvisible())
+''')
+
     def test_enter_without_selected_candidate_inserts_newline(self):
         self.terminal_vim(r'''
 enew

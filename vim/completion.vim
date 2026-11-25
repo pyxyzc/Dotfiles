@@ -116,6 +116,11 @@ function! s:Scan(timer) abort
   if empty(s:request)
     return
   endif
+  " 只窥视首字节，不消费输入；让待处理的 Esc、方向键和粘贴先交给主循环。
+  if mode(1) !~# '^c' && getchar(1) != 0
+    let s:request.timer = timer_start(10, function('s:Scan'))
+    return
+  endif
   let request = s:request
   if mode(1) !~# '^i' || s:Context() !=# request.context || &paste || !&modifiable
         \ || (pumvisible() && complete_info(['selected']).selected >= 0)
@@ -212,6 +217,21 @@ function! s:Changed() abort
   " 手动关键词/LSP 补全由其自身管理；用户正在挑选候选项时也不重置菜单。
   if pumvisible() && (empty(s:request) || complete_info(['selected']).selected >= 0)
     return
+  endif
+  " 巨型连续词既不适合自动弹出菜单，也不能嵌入 Vim 的有长度上限的正则。
+  " 先检查光标附近的小窗口，避免为拒绝的请求构建完整前缀。
+  let text = getline('.')
+  let finish = min([strlen(text), col('.') - 1])
+  if finish > 1024
+    let first = max([0, finish - 1028])
+    let chunk = strpart(text, first, finish - first)
+    if &encoding ==# 'utf-8'
+      let chunk = strpart(chunk, s:Boundary(chunk, 0))
+    endif
+    if strlen(matchstr(chunk, '\k\+$')) > 1024
+      call s:Cancel()
+      return
+    endif
   endif
   let context = s:Context()
   if strchars(context[3]) < 2 || context ==# s:dismissed

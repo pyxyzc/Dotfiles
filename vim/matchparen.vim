@@ -1,11 +1,17 @@
-" 保留系统括号高亮，仅跳过光标附近没有配对字符时的整行正则扫描。
+" 保留系统括号高亮；巨型行和附近没有配对字符时跳过整行正则扫描。
 function! s:Highlight() abort
+  let text = getline('.')
+  let limit = get(g:, 'vimrc_lite_matchparen_max_bytes', 8192)
+  if limit > 0 && strlen(text) > limit
+    call call(s:remove, [])
+    return
+  endif
   if &encoding !=# 'utf-8' || pumvisible()
     call call(s:highlight, [])
     return
   endif
   " UTF-8 字符最多四字节；前后多保留一点，宁可交回系统处理，不漏掉真实配对。
-  let nearby = strpart(getline('.'), max([0, col('.') - 5]), 12)
+  let nearby = strpart(text, max([0, col('.') - 5]), 12)
   for character in split(&l:matchpairs, '.\zs[:,]')
     if stridx(nearby, character) >= 0
       call call(s:highlight, [])
