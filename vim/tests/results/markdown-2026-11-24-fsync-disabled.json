@@ -1,0 +1,191 @@
+{
+  "case": "long-code",
+  "enabled": false,
+  "preview": false,
+  "lines": 10011,
+  "key_delay_ms": 0,
+  "bytes": 151309,
+  "rounds": 100,
+  "startup_ms": 26.677,
+  "index_ready_ms": 28.837,
+  "max_loop_gap_ms": 23.415,
+  "max_index_batch_ms": 0.0,
+  "context_fallbacks": 0,
+  "upstream_netrw_errors": [
+    "E31: No such mapping"
+  ],
+  "operations": {
+    "insert_enter": {
+      "n": 100,
+      "first_ms": 0.467,
+      "median_ms": 1.763,
+      "p95_ms": 2.232,
+      "max_ms": 2.47
+    },
+    "insert_key": {
+      "n": 1200,
+      "first_ms": 4.367,
+      "median_ms": 4.404,
+      "p95_ms": 5.048,
+      "max_ms": 5.625
+    },
+    "insert_escape": {
+      "n": 100,
+      "first_ms": 60.428,
+      "median_ms": 61.333,
+      "p95_ms": 62.683,
+      "max_ms": 63.768
+    },
+    "code_enter": {
+      "n": 100,
+      "first_ms": 2.47,
+      "median_ms": 3.952,
+      "p95_ms": 6.477,
+      "max_ms": 8.481
+    },
+    "list_enter": {
+      "n": 100,
+      "first_ms": 1.151,
+      "median_ms": 1.023,
+      "p95_ms": 1.56,
+      "max_ms": 1.916
+    },
+    "undo": {
+      "n": 100,
+      "first_ms": 2.083,
+      "median_ms": 2.459,
+      "p95_ms": 3.687,
+      "max_ms": 4.153
+    },
+    "save": {
+      "n": 100,
+      "first_ms": 13.277,
+      "median_ms": 17.667,
+      "p95_ms": 21.994,
+      "max_ms": 23.471
+    },
+    "bracketed_paste": {
+      "n": 100,
+      "first_ms": 4.714,
+      "median_ms": 4.893,
+      "p95_ms": 5.378,
+      "max_ms": 6.007
+    },
+    "move_down": {
+      "n": 100,
+      "first_ms": 0.709,
+      "median_ms": 0.577,
+      "p95_ms": 0.758,
+      "max_ms": 0.821
+    },
+    "move_up": {
+      "n": 100,
+      "first_ms": 0.61,
+      "median_ms": 0.546,
+      "p95_ms": 0.801,
+      "max_ms": 2.601
+    },
+    "scroll_down": {
+      "n": 100,
+      "first_ms": 0.676,
+      "median_ms": 0.559,
+      "p95_ms": 0.81,
+      "max_ms": 0.968
+    },
+    "scroll_up": {
+      "n": 100,
+      "first_ms": 1.002,
+      "median_ms": 0.744,
+      "p95_ms": 1.058,
+      "max_ms": 1.276
+    },
+    "split_open": {
+      "n": 100,
+      "first_ms": 1.852,
+      "median_ms": 1.73,
+      "p95_ms": 2.329,
+      "max_ms": 2.881
+    },
+    "split_close": {
+      "n": 100,
+      "first_ms": 1.541,
+      "median_ms": 1.451,
+      "p95_ms": 1.854,
+      "max_ms": 2.291
+    },
+    "buffer_next": {
+      "n": 100,
+      "first_ms": 9.401,
+      "median_ms": 1.503,
+      "p95_ms": 1.745,
+      "max_ms": 9.401
+    },
+    "buffer_previous": {
+      "n": 100,
+      "first_ms": 1.934,
+      "median_ms": 1.696,
+      "p95_ms": 1.852,
+      "max_ms": 2.277
+    },
+    "tree_open": {
+      "n": 100,
+      "first_ms": 20.48,
+      "median_ms": 13.261,
+      "p95_ms": 13.675,
+      "max_ms": 20.48
+    },
+    "tree_close": {
+      "n": 100,
+      "first_ms": 2.465,
+      "median_ms": 2.375,
+      "p95_ms": 2.604,
+      "max_ms": 2.962
+    }
+  },
+  "violations": [],
+  "fsync_diagnostic": {
+    "probe_sha256": "20f2684d2408d1a0c78006038c28ade7179d11ee33cc7cc060b5ffd39e18febd",
+    "calls": 201,
+    "maximum_ms": 12.728,
+    "all_calls_succeeded": true,
+    "trace_file": "markdown-2026-11-24-fsync-disabled.tsv"
+  },
+  "source_sha256": {
+    ".vimrc": "b1ac25c033de7a10661ee88098d0640418c7766a67da8934d4fc889203cf6c1a",
+    "vim-install.sh": "bff0b2e9a1896b8eaec1921785183a4ef396503b086b0d319848f2c461a9a12a",
+    "tests/markdown_latency.py": "1b2f49de59800dbc614dde1a1592195d17f97185e5b1eb40f8bb4a3f1af5a107",
+    "tests/test_vim.py": "b42d882eff9b3ac929711c6174be5c86fc96cc783feba8ea9ee6a558e075a47c",
+    "netrw-tools/autoload/netrw.vim": "ac274a1dc3b330154d13ada066f9680a71bd6388f6d212733d83a41c5a722eb1",
+    "buffers.vim": "cabc79e0dc8798d9c63733a16ededa8ba7ddc6987c405c82b1ffe31e94a76faa",
+    "clipboard.vim": "b540bc4e455f4fcb8560c9a380027d7444a6ad477da2de2d4a0547d76723cee8",
+    "completion.vim": "07919ee2c31c61ca7a8622ba6ccd1a0735dd8ee7dc3d9910c2bab1dac59e6a25",
+    "context.vim": "5b0307f841b05bba97583d274fa291e35fe6f33ebd9ae005b9677bd2bb6f6aff",
+    "dashboard.vim": "9efb995b0a4fdc6025d782910d9707965151299174baf027ab2f3fecc257e0f5",
+    "edit.vim": "8103c370be0a42ffb3cea78a4846bb638b007c6e44ad03b7393acff524f465a6",
+    "git.vim": "923da477240a3fe4647c35e5b013149856039e3a4da7f49cd5dae6496e0a5066",
+    "lsp.vim": "25a1447b3d25a0d7ce9b49d911248bd3a29650038fd0ce75e62985babb582dd0",
+    "markdown-preview.vim": "f5f460d8c7c96313470b0393c2491e0d20b6f9792559fdcee58e5776248d314e",
+    "markdown-structure.vim": "5b3fa7e163258225110e71e57530782a2e2718d73e93fc4c5c97df8ecf5efaab",
+    "markdown.vim": "f2ad7c1fbb7b6fcceff15441a677f2299256c24a22251170a06b213f4f2f5b45",
+    "matchparen.vim": "e7937a115be7fbdf6a2d4b7dc3955a0f5c2d165c0b1f3408ed428dcab05fa9cc",
+    "pins.vim": "e210db0ba69f9ca2c5bf64a42076e77777be0ddf66ac6141c49ec47a5282e841",
+    "project.vim": "8f9c9784fc74aa3b989f110eafa85a713ba0e44812c5e31bca85434437e9ff57",
+    "search.vim": "d1954b67684fea9bc3d87200309d8a1ddcbba39812a5d642a4d595489e631496",
+    "session.vim": "bec5c6c242aa0e89600f82ed8b8f19a34edb903f932e1ecf85bd546f985e152a",
+    "tasks.vim": "c2db08c8b4e9acc6dbc61db7639e290871007b4a20427be74c2aa4c9bf9a24f0",
+    "terminal.vim": "d897157f47875d3a82f91424554150491278ba6cf129bd2bbf656f0baf85ff95",
+    "textobjects.vim": "fc5065afb015b1641d2cf2d3ddfb4c0640b340dba2b92ebe087779d04a5f8428",
+    "tools.vim": "f1bc530bb8c68af460d7f3aceebd6963abb5810b757ed03c6f1b3e7405bc4d08",
+    "tree-async.vim": "0665e43949b7a61a6d0f1790bf75ed178f74b6a31e61a49039c694fdf003e7ce",
+    "tree-list.vim": "79d422f01f4c252eff1bb25a9ec80cf1eb4b9527da50a6f822ba018df420f64d",
+    "tree.vim": "7b14cdf0fec0d3608916d838a1c38dc89ef2337434e2bc33eeb086da08abe197",
+    "ui.vim": "20f6c96a483500bbf06f7e8042d3f219c922bdfc02abeed27fbd4cae7fef1e2d",
+    "markdown/preview.py": "6760ba6508efa7cb9bd96bc2d7ef96b169d6010d987777b5572e8f4dfd0bf560",
+    "markdown/preview.js": "4f61d9f1ea057a59e1551a107b37c052de2e1044c465ab30a2be0793394b4144",
+    "markdown/preview.css": "2de94f4b3615d1ffbdbf8500b40181ea8f241fb43c36f46e96a6c994e02e0c22",
+    "markdown/index.html": "e431e5f9a5daf8845eb0c236c6c1bdd2d3a80bb7a0d7cfdbb0a001827deb16c4",
+    "markdown/vendor/manifest.json": "8e4f9b8797381fa5e63caa0a5b72434329995a7e167ba400104f531e8a4e2457"
+  },
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "vim": "VIM - Vi IMproved 9.1 (2024 Jan 02, compiled Jul 13 2026 17:17:48)"
+}

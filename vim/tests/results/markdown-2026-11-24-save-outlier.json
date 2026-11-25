@@ -1,0 +1,2797 @@
+{
+  "started_utc": "2026-11-24T09:21:57.900249+00:00",
+  "platform": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "vim": "VIM - Vi IMproved 9.1 (2024 Jan 02, compiled Jul 13 2026 17:17:48)",
+  "measurement": "real PTY; redraw then Unix socket observation; 100x30; LSP/clipboard/personal hooks disabled; no SSH or physical display",
+  "source_sha256": {
+    ".vimrc": "b1ac25c033de7a10661ee88098d0640418c7766a67da8934d4fc889203cf6c1a",
+    "vim-install.sh": "bff0b2e9a1896b8eaec1921785183a4ef396503b086b0d319848f2c461a9a12a",
+    "tests/markdown_latency.py": "1b2f49de59800dbc614dde1a1592195d17f97185e5b1eb40f8bb4a3f1af5a107",
+    "tests/test_vim.py": "b42d882eff9b3ac929711c6174be5c86fc96cc783feba8ea9ee6a558e075a47c",
+    "netrw-tools/autoload/netrw.vim": "ac274a1dc3b330154d13ada066f9680a71bd6388f6d212733d83a41c5a722eb1",
+    "buffers.vim": "cabc79e0dc8798d9c63733a16ededa8ba7ddc6987c405c82b1ffe31e94a76faa",
+    "clipboard.vim": "b540bc4e455f4fcb8560c9a380027d7444a6ad477da2de2d4a0547d76723cee8",
+    "completion.vim": "07919ee2c31c61ca7a8622ba6ccd1a0735dd8ee7dc3d9910c2bab1dac59e6a25",
+    "context.vim": "5b0307f841b05bba97583d274fa291e35fe6f33ebd9ae005b9677bd2bb6f6aff",
+    "dashboard.vim": "9efb995b0a4fdc6025d782910d9707965151299174baf027ab2f3fecc257e0f5",
+    "edit.vim": "8103c370be0a42ffb3cea78a4846bb638b007c6e44ad03b7393acff524f465a6",
+    "git.vim": "923da477240a3fe4647c35e5b013149856039e3a4da7f49cd5dae6496e0a5066",
+    "lsp.vim": "25a1447b3d25a0d7ce9b49d911248bd3a29650038fd0ce75e62985babb582dd0",
+    "markdown-preview.vim": "f5f460d8c7c96313470b0393c2491e0d20b6f9792559fdcee58e5776248d314e",
+    "markdown-structure.vim": "5b3fa7e163258225110e71e57530782a2e2718d73e93fc4c5c97df8ecf5efaab",
+    "markdown.vim": "f2ad7c1fbb7b6fcceff15441a677f2299256c24a22251170a06b213f4f2f5b45",
+    "matchparen.vim": "e7937a115be7fbdf6a2d4b7dc3955a0f5c2d165c0b1f3408ed428dcab05fa9cc",
+    "pins.vim": "e210db0ba69f9ca2c5bf64a42076e77777be0ddf66ac6141c49ec47a5282e841",
+    "project.vim": "8f9c9784fc74aa3b989f110eafa85a713ba0e44812c5e31bca85434437e9ff57",
+    "search.vim": "d1954b67684fea9bc3d87200309d8a1ddcbba39812a5d642a4d595489e631496",
+    "session.vim": "bec5c6c242aa0e89600f82ed8b8f19a34edb903f932e1ecf85bd546f985e152a",
+    "tasks.vim": "c2db08c8b4e9acc6dbc61db7639e290871007b4a20427be74c2aa4c9bf9a24f0",
+    "terminal.vim": "d897157f47875d3a82f91424554150491278ba6cf129bd2bbf656f0baf85ff95",
+    "textobjects.vim": "fc5065afb015b1641d2cf2d3ddfb4c0640b340dba2b92ebe087779d04a5f8428",
+    "tools.vim": "f1bc530bb8c68af460d7f3aceebd6963abb5810b757ed03c6f1b3e7405bc4d08",
+    "tree-async.vim": "0665e43949b7a61a6d0f1790bf75ed178f74b6a31e61a49039c694fdf003e7ce",
+    "tree-list.vim": "79d422f01f4c252eff1bb25a9ec80cf1eb4b9527da50a6f822ba018df420f64d",
+    "tree.vim": "7b14cdf0fec0d3608916d838a1c38dc89ef2337434e2bc33eeb086da08abe197",
+    "ui.vim": "20f6c96a483500bbf06f7e8042d3f219c922bdfc02abeed27fbd4cae7fef1e2d",
+    "markdown/preview.py": "6760ba6508efa7cb9bd96bc2d7ef96b169d6010d987777b5572e8f4dfd0bf560",
+    "markdown/preview.js": "4f61d9f1ea057a59e1551a107b37c052de2e1044c465ab30a2be0793394b4144",
+    "markdown/preview.css": "2de94f4b3615d1ffbdbf8500b40181ea8f241fb43c36f46e96a6c994e02e0c22",
+    "markdown/index.html": "e431e5f9a5daf8845eb0c236c6c1bdd2d3a80bb7a0d7cfdbb0a001827deb16c4",
+    "markdown/vendor/manifest.json": "8e4f9b8797381fa5e63caa0a5b72434329995a7e167ba400104f531e8a4e2457"
+  },
+  "runs": [
+    {
+      "case": "mixed",
+      "enabled": true,
+      "preview": false,
+      "lines": 1209,
+      "key_delay_ms": 0,
+      "bytes": 14946,
+      "rounds": 30,
+      "startup_ms": 28.054,
+      "index_ready_ms": 186.42,
+      "max_loop_gap_ms": 21.499,
+      "max_index_batch_ms": 4.399,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.296,
+          "median_ms": 0.259,
+          "p95_ms": 0.389,
+          "max_ms": 0.392
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 2.852,
+          "median_ms": 3.569,
+          "p95_ms": 4.007,
+          "max_ms": 4.378
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 64.69,
+          "median_ms": 65.097,
+          "p95_ms": 66.225,
+          "max_ms": 66.438
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.195,
+          "median_ms": 1.427,
+          "p95_ms": 1.906,
+          "max_ms": 2.047
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 1.234,
+          "median_ms": 1.643,
+          "p95_ms": 2.643,
+          "max_ms": 2.734
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 19.132,
+          "median_ms": 17.258,
+          "p95_ms": 20.836,
+          "max_ms": 21.666
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 3.847,
+          "median_ms": 3.504,
+          "p95_ms": 5.18,
+          "max_ms": 5.26
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.631,
+          "median_ms": 0.45,
+          "p95_ms": 0.695,
+          "max_ms": 0.771
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.728,
+          "median_ms": 0.402,
+          "p95_ms": 0.713,
+          "max_ms": 0.728
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.737,
+          "median_ms": 0.622,
+          "p95_ms": 0.972,
+          "max_ms": 1.022
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.811,
+          "median_ms": 0.574,
+          "p95_ms": 0.826,
+          "max_ms": 0.853
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.761,
+          "median_ms": 0.69,
+          "p95_ms": 1.032,
+          "max_ms": 1.045
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 4.62,
+          "median_ms": 4.633,
+          "p95_ms": 5.238,
+          "max_ms": 5.908
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 1.941,
+          "median_ms": 1.675,
+          "p95_ms": 2.02,
+          "max_ms": 3.962
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.381,
+          "median_ms": 1.476,
+          "p95_ms": 1.66,
+          "max_ms": 10.381
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.781,
+          "median_ms": 1.724,
+          "p95_ms": 1.799,
+          "max_ms": 1.817
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 19.475,
+          "median_ms": 13.145,
+          "p95_ms": 13.448,
+          "max_ms": 19.475
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.313,
+          "median_ms": 2.278,
+          "p95_ms": 2.398,
+          "max_ms": 2.433
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 3.805,
+          "median_ms": 3.358,
+          "p95_ms": 4.034,
+          "max_ms": 4.039
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 1.957,
+          "median_ms": 2.045,
+          "p95_ms": 2.441,
+          "max_ms": 2.906
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 5.669,
+          "median_ms": 5.593,
+          "p95_ms": 5.928,
+          "max_ms": 6.086
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 0.366,
+          "median_ms": 0.459,
+          "p95_ms": 0.572,
+          "max_ms": 0.602
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 0.365,
+          "median_ms": 0.428,
+          "p95_ms": 0.604,
+          "max_ms": 1.531
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "mixed",
+      "enabled": true,
+      "preview": false,
+      "lines": 10009,
+      "key_delay_ms": 0,
+      "bytes": 121137,
+      "rounds": 30,
+      "startup_ms": 26.774,
+      "index_ready_ms": 1318.074,
+      "max_loop_gap_ms": 22.866,
+      "max_index_batch_ms": 3.51,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.232,
+          "median_ms": 0.254,
+          "p95_ms": 0.389,
+          "max_ms": 0.408
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 3.989,
+          "median_ms": 3.947,
+          "p95_ms": 4.169,
+          "max_ms": 4.405
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 65.495,
+          "median_ms": 65.432,
+          "p95_ms": 66.54,
+          "max_ms": 67.223
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.274,
+          "median_ms": 1.355,
+          "p95_ms": 1.767,
+          "max_ms": 1.77
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 2.386,
+          "median_ms": 1.791,
+          "p95_ms": 2.551,
+          "max_ms": 2.675
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 20.67,
+          "median_ms": 16.409,
+          "p95_ms": 20.67,
+          "max_ms": 22.854
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 5.214,
+          "median_ms": 4.937,
+          "p95_ms": 5.575,
+          "max_ms": 5.852
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 1.015,
+          "median_ms": 0.349,
+          "p95_ms": 0.75,
+          "max_ms": 1.015
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.846,
+          "median_ms": 0.346,
+          "p95_ms": 0.805,
+          "max_ms": 0.846
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.643,
+          "median_ms": 0.563,
+          "p95_ms": 0.777,
+          "max_ms": 0.887
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.639,
+          "median_ms": 0.579,
+          "p95_ms": 0.794,
+          "max_ms": 0.922
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.716,
+          "median_ms": 0.706,
+          "p95_ms": 0.914,
+          "max_ms": 1.058
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 4.574,
+          "median_ms": 4.606,
+          "p95_ms": 4.863,
+          "max_ms": 5.267
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 1.696,
+          "median_ms": 1.852,
+          "p95_ms": 2.175,
+          "max_ms": 2.357
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.834,
+          "median_ms": 1.501,
+          "p95_ms": 1.958,
+          "max_ms": 10.834
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.757,
+          "median_ms": 1.734,
+          "p95_ms": 1.962,
+          "max_ms": 2.005
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 19.663,
+          "median_ms": 13.155,
+          "p95_ms": 13.693,
+          "max_ms": 19.663
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.258,
+          "median_ms": 2.292,
+          "p95_ms": 2.635,
+          "max_ms": 2.728
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 3.922,
+          "median_ms": 3.943,
+          "p95_ms": 4.294,
+          "max_ms": 4.596
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 1.989,
+          "median_ms": 2.059,
+          "p95_ms": 2.275,
+          "max_ms": 2.321
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 4.327,
+          "median_ms": 5.619,
+          "p95_ms": 6.018,
+          "max_ms": 6.116
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 0.658,
+          "median_ms": 0.782,
+          "p95_ms": 0.908,
+          "max_ms": 0.923
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 0.623,
+          "median_ms": 0.721,
+          "p95_ms": 0.904,
+          "max_ms": 0.919
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "headings",
+      "enabled": true,
+      "preview": false,
+      "lines": 10009,
+      "key_delay_ms": 0,
+      "bytes": 95466,
+      "rounds": 30,
+      "startup_ms": 26.276,
+      "index_ready_ms": 1410.469,
+      "max_loop_gap_ms": 22.821,
+      "max_index_batch_ms": 3.602,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.312,
+          "median_ms": 0.268,
+          "p95_ms": 0.377,
+          "max_ms": 0.474
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 4.048,
+          "median_ms": 3.953,
+          "p95_ms": 4.153,
+          "max_ms": 5.031
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 65.658,
+          "median_ms": 65.771,
+          "p95_ms": 67.044,
+          "max_ms": 67.19
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.474,
+          "median_ms": 1.526,
+          "p95_ms": 2.161,
+          "max_ms": 2.174
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 2.423,
+          "median_ms": 1.888,
+          "p95_ms": 3.05,
+          "max_ms": 3.062
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 19.288,
+          "median_ms": 17.14,
+          "p95_ms": 21.734,
+          "max_ms": 22.854
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 4.791,
+          "median_ms": 5.156,
+          "p95_ms": 5.928,
+          "max_ms": 6.227
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.781,
+          "median_ms": 0.467,
+          "p95_ms": 0.866,
+          "max_ms": 0.983
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.891,
+          "median_ms": 0.408,
+          "p95_ms": 0.713,
+          "max_ms": 0.891
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.807,
+          "median_ms": 0.595,
+          "p95_ms": 0.866,
+          "max_ms": 0.92
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.625,
+          "median_ms": 0.574,
+          "p95_ms": 0.853,
+          "max_ms": 0.86
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.743,
+          "median_ms": 0.699,
+          "p95_ms": 0.928,
+          "max_ms": 0.935
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 4.585,
+          "median_ms": 4.611,
+          "p95_ms": 4.795,
+          "max_ms": 4.856
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 2.491,
+          "median_ms": 2.339,
+          "p95_ms": 2.581,
+          "max_ms": 2.591
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.745,
+          "median_ms": 1.531,
+          "p95_ms": 1.745,
+          "max_ms": 10.745
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.701,
+          "median_ms": 1.704,
+          "p95_ms": 1.855,
+          "max_ms": 2.053
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 19.741,
+          "median_ms": 13.247,
+          "p95_ms": 14.016,
+          "max_ms": 19.741
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.532,
+          "median_ms": 2.253,
+          "p95_ms": 2.671,
+          "max_ms": 2.793
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 8.478,
+          "median_ms": 7.646,
+          "p95_ms": 8.439,
+          "max_ms": 8.478
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 2.054,
+          "median_ms": 2.1,
+          "p95_ms": 2.38,
+          "max_ms": 3.024
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 6.117,
+          "median_ms": 6.191,
+          "p95_ms": 6.482,
+          "max_ms": 6.541
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 2.865,
+          "median_ms": 2.831,
+          "p95_ms": 3.077,
+          "max_ms": 3.1
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 2.694,
+          "median_ms": 2.799,
+          "p95_ms": 3.171,
+          "max_ms": 3.228
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "tables",
+      "enabled": true,
+      "preview": false,
+      "lines": 10009,
+      "key_delay_ms": 0,
+      "bytes": 137966,
+      "rounds": 30,
+      "startup_ms": 27.113,
+      "index_ready_ms": 1391.303,
+      "max_loop_gap_ms": 22.012,
+      "max_index_batch_ms": 3.354,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.303,
+          "median_ms": 0.256,
+          "p95_ms": 0.382,
+          "max_ms": 0.408
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 4.027,
+          "median_ms": 3.937,
+          "p95_ms": 4.122,
+          "max_ms": 8.036
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 67.258,
+          "median_ms": 65.804,
+          "p95_ms": 67.346,
+          "max_ms": 67.72
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.332,
+          "median_ms": 1.322,
+          "p95_ms": 1.958,
+          "max_ms": 1.968
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 2.052,
+          "median_ms": 2.09,
+          "p95_ms": 3.125,
+          "max_ms": 3.167
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 19.123,
+          "median_ms": 17.004,
+          "p95_ms": 21.643,
+          "max_ms": 22.053
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 5.299,
+          "median_ms": 5.031,
+          "p95_ms": 5.833,
+          "max_ms": 6.086
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.691,
+          "median_ms": 0.477,
+          "p95_ms": 0.691,
+          "max_ms": 0.907
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.668,
+          "median_ms": 0.419,
+          "p95_ms": 0.668,
+          "max_ms": 0.816
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.658,
+          "median_ms": 0.626,
+          "p95_ms": 0.84,
+          "max_ms": 0.87
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.583,
+          "median_ms": 0.588,
+          "p95_ms": 0.82,
+          "max_ms": 0.895
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.68,
+          "median_ms": 0.675,
+          "p95_ms": 0.856,
+          "max_ms": 0.972
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 4.474,
+          "median_ms": 4.571,
+          "p95_ms": 4.733,
+          "max_ms": 4.743
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 1.775,
+          "median_ms": 1.767,
+          "p95_ms": 2.304,
+          "max_ms": 2.35
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.268,
+          "median_ms": 1.488,
+          "p95_ms": 1.728,
+          "max_ms": 10.268
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.635,
+          "median_ms": 1.72,
+          "p95_ms": 1.874,
+          "max_ms": 2.019
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 19.496,
+          "median_ms": 13.138,
+          "p95_ms": 14.494,
+          "max_ms": 19.496
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.155,
+          "median_ms": 2.257,
+          "p95_ms": 2.565,
+          "max_ms": 2.626
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 3.053,
+          "median_ms": 3.257,
+          "p95_ms": 3.705,
+          "max_ms": 3.762
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 1.948,
+          "median_ms": 2.025,
+          "p95_ms": 2.209,
+          "max_ms": 2.386
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 5.864,
+          "median_ms": 5.687,
+          "p95_ms": 6.072,
+          "max_ms": 7.176
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 0.824,
+          "median_ms": 0.758,
+          "p95_ms": 0.882,
+          "max_ms": 2.924
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 0.52,
+          "median_ms": 0.576,
+          "p95_ms": 0.72,
+          "max_ms": 0.729
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "long-code",
+      "enabled": true,
+      "preview": false,
+      "lines": 10011,
+      "key_delay_ms": 0,
+      "bytes": 150480,
+      "rounds": 30,
+      "startup_ms": 26.214,
+      "index_ready_ms": 744.252,
+      "max_loop_gap_ms": 318.741,
+      "max_index_batch_ms": 3.309,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.285,
+          "median_ms": 0.256,
+          "p95_ms": 0.354,
+          "max_ms": 0.354
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 4.005,
+          "median_ms": 4.011,
+          "p95_ms": 4.248,
+          "max_ms": 4.68
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 66.291,
+          "median_ms": 66.099,
+          "p95_ms": 66.816,
+          "max_ms": 67.068
+        },
+        "code_enter": {
+          "n": 30,
+          "first_ms": 1.894,
+          "median_ms": 1.745,
+          "p95_ms": 2.142,
+          "max_ms": 3.641
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.653,
+          "median_ms": 1.286,
+          "p95_ms": 1.91,
+          "max_ms": 1.989
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 1.928,
+          "median_ms": 1.572,
+          "p95_ms": 2.362,
+          "max_ms": 2.496
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 16.064,
+          "median_ms": 17.764,
+          "p95_ms": 23.079,
+          "max_ms": 318.522
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 4.653,
+          "median_ms": 4.759,
+          "p95_ms": 5.507,
+          "max_ms": 5.6
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.539,
+          "median_ms": 0.472,
+          "p95_ms": 0.711,
+          "max_ms": 0.801
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.487,
+          "median_ms": 0.493,
+          "p95_ms": 0.763,
+          "max_ms": 0.766
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.529,
+          "median_ms": 0.522,
+          "p95_ms": 0.711,
+          "max_ms": 0.761
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.511,
+          "median_ms": 0.517,
+          "p95_ms": 0.88,
+          "max_ms": 1.156
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.62,
+          "median_ms": 0.671,
+          "p95_ms": 0.838,
+          "max_ms": 2.062
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 4.309,
+          "median_ms": 4.441,
+          "p95_ms": 4.718,
+          "max_ms": 4.763
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 4.371,
+          "median_ms": 4.401,
+          "p95_ms": 4.548,
+          "max_ms": 4.691
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.151,
+          "median_ms": 1.555,
+          "p95_ms": 1.896,
+          "max_ms": 10.151
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 4.718,
+          "median_ms": 4.717,
+          "p95_ms": 4.782,
+          "max_ms": 4.828
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 19.627,
+          "median_ms": 13.027,
+          "p95_ms": 14.232,
+          "max_ms": 19.627
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 5.155,
+          "median_ms": 5.341,
+          "p95_ms": 5.575,
+          "max_ms": 5.62
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 3.239,
+          "median_ms": 3.231,
+          "p95_ms": 3.703,
+          "max_ms": 4.127
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 2.423,
+          "median_ms": 2.098,
+          "p95_ms": 2.423,
+          "max_ms": 2.443
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 3.275,
+          "median_ms": 3.318,
+          "p95_ms": 3.593,
+          "max_ms": 3.631
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 0.796,
+          "median_ms": 0.731,
+          "p95_ms": 0.818,
+          "max_ms": 0.899
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 0.479,
+          "median_ms": 0.475,
+          "p95_ms": 0.556,
+          "max_ms": 0.79
+        }
+      },
+      "violations": [
+        "save: P95=23.079, max=318.522"
+      ]
+    },
+    {
+      "case": "long-line",
+      "enabled": true,
+      "preview": false,
+      "lines": 11,
+      "key_delay_ms": 0,
+      "bytes": 120468,
+      "rounds": 30,
+      "startup_ms": 26.383,
+      "index_ready_ms": 29.967,
+      "max_loop_gap_ms": 23.533,
+      "max_index_batch_ms": 3.739,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 2.218,
+          "median_ms": 2.242,
+          "p95_ms": 2.576,
+          "max_ms": 2.676
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 1.867,
+          "median_ms": 1.792,
+          "p95_ms": 2.048,
+          "max_ms": 2.454
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 66.517,
+          "median_ms": 66.903,
+          "p95_ms": 69.08,
+          "max_ms": 69.279
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 0.925,
+          "median_ms": 0.886,
+          "p95_ms": 1.159,
+          "max_ms": 1.26
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 1.752,
+          "median_ms": 1.27,
+          "p95_ms": 1.889,
+          "max_ms": 1.931
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 11.902,
+          "median_ms": 16.84,
+          "p95_ms": 22.898,
+          "max_ms": 23.558
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 2.215,
+          "median_ms": 2.311,
+          "p95_ms": 3.458,
+          "max_ms": 3.681
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.483,
+          "median_ms": 0.407,
+          "p95_ms": 0.56,
+          "max_ms": 0.732
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.438,
+          "median_ms": 0.4,
+          "p95_ms": 0.517,
+          "max_ms": 0.524
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.32,
+          "median_ms": 0.36,
+          "p95_ms": 0.463,
+          "max_ms": 0.497
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.393,
+          "median_ms": 0.359,
+          "p95_ms": 0.505,
+          "max_ms": 0.58
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.622,
+          "median_ms": 0.604,
+          "p95_ms": 0.685,
+          "max_ms": 0.702
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 2.706,
+          "median_ms": 2.715,
+          "p95_ms": 3.249,
+          "max_ms": 3.27
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 1.155,
+          "median_ms": 1.171,
+          "p95_ms": 1.631,
+          "max_ms": 2.539
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.005,
+          "median_ms": 1.396,
+          "p95_ms": 4.277,
+          "max_ms": 10.005
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.338,
+          "median_ms": 1.382,
+          "p95_ms": 1.504,
+          "max_ms": 3.648
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 19.256,
+          "median_ms": 12.911,
+          "p95_ms": 14.69,
+          "max_ms": 19.256
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.055,
+          "median_ms": 1.952,
+          "p95_ms": 2.511,
+          "max_ms": 2.653
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 2.941,
+          "median_ms": 2.972,
+          "p95_ms": 3.439,
+          "max_ms": 3.568
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 1.651,
+          "median_ms": 1.753,
+          "p95_ms": 2.099,
+          "max_ms": 2.332
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 2.473,
+          "median_ms": 2.469,
+          "p95_ms": 2.729,
+          "max_ms": 3.646
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 0.306,
+          "median_ms": 0.319,
+          "p95_ms": 0.477,
+          "max_ms": 0.631
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 0.29,
+          "median_ms": 0.317,
+          "p95_ms": 0.594,
+          "max_ms": 0.596
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "syntax-stress",
+      "enabled": true,
+      "preview": false,
+      "lines": 11,
+      "key_delay_ms": 0,
+      "bytes": 126480,
+      "rounds": 30,
+      "startup_ms": 26.748,
+      "index_ready_ms": 31.242,
+      "max_loop_gap_ms": 22.402,
+      "max_index_batch_ms": 3.889,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 2.462,
+          "median_ms": 2.501,
+          "p95_ms": 2.833,
+          "max_ms": 2.899
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 2.263,
+          "median_ms": 2.851,
+          "p95_ms": 3.218,
+          "max_ms": 3.733
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 66.17,
+          "median_ms": 67.358,
+          "p95_ms": 69.548,
+          "max_ms": 70.312
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 0.775,
+          "median_ms": 0.839,
+          "p95_ms": 1.033,
+          "max_ms": 1.25
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 2.23,
+          "median_ms": 1.311,
+          "p95_ms": 1.922,
+          "max_ms": 2.23
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 14.116,
+          "median_ms": 15.621,
+          "p95_ms": 22.249,
+          "max_ms": 22.51
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 1.627,
+          "median_ms": 2.142,
+          "p95_ms": 2.925,
+          "max_ms": 2.927
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.254,
+          "median_ms": 0.344,
+          "p95_ms": 0.587,
+          "max_ms": 0.661
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.265,
+          "median_ms": 0.383,
+          "p95_ms": 0.67,
+          "max_ms": 0.722
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.305,
+          "median_ms": 0.303,
+          "p95_ms": 0.528,
+          "max_ms": 0.651
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.351,
+          "median_ms": 0.298,
+          "p95_ms": 0.604,
+          "max_ms": 0.748
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.451,
+          "median_ms": 0.536,
+          "p95_ms": 0.859,
+          "max_ms": 0.881
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 2.663,
+          "median_ms": 2.738,
+          "p95_ms": 3.151,
+          "max_ms": 3.163
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 1.113,
+          "median_ms": 1.17,
+          "p95_ms": 1.322,
+          "max_ms": 1.409
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.01,
+          "median_ms": 1.392,
+          "p95_ms": 1.533,
+          "max_ms": 10.01
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.379,
+          "median_ms": 1.375,
+          "p95_ms": 1.542,
+          "max_ms": 1.555
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 19.286,
+          "median_ms": 12.983,
+          "p95_ms": 13.576,
+          "max_ms": 19.286
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.012,
+          "median_ms": 1.996,
+          "p95_ms": 2.366,
+          "max_ms": 2.609
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 3.083,
+          "median_ms": 3.086,
+          "p95_ms": 3.615,
+          "max_ms": 3.789
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 1.784,
+          "median_ms": 1.769,
+          "p95_ms": 1.944,
+          "max_ms": 1.974
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 2.928,
+          "median_ms": 2.588,
+          "p95_ms": 2.853,
+          "max_ms": 2.928
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 0.624,
+          "median_ms": 0.318,
+          "p95_ms": 0.624,
+          "max_ms": 0.723
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 0.399,
+          "median_ms": 0.297,
+          "p95_ms": 0.475,
+          "max_ms": 0.693
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "large-table",
+      "enabled": true,
+      "preview": false,
+      "lines": 406,
+      "key_delay_ms": 0,
+      "bytes": 8814,
+      "rounds": 30,
+      "startup_ms": 25.99,
+      "index_ready_ms": 82.116,
+      "max_loop_gap_ms": 56.369,
+      "max_index_batch_ms": 3.382,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.242,
+          "median_ms": 0.339,
+          "p95_ms": 0.464,
+          "max_ms": 0.759
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 1.652,
+          "median_ms": 1.602,
+          "p95_ms": 1.918,
+          "max_ms": 3.379
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 66.477,
+          "median_ms": 65.259,
+          "p95_ms": 66.477,
+          "max_ms": 67.097
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.256,
+          "median_ms": 1.314,
+          "p95_ms": 1.81,
+          "max_ms": 1.881
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 1.794,
+          "median_ms": 1.599,
+          "p95_ms": 2.553,
+          "max_ms": 2.711
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 20.273,
+          "median_ms": 17.936,
+          "p95_ms": 22.307,
+          "max_ms": 22.608
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 3.635,
+          "median_ms": 2.447,
+          "p95_ms": 4.324,
+          "max_ms": 4.394
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.592,
+          "median_ms": 0.42,
+          "p95_ms": 0.754,
+          "max_ms": 0.756
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.788,
+          "median_ms": 0.42,
+          "p95_ms": 0.721,
+          "max_ms": 0.788
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.752,
+          "median_ms": 0.688,
+          "p95_ms": 1.225,
+          "max_ms": 1.303
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.568,
+          "median_ms": 0.624,
+          "p95_ms": 1.14,
+          "max_ms": 1.175
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.684,
+          "median_ms": 0.743,
+          "p95_ms": 1.079,
+          "max_ms": 1.089
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 4.565,
+          "median_ms": 4.648,
+          "p95_ms": 4.867,
+          "max_ms": 5.255
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 1.829,
+          "median_ms": 1.727,
+          "p95_ms": 2.342,
+          "max_ms": 2.567
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.433,
+          "median_ms": 1.51,
+          "p95_ms": 2.2,
+          "max_ms": 10.433
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.771,
+          "median_ms": 1.775,
+          "p95_ms": 1.967,
+          "max_ms": 1.968
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 20.062,
+          "median_ms": 13.41,
+          "p95_ms": 15.514,
+          "max_ms": 20.062
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.436,
+          "median_ms": 2.365,
+          "p95_ms": 2.857,
+          "max_ms": 2.891
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 3.664,
+          "median_ms": 3.303,
+          "p95_ms": 3.861,
+          "max_ms": 4.601
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 2.118,
+          "median_ms": 2.108,
+          "p95_ms": 2.347,
+          "max_ms": 2.834
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 53.194,
+          "median_ms": 53.024,
+          "p95_ms": 57.59,
+          "max_ms": 60.558
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 0.936,
+          "median_ms": 1.038,
+          "p95_ms": 1.344,
+          "max_ms": 2.049
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 0.55,
+          "median_ms": 0.671,
+          "p95_ms": 0.854,
+          "max_ms": 1.084
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "mixed",
+      "enabled": true,
+      "preview": true,
+      "lines": 10009,
+      "key_delay_ms": 0,
+      "bytes": 121137,
+      "rounds": 30,
+      "startup_ms": 26.585,
+      "index_ready_ms": 1356.757,
+      "max_loop_gap_ms": 23.691,
+      "max_index_batch_ms": 3.353,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.274,
+          "median_ms": 0.275,
+          "p95_ms": 0.412,
+          "max_ms": 0.457
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 4.044,
+          "median_ms": 4.022,
+          "p95_ms": 4.348,
+          "max_ms": 4.675
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 65.173,
+          "median_ms": 65.199,
+          "p95_ms": 66.665,
+          "max_ms": 66.94
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.728,
+          "median_ms": 1.402,
+          "p95_ms": 1.961,
+          "max_ms": 2.33
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 1.88,
+          "median_ms": 1.474,
+          "p95_ms": 2.279,
+          "max_ms": 2.631
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 21.292,
+          "median_ms": 17.475,
+          "p95_ms": 23.486,
+          "max_ms": 23.752
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 4.866,
+          "median_ms": 4.792,
+          "p95_ms": 5.641,
+          "max_ms": 6.291
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.559,
+          "median_ms": 0.356,
+          "p95_ms": 0.756,
+          "max_ms": 0.959
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.565,
+          "median_ms": 0.353,
+          "p95_ms": 0.749,
+          "max_ms": 1.009
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.523,
+          "median_ms": 0.57,
+          "p95_ms": 0.816,
+          "max_ms": 0.942
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.532,
+          "median_ms": 0.554,
+          "p95_ms": 0.848,
+          "max_ms": 1.021
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.652,
+          "median_ms": 0.717,
+          "p95_ms": 1.075,
+          "max_ms": 1.874
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 4.619,
+          "median_ms": 4.655,
+          "p95_ms": 5.186,
+          "max_ms": 6.679
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 1.748,
+          "median_ms": 1.94,
+          "p95_ms": 3.912,
+          "max_ms": 4.192
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.54,
+          "median_ms": 1.592,
+          "p95_ms": 2.125,
+          "max_ms": 10.54
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.705,
+          "median_ms": 1.813,
+          "p95_ms": 2.527,
+          "max_ms": 2.576
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 19.67,
+          "median_ms": 13.615,
+          "p95_ms": 18.599,
+          "max_ms": 19.67
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.367,
+          "median_ms": 2.481,
+          "p95_ms": 3.378,
+          "max_ms": 3.428
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 4.063,
+          "median_ms": 4.143,
+          "p95_ms": 5.291,
+          "max_ms": 5.573
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 1.962,
+          "median_ms": 2.163,
+          "p95_ms": 2.841,
+          "max_ms": 3.322
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 4.365,
+          "median_ms": 5.842,
+          "p95_ms": 7.226,
+          "max_ms": 8.402
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 0.818,
+          "median_ms": 0.855,
+          "p95_ms": 1.222,
+          "max_ms": 1.252
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 0.777,
+          "median_ms": 0.779,
+          "p95_ms": 1.196,
+          "max_ms": 1.218
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "mixed",
+      "enabled": true,
+      "preview": true,
+      "lines": 60009,
+      "key_delay_ms": 0,
+      "bytes": 724466,
+      "rounds": 30,
+      "startup_ms": 31.648,
+      "index_ready_ms": 8199.742,
+      "max_loop_gap_ms": 25.453,
+      "max_index_batch_ms": 3.678,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 3.432,
+          "median_ms": 0.287,
+          "p95_ms": 0.707,
+          "max_ms": 3.432
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 4.988,
+          "median_ms": 4.014,
+          "p95_ms": 4.292,
+          "max_ms": 4.988
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 64.134,
+          "median_ms": 64.692,
+          "p95_ms": 66.616,
+          "max_ms": 67.281
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.342,
+          "median_ms": 1.34,
+          "p95_ms": 1.68,
+          "max_ms": 1.921
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 1.364,
+          "median_ms": 1.382,
+          "p95_ms": 1.876,
+          "max_ms": 2.021
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 19.48,
+          "median_ms": 19.086,
+          "p95_ms": 22.417,
+          "max_ms": 25.496
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 4.854,
+          "median_ms": 4.708,
+          "p95_ms": 5.009,
+          "max_ms": 5.275
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.447,
+          "median_ms": 0.349,
+          "p95_ms": 0.645,
+          "max_ms": 0.698
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.606,
+          "median_ms": 0.346,
+          "p95_ms": 0.715,
+          "max_ms": 0.789
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.55,
+          "median_ms": 0.59,
+          "p95_ms": 0.877,
+          "max_ms": 0.893
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.635,
+          "median_ms": 0.588,
+          "p95_ms": 0.822,
+          "max_ms": 0.896
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.78,
+          "median_ms": 0.684,
+          "p95_ms": 0.951,
+          "max_ms": 1.22
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 4.824,
+          "median_ms": 4.657,
+          "p95_ms": 5.355,
+          "max_ms": 5.591
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 2.836,
+          "median_ms": 2.503,
+          "p95_ms": 3.272,
+          "max_ms": 4.167
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 11.068,
+          "median_ms": 1.578,
+          "p95_ms": 1.996,
+          "max_ms": 11.068
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.773,
+          "median_ms": 1.779,
+          "p95_ms": 2.043,
+          "max_ms": 2.152
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 19.716,
+          "median_ms": 13.902,
+          "p95_ms": 19.499,
+          "max_ms": 19.716
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.629,
+          "median_ms": 2.466,
+          "p95_ms": 2.995,
+          "max_ms": 3.176
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 7.218,
+          "median_ms": 7.225,
+          "p95_ms": 8.432,
+          "max_ms": 8.683
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 1.993,
+          "median_ms": 2.232,
+          "p95_ms": 2.647,
+          "max_ms": 2.656
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 6.075,
+          "median_ms": 6.252,
+          "p95_ms": 7.238,
+          "max_ms": 7.493
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 2.956,
+          "median_ms": 2.564,
+          "p95_ms": 3.242,
+          "max_ms": 3.298
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 2.409,
+          "median_ms": 2.485,
+          "p95_ms": 3.132,
+          "max_ms": 3.46
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "mixed",
+      "enabled": false,
+      "preview": false,
+      "lines": 1209,
+      "key_delay_ms": 0,
+      "bytes": 14935,
+      "rounds": 30,
+      "startup_ms": 26.8,
+      "index_ready_ms": 28.867,
+      "max_loop_gap_ms": 21.249,
+      "max_index_batch_ms": 0.0,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.232,
+          "median_ms": 1.406,
+          "p95_ms": 1.694,
+          "max_ms": 1.847
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 2.624,
+          "median_ms": 3.608,
+          "p95_ms": 4.406,
+          "max_ms": 6.609
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 60.517,
+          "median_ms": 60.284,
+          "p95_ms": 64.781,
+          "max_ms": 65.849
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.874,
+          "median_ms": 2.338,
+          "p95_ms": 3.033,
+          "max_ms": 3.043
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 2.051,
+          "median_ms": 4.361,
+          "p95_ms": 6.071,
+          "max_ms": 6.564
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 11.784,
+          "median_ms": 17.692,
+          "p95_ms": 21.161,
+          "max_ms": 21.324
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 3.542,
+          "median_ms": 3.83,
+          "p95_ms": 5.138,
+          "max_ms": 5.633
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.554,
+          "median_ms": 0.54,
+          "p95_ms": 1.063,
+          "max_ms": 1.386
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.443,
+          "median_ms": 0.535,
+          "p95_ms": 0.898,
+          "max_ms": 1.247
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.83,
+          "median_ms": 0.695,
+          "p95_ms": 0.863,
+          "max_ms": 0.929
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.895,
+          "median_ms": 0.985,
+          "p95_ms": 1.43,
+          "max_ms": 1.61
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 3.013,
+          "median_ms": 2.847,
+          "p95_ms": 3.496,
+          "max_ms": 3.563
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 2.104,
+          "median_ms": 2.126,
+          "p95_ms": 2.521,
+          "max_ms": 2.64
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 9.527,
+          "median_ms": 1.551,
+          "p95_ms": 2.073,
+          "max_ms": 9.527
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 2.637,
+          "median_ms": 2.448,
+          "p95_ms": 2.812,
+          "max_ms": 3.178
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 20.285,
+          "median_ms": 13.987,
+          "p95_ms": 16.406,
+          "max_ms": 20.285
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 3.063,
+          "median_ms": 3.236,
+          "p95_ms": 3.678,
+          "max_ms": 3.988
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "mixed",
+      "enabled": false,
+      "preview": false,
+      "lines": 10009,
+      "key_delay_ms": 0,
+      "bytes": 121126,
+      "rounds": 30,
+      "startup_ms": 28.567,
+      "index_ready_ms": 30.948,
+      "max_loop_gap_ms": 22.622,
+      "max_index_batch_ms": 0.0,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.372,
+          "median_ms": 1.453,
+          "p95_ms": 1.698,
+          "max_ms": 1.794
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 4.254,
+          "median_ms": 4.113,
+          "p95_ms": 4.374,
+          "max_ms": 4.978
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 65.254,
+          "median_ms": 61.864,
+          "p95_ms": 67.146,
+          "max_ms": 67.725
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 3.136,
+          "median_ms": 2.284,
+          "p95_ms": 3.136,
+          "max_ms": 3.321
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 2.9,
+          "median_ms": 4.26,
+          "p95_ms": 5.934,
+          "max_ms": 6.208
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 13.152,
+          "median_ms": 17.941,
+          "p95_ms": 21.813,
+          "max_ms": 22.545
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 4.956,
+          "median_ms": 5.339,
+          "p95_ms": 5.928,
+          "max_ms": 6.136
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.604,
+          "median_ms": 0.632,
+          "p95_ms": 0.986,
+          "max_ms": 1.084
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.639,
+          "median_ms": 0.591,
+          "p95_ms": 0.981,
+          "max_ms": 1.079
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 1.064,
+          "median_ms": 0.701,
+          "p95_ms": 1.064,
+          "max_ms": 1.066
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 1.016,
+          "median_ms": 1.003,
+          "p95_ms": 1.351,
+          "max_ms": 1.752
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 2.964,
+          "median_ms": 2.942,
+          "p95_ms": 3.269,
+          "max_ms": 3.419
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 2.129,
+          "median_ms": 2.184,
+          "p95_ms": 2.341,
+          "max_ms": 2.395
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.205,
+          "median_ms": 1.552,
+          "p95_ms": 2.317,
+          "max_ms": 10.205
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 2.394,
+          "median_ms": 2.431,
+          "p95_ms": 2.675,
+          "max_ms": 2.686
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 22.223,
+          "median_ms": 14.198,
+          "p95_ms": 15.448,
+          "max_ms": 22.223
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 3.156,
+          "median_ms": 3.176,
+          "p95_ms": 3.684,
+          "max_ms": 3.756
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "headings",
+      "enabled": false,
+      "preview": false,
+      "lines": 10009,
+      "key_delay_ms": 0,
+      "bytes": 95455,
+      "rounds": 30,
+      "startup_ms": 30.68,
+      "index_ready_ms": 32.777,
+      "max_loop_gap_ms": 21.688,
+      "max_index_batch_ms": 0.0,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.468,
+          "median_ms": 1.392,
+          "p95_ms": 1.697,
+          "max_ms": 1.706
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 4.171,
+          "median_ms": 4.122,
+          "p95_ms": 4.38,
+          "max_ms": 8.235
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 61.028,
+          "median_ms": 61.738,
+          "p95_ms": 63.366,
+          "max_ms": 63.716
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 2.351,
+          "median_ms": 2.321,
+          "p95_ms": 3.527,
+          "max_ms": 3.748
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 3.117,
+          "median_ms": 3.674,
+          "p95_ms": 5.744,
+          "max_ms": 6.069
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 18.706,
+          "median_ms": 17.256,
+          "p95_ms": 20.088,
+          "max_ms": 20.38
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 4.856,
+          "median_ms": 5.11,
+          "p95_ms": 5.711,
+          "max_ms": 5.781
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.36,
+          "median_ms": 0.589,
+          "p95_ms": 0.943,
+          "max_ms": 1.004
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.366,
+          "median_ms": 0.574,
+          "p95_ms": 0.824,
+          "max_ms": 0.881
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.68,
+          "median_ms": 0.765,
+          "p95_ms": 1.204,
+          "max_ms": 1.291
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.686,
+          "median_ms": 0.903,
+          "p95_ms": 1.169,
+          "max_ms": 1.224
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 2.476,
+          "median_ms": 2.722,
+          "p95_ms": 2.988,
+          "max_ms": 3.115
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 2.565,
+          "median_ms": 2.064,
+          "p95_ms": 2.397,
+          "max_ms": 2.565
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 9.443,
+          "median_ms": 1.484,
+          "p95_ms": 1.685,
+          "max_ms": 9.443
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 2.14,
+          "median_ms": 2.313,
+          "p95_ms": 2.505,
+          "max_ms": 2.518
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 21.677,
+          "median_ms": 14.033,
+          "p95_ms": 14.685,
+          "max_ms": 21.677
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 3.011,
+          "median_ms": 3.053,
+          "p95_ms": 3.442,
+          "max_ms": 3.577
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "long-code",
+      "enabled": false,
+      "preview": false,
+      "lines": 10011,
+      "key_delay_ms": 0,
+      "bytes": 150469,
+      "rounds": 30,
+      "startup_ms": 26.607,
+      "index_ready_ms": 28.721,
+      "max_loop_gap_ms": 22.544,
+      "max_index_batch_ms": 0.0,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.296,
+          "median_ms": 1.42,
+          "p95_ms": 1.858,
+          "max_ms": 2.678
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 4.197,
+          "median_ms": 4.161,
+          "p95_ms": 4.465,
+          "max_ms": 8.629
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 62.696,
+          "median_ms": 62.511,
+          "p95_ms": 63.726,
+          "max_ms": 64.204
+        },
+        "code_enter": {
+          "n": 30,
+          "first_ms": 5.038,
+          "median_ms": 3.939,
+          "p95_ms": 5.811,
+          "max_ms": 6.866
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.587,
+          "median_ms": 1.201,
+          "p95_ms": 1.879,
+          "max_ms": 1.929
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 1.551,
+          "median_ms": 2.348,
+          "p95_ms": 4.644,
+          "max_ms": 4.958
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 11.239,
+          "median_ms": 17.669,
+          "p95_ms": 22.398,
+          "max_ms": 22.668
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 4.335,
+          "median_ms": 4.945,
+          "p95_ms": 6.056,
+          "max_ms": 6.197
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.358,
+          "median_ms": 0.515,
+          "p95_ms": 0.796,
+          "max_ms": 0.918
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.38,
+          "median_ms": 0.52,
+          "p95_ms": 0.938,
+          "max_ms": 0.98
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.569,
+          "median_ms": 0.512,
+          "p95_ms": 0.892,
+          "max_ms": 0.905
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.93,
+          "median_ms": 0.724,
+          "p95_ms": 1.053,
+          "max_ms": 1.15
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 2.202,
+          "median_ms": 1.756,
+          "p95_ms": 2.48,
+          "max_ms": 2.564
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 1.623,
+          "median_ms": 1.492,
+          "p95_ms": 1.691,
+          "max_ms": 1.762
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 9.625,
+          "median_ms": 1.531,
+          "p95_ms": 1.778,
+          "max_ms": 9.625
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.743,
+          "median_ms": 1.722,
+          "p95_ms": 1.895,
+          "max_ms": 1.92
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 20.247,
+          "median_ms": 13.383,
+          "p95_ms": 14.864,
+          "max_ms": 20.247
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.501,
+          "median_ms": 2.406,
+          "p95_ms": 2.849,
+          "max_ms": 3.335
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "mixed",
+      "enabled": true,
+      "preview": false,
+      "lines": 10009,
+      "key_delay_ms": 20,
+      "bytes": 121137,
+      "rounds": 30,
+      "startup_ms": 26.823,
+      "index_ready_ms": 1340.294,
+      "max_loop_gap_ms": 21.712,
+      "max_index_batch_ms": 3.633,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.318,
+          "median_ms": 0.268,
+          "p95_ms": 0.411,
+          "max_ms": 0.45
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 4.099,
+          "median_ms": 5.064,
+          "p95_ms": 5.636,
+          "max_ms": 6.244
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 66.131,
+          "median_ms": 66.396,
+          "p95_ms": 67.51,
+          "max_ms": 67.73
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.6,
+          "median_ms": 1.301,
+          "p95_ms": 1.989,
+          "max_ms": 2.077
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 2.654,
+          "median_ms": 1.792,
+          "p95_ms": 2.466,
+          "max_ms": 2.654
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 18.816,
+          "median_ms": 16.381,
+          "p95_ms": 20.195,
+          "max_ms": 21.921
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 5.058,
+          "median_ms": 4.889,
+          "p95_ms": 5.3,
+          "max_ms": 5.363
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.431,
+          "median_ms": 0.384,
+          "p95_ms": 0.58,
+          "max_ms": 0.784
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.444,
+          "median_ms": 0.363,
+          "p95_ms": 0.54,
+          "max_ms": 0.696
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.464,
+          "median_ms": 0.525,
+          "p95_ms": 0.87,
+          "max_ms": 0.937
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.532,
+          "median_ms": 0.538,
+          "p95_ms": 0.821,
+          "max_ms": 1.027
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.624,
+          "median_ms": 0.663,
+          "p95_ms": 0.924,
+          "max_ms": 0.969
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 4.631,
+          "median_ms": 4.634,
+          "p95_ms": 5.0,
+          "max_ms": 5.074
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 1.903,
+          "median_ms": 1.976,
+          "p95_ms": 2.325,
+          "max_ms": 2.331
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.306,
+          "median_ms": 1.53,
+          "p95_ms": 1.746,
+          "max_ms": 10.306
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 1.733,
+          "median_ms": 1.763,
+          "p95_ms": 1.933,
+          "max_ms": 2.233
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 20.047,
+          "median_ms": 13.466,
+          "p95_ms": 14.454,
+          "max_ms": 20.047
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 2.289,
+          "median_ms": 2.333,
+          "p95_ms": 2.714,
+          "max_ms": 2.74
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 3.759,
+          "median_ms": 4.079,
+          "p95_ms": 4.946,
+          "max_ms": 5.335
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 1.988,
+          "median_ms": 2.138,
+          "p95_ms": 2.362,
+          "max_ms": 3.063
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 6.195,
+          "median_ms": 5.813,
+          "p95_ms": 6.195,
+          "max_ms": 6.5
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 0.748,
+          "median_ms": 0.792,
+          "p95_ms": 0.901,
+          "max_ms": 1.01
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 0.803,
+          "median_ms": 0.74,
+          "p95_ms": 0.921,
+          "max_ms": 0.953
+        }
+      },
+      "violations": []
+    },
+    {
+      "case": "long-code",
+      "enabled": true,
+      "preview": false,
+      "lines": 10011,
+      "key_delay_ms": 80,
+      "bytes": 150480,
+      "rounds": 30,
+      "startup_ms": 28.684,
+      "index_ready_ms": 765.5,
+      "max_loop_gap_ms": 21.028,
+      "max_index_batch_ms": 3.369,
+      "context_fallbacks": 0,
+      "upstream_netrw_errors": [
+        "E31: No such mapping"
+      ],
+      "operations": {
+        "insert_enter": {
+          "n": 30,
+          "first_ms": 0.285,
+          "median_ms": 0.255,
+          "p95_ms": 0.5,
+          "max_ms": 3.274
+        },
+        "insert_key": {
+          "n": 360,
+          "first_ms": 4.116,
+          "median_ms": 4.734,
+          "p95_ms": 6.798,
+          "max_ms": 7.279
+        },
+        "insert_escape": {
+          "n": 30,
+          "first_ms": 65.782,
+          "median_ms": 64.935,
+          "p95_ms": 68.996,
+          "max_ms": 69.063
+        },
+        "code_enter": {
+          "n": 30,
+          "first_ms": 3.196,
+          "median_ms": 1.566,
+          "p95_ms": 3.196,
+          "max_ms": 3.248
+        },
+        "list_enter": {
+          "n": 30,
+          "first_ms": 1.236,
+          "median_ms": 1.282,
+          "p95_ms": 1.735,
+          "max_ms": 1.913
+        },
+        "undo": {
+          "n": 30,
+          "first_ms": 2.029,
+          "median_ms": 1.475,
+          "p95_ms": 2.286,
+          "max_ms": 2.437
+        },
+        "save": {
+          "n": 30,
+          "first_ms": 19.043,
+          "median_ms": 16.665,
+          "p95_ms": 20.407,
+          "max_ms": 21.071
+        },
+        "bracketed_paste": {
+          "n": 30,
+          "first_ms": 4.964,
+          "median_ms": 4.622,
+          "p95_ms": 5.243,
+          "max_ms": 5.513
+        },
+        "move_down": {
+          "n": 30,
+          "first_ms": 0.493,
+          "median_ms": 0.364,
+          "p95_ms": 0.592,
+          "max_ms": 0.631
+        },
+        "move_up": {
+          "n": 30,
+          "first_ms": 0.44,
+          "median_ms": 0.389,
+          "p95_ms": 0.593,
+          "max_ms": 0.64
+        },
+        "scroll_down": {
+          "n": 30,
+          "first_ms": 0.463,
+          "median_ms": 0.441,
+          "p95_ms": 0.642,
+          "max_ms": 0.896
+        },
+        "scroll_up": {
+          "n": 30,
+          "first_ms": 0.418,
+          "median_ms": 0.443,
+          "p95_ms": 0.687,
+          "max_ms": 0.712
+        },
+        "render_toggle": {
+          "n": 30,
+          "first_ms": 0.545,
+          "median_ms": 0.58,
+          "p95_ms": 0.948,
+          "max_ms": 1.058
+        },
+        "split_open": {
+          "n": 30,
+          "first_ms": 4.504,
+          "median_ms": 4.387,
+          "p95_ms": 4.561,
+          "max_ms": 4.751
+        },
+        "split_close": {
+          "n": 30,
+          "first_ms": 4.45,
+          "median_ms": 4.412,
+          "p95_ms": 4.606,
+          "max_ms": 4.641
+        },
+        "buffer_next": {
+          "n": 30,
+          "first_ms": 10.411,
+          "median_ms": 1.539,
+          "p95_ms": 1.987,
+          "max_ms": 10.411
+        },
+        "buffer_previous": {
+          "n": 30,
+          "first_ms": 4.637,
+          "median_ms": 4.732,
+          "p95_ms": 4.869,
+          "max_ms": 4.977
+        },
+        "tree_open": {
+          "n": 30,
+          "first_ms": 20.101,
+          "median_ms": 13.352,
+          "p95_ms": 20.101,
+          "max_ms": 20.72
+        },
+        "tree_close": {
+          "n": 30,
+          "first_ms": 5.383,
+          "median_ms": 5.309,
+          "p95_ms": 5.678,
+          "max_ms": 6.97
+        },
+        "outline_open": {
+          "n": 30,
+          "first_ms": 3.516,
+          "median_ms": 3.22,
+          "p95_ms": 3.631,
+          "max_ms": 4.331
+        },
+        "outline_close": {
+          "n": 30,
+          "first_ms": 2.207,
+          "median_ms": 2.13,
+          "p95_ms": 2.44,
+          "max_ms": 2.459
+        },
+        "table_align": {
+          "n": 30,
+          "first_ms": 3.717,
+          "median_ms": 3.375,
+          "p95_ms": 3.686,
+          "max_ms": 3.717
+        },
+        "heading_next": {
+          "n": 30,
+          "first_ms": 0.928,
+          "median_ms": 0.755,
+          "p95_ms": 0.931,
+          "max_ms": 1.097
+        },
+        "heading_previous": {
+          "n": 30,
+          "first_ms": 0.531,
+          "median_ms": 0.487,
+          "p95_ms": 0.588,
+          "max_ms": 0.61
+        }
+      },
+      "violations": []
+    }
+  ],
+  "finished_utc": "2026-11-24T09:25:56.036335+00:00",
+  "passed": false
+}
