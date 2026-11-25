@@ -33,6 +33,9 @@ nnoremap <silent> <leader>e :call <SID>ToggleTree()<CR>
 " 通过 netrw 官方的 g:Netrw_UserMaps 注册，操作后由 netrw 自行刷新列表。
 let s:clip = get(s:, 'clip', {'op': '', 'path': ''})
 let s:copies = get(s:, 'copies', {})
+let s:remote_pending = get(s:, 'remote_pending', {})
+let s:remote_module = fnamemodify(resolve(expand('<sfile>:p')), ':h')
+      \ . '/netrw-tools/autoload/netrw.vim'
 
 function! s:Warn(message) abort
   echohl WarningMsg
@@ -89,6 +92,9 @@ endfunction
 
 " 批量查找可选工具：每个 PATH 目录只读取一次，避免多个缺失命令反复跨挂载点 stat。
 function! s:FindPrograms(names) abort
+  if empty(a:names)
+    return {}
+  endif
   if !exists('*readdir')
     let found = {}
     for name in a:names
@@ -118,14 +124,15 @@ function! s:FindPrograms(names) abort
     let seen[directory] = 1
     let previous_error = v:errmsg
     try
-      let entries = readdir(directory, {entry -> has_key(wanted, entry)})
+      let entries = readdir(directory)
     catch
       " 目录可能只有执行权限而不能列举，此时仍逐项检查，不漏掉可执行文件。
       let entries = isdirectory(directory) ? keys(wanted) : []
       let v:errmsg = previous_error
     endtry
-    for entry in entries
-      if executable(directory . entry)
+    " 只循环少量待查命令；原生 index() 跳过大目录，避免逐项执行 Vim lambda。
+    for entry in keys(wanted)
+      if index(entries, entry) >= 0 && executable(directory . entry)
         let found[entry] = 1
         call remove(wanted, entry)
       endif
@@ -137,6 +144,62 @@ function! s:FindPrograms(names) abort
   return found
 endfunction
 
+" 网络后端只在实际传输时探测，避免本地开树遍历 WSL/网络挂载上的 PATH。
+function! s:EnsureRemoteTools() abort
+  if empty(s:remote_pending)
+    return
+  endif
+  let pending = s:remote_pending
+  let names = []
+  if get(pending, 'dav', 0) && get(g:, 'netrw_dav_cmd', '') ==# ''
+    let names += ['cadaver', 'curl']
+  endif
+  if get(pending, 'fetch', 0) && get(g:, 'netrw_fetch_cmd', '') ==# ''
+    let names += ['fetch']
+  endif
+  if get(pending, 'file', 0) && !exists('g:netrw_file_cmd')
+    let names += ['elinks', 'links']
+  endif
+  let found = s:FindPrograms(names)
+  let s:remote_pending = {}
+  if index(names, 'cadaver') >= 0
+    let g:netrw_dav_cmd = has_key(found, 'cadaver') ? 'cadaver'
+          \ : has_key(found, 'curl') ? 'curl' : ''
+  endif
+  if index(names, 'fetch') >= 0
+    let g:netrw_fetch_cmd = has_key(found, 'fetch') ? 'fetch -o' : ''
+  endif
+  if has_key(found, 'elinks') || has_key(found, 'links')
+    let g:netrw_file_cmd = has_key(found, 'elinks') ? 'elinks' : 'links'
+  endif
+endfunction
+
+function! s:WrapRemoteTools() abort
+  if get(s:, 'remote_wrapped', 0)
+    return 1
+  endif
+  if !exists('*funcref') || !exists('*netrw#NetRead') || !exists('*netrw#NetWrite')
+        \ || !exists('*netrw#NetSource') || !filereadable(s:remote_module)
+    return 0
+  endif
+  let definition = execute('function netrw#NetWrite')
+  " NetWrite 的无返回值 range 接口保持原样；未知版本沿用同步探测。
+  if split(definition, "\n")[0] !~# '\<range\>' || definition =~# '\<return[ \t]\+[^" \t\r\n]'
+    return 0
+  endif
+  " 保留原函数对象与原脚本命名空间；新定义放在合规的 autoload 文件中。
+  let g:vimrc_lite_netrw_bridge = {'Resolve': function('s:EnsureRemoteTools'),
+        \ 'Read': funcref('netrw#NetRead'), 'Write': funcref('netrw#NetWrite'),
+        \ 'Source': funcref('netrw#NetSource')}
+  try
+    execute 'source ' . fnameescape(s:remote_module)
+  finally
+    unlet! g:vimrc_lite_netrw_bridge
+  endtry
+  let s:remote_wrapped = 1
+  return 1
+endfunction
+
 function! s:LoadNetrw() abort
   if !has('unix')
     return
@@ -145,34 +208,18 @@ function! s:LoadNetrw() abort
     call s:InstallFastListing()
     return
   endif
-  let names = []
   if !exists('g:netrw_dav_cmd')
-    let names += ['cadaver', 'curl']
+    let s:remote_pending.dav = 1
+    let g:netrw_dav_cmd = ''
   endif
   if !exists('g:netrw_fetch_cmd')
-    let names += ['fetch']
-  endif
-  if !exists('g:netrw_file_cmd')
-    let names += ['elinks', 'links']
-  endif
-  if empty(names)
-    runtime autoload/netrw.vim
-    call s:InstallFastListing()
-    return
-  endif
-  let found = s:FindPrograms(names)
-  if !exists('g:netrw_dav_cmd')
-    let g:netrw_dav_cmd = has_key(found, 'cadaver') ? 'cadaver'
-          \ : has_key(found, 'curl') ? 'curl' : ''
-  endif
-  if !exists('g:netrw_fetch_cmd')
-    let g:netrw_fetch_cmd = has_key(found, 'fetch') ? 'fetch -o' : ''
+    let s:remote_pending.fetch = 1
+    let g:netrw_fetch_cmd = ''
   endif
   let absent_file_command = !exists('g:netrw_file_cmd')
-        \ && !has_key(found, 'elinks') && !has_key(found, 'links')
   if !exists('g:netrw_file_cmd')
-    let g:netrw_file_cmd = has_key(found, 'elinks') ? 'elinks'
-          \ : has_key(found, 'links') ? 'links' : ''
+    let s:remote_pending.file = 1
+    let g:netrw_file_cmd = ''
   endif
   try
     runtime autoload/netrw.vim
@@ -182,6 +229,9 @@ function! s:LoadNetrw() abort
       unlet! g:netrw_file_cmd
     endif
   endtry
+  if !s:WrapRemoteTools()
+    call s:EnsureRemoteTools()
+  endif
   call s:InstallFastListing()
 endfunction
 
@@ -397,7 +447,7 @@ function! s:InstallFastListing() abort
     return
   endif
   let scripts = filter(split(execute('scriptnames'), "\n"),
-        \ 'v:val =~# "/autoload/netrw\.vim$"')
+        \ 'v:val =~# "/autoload/netrw\.vim$" && v:val !~# "/netrw-tools/"')
   if len(scripts) != 1
     return
   endif
@@ -481,7 +531,7 @@ function! s:NetrwCall(name, ...) abort
     let s:netrw_legacy_sid = ''
     if stridx(execute('function netrw#Call'), 'string(a:000)') >= 0
       let scripts = filter(split(execute('scriptnames'), "\n"),
-            \ 'v:val =~# "/autoload/netrw\.vim$"')
+            \ 'v:val =~# "/autoload/netrw\.vim$" && v:val !~# "/netrw-tools/"')
       if len(scripts) != 1
         unlet s:netrw_legacy_sid
         throw 'Vim tree: cannot identify legacy netrw script'

@@ -6,7 +6,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCES = [ROOT / ".vimrc"] + sorted(ROOT.glob("*.vim"))
+SOURCES = [ROOT / ".vimrc", ROOT / "netrw-tools/autoload/netrw.vim"] + sorted(ROOT.glob("*.vim"))
 COMMAND_SEPARATOR = re.compile(r"(?<!\|)\s\|\s(?!\|)")
 
 

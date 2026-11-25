@@ -1016,17 +1016,20 @@ let $PATH = ''' + quoted(str(tools) + ':' + str(tools) + ':missing-directory') +
 call assert_equal({'cadaver': 1, 'curl': 1, 'fetch': 1, 'elinks': 1, 'links': 1},
       \ call(function(tree . 'FindPrograms'), [['cadaver', 'curl', 'fetch', 'elinks', 'links']]))
 call call(function(tree . 'LoadNetrw'), [])
+call call(function(tree . 'EnsureRemoteTools'), [])
 call assert_equal('cadaver', g:netrw_dav_cmd)
 call assert_equal('fetch -o', g:netrw_fetch_cmd)
 call assert_equal('elinks', g:netrw_file_cmd)
 let $PATH = saved_path
 ''')
+
         self.vim(r'''
 let tree = matchstr(maparg(' e', 'n'), '<SNR>\d\+_')
 let g:netrw_dav_cmd = 'custom-dav'
 let g:netrw_fetch_cmd = 'custom-fetch'
 let g:netrw_file_cmd = 'custom-file'
 call call(function(tree . 'LoadNetrw'), [])
+call call(function(tree . 'EnsureRemoteTools'), [])
 call assert_equal(['custom-dav', 'custom-fetch', 'custom-file'],
       \ [g:netrw_dav_cmd, g:netrw_fetch_cmd, g:netrw_file_cmd])
 ''')
@@ -1035,8 +1038,54 @@ let tree = matchstr(maparg(' e', 'n'), '<SNR>\d\+_')
 let saved_path = $PATH
 let $PATH = '/missing-vim-test-directory'
 call call(function(tree . 'LoadNetrw'), [])
+call call(function(tree . 'EnsureRemoteTools'), [])
 call assert_equal('', g:netrw_dav_cmd)
 call assert_equal('', g:netrw_fetch_cmd)
 call assert_false(exists('g:netrw_file_cmd'))
 let $PATH = saved_path
+''')
+
+    def test_remote_tools_are_lazy_and_wrappers_preserve_arguments_ranges_and_namespace(self):
+        runtime = self.work / 'runtime'
+        autoload = runtime / 'autoload'
+        autoload.mkdir(parents=True)
+        (autoload / 'netrw.vim').write_text(r'''
+let g:loaded_netrw = 'test'
+let s:tag = 'native namespace'
+function! netrw#NetRead(...) abort
+  return [s:tag, a:000, g:netrw_dav_cmd]
+endfunction
+function! netrw#NetWrite(...) range abort
+  let g:wrote = [s:tag, a:firstline, a:lastline, a:000, g:netrw_fetch_cmd]
+endfunction
+function! netrw#NetSource(...) abort
+  return [s:tag, a:000]
+endfunction
+''')
+        tools = self.work / 'tools'
+        tools.mkdir()
+        for name in ['cadaver', 'curl', 'fetch', 'elinks', 'links']:
+            path = tools / name
+            path.write_text('#!/bin/sh\nexit 0\n')
+            path.chmod(0o755)
+        self.vim(r'''
+let &runtimepath = ''' + quoted(str(runtime) + ',') + r''' . &runtimepath
+let tree = matchstr(maparg(' e', 'n'), '<SNR>\d\+_')
+let $PATH = ''' + quoted(tools) + r'''
+call call(function(tree . 'LoadNetrw'), [])
+call assert_equal('', g:netrw_dav_cmd)
+call assert_equal('', g:netrw_fetch_cmd)
+call assert_false(exists('g:netrw_file_cmd'))
+call assert_equal(['native namespace', [2, 'dav://example/read', 'extra'], 'cadaver'],
+      \ netrw#NetRead(2, 'dav://example/read', 'extra'))
+call assert_equal('elinks', g:netrw_file_cmd)
+call setline(1, ['a', 'b', 'c', 'd', 'e'])
+2,4call netrw#NetWrite('dav://example/write', 'extra')
+call assert_equal(['native namespace', 2, 4, ['dav://example/write', 'extra'], 'fetch -o'],
+      \ g:wrote)
+call assert_equal(['native namespace', ['dav://example/source']],
+      \ netrw#NetSource('dav://example/source'))
+execute 'source ' . fnameescape(''' + quoted(ROOT / 'tree.vim') + r''')
+call assert_equal(['native namespace', [1, 'dav://example/reloaded'], 'cadaver'],
+      \ netrw#NetRead(1, 'dav://example/reloaded'))
 ''')
